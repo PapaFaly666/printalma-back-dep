@@ -1,10 +1,6 @@
-==> Uploading build...
-==> Uploaded in 11.0s. Compression took 4.0s
-==> Build successful 🎉
-==> Deploying...
 ==> Running 'npm run start'
 > printalma-back@0.0.1 start
-> node --max-old-space-size=512 dist/main
+> NODE_OPTIONS='--max-old-space-size=512' node dist/main
 node:internal/modules/cjs/loader:1404
   throw err;
   ^
@@ -25,7 +21,7 @@ Node.js v22.16.0
 ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
 ==> Running 'npm run start'
 > printalma-back@0.0.1 start
-> node --max-old-space-size=512 dist/main
+> NODE_OPTIONS='--max-old-space-size=512' node dist/main
 node:internal/modules/cjs/loader:1404
   throw err;
   ^
