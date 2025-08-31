@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DelimitationController } from './delimitation.controller';
 import { DelimitationService } from './delimitation.service';
-import { PrismaService } from '../../prisma.service';
+import { PrismaService } from '../prisma.service';
 
 @Module({
   controllers: [DelimitationController],

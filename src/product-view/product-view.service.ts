@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 import { CloudinaryService } from 'src/core/cloudinary/cloudinary.service';
 
 @Injectable()

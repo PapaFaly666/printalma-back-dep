@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma.service';
+import { PrismaService } from '../prisma.service';
 import { DelimitationDto, CoordinateType } from '../product/dto/create-product-request.dto';
 
 @Injectable()

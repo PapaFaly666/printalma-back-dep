@@ -2,7 +2,7 @@ import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from './prisma.service';
 import { ProductModule } from './product/product.module';
 import { CategoryModule } from './category/category.module';
 import { SizeService } from './size/size.service';

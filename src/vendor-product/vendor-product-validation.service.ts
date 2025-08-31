@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../prisma.service';
+import { PrismaService } from '../prisma.service';
 import { MailService } from '../core/mail/mail.service';
 
 export enum PostValidationAction {

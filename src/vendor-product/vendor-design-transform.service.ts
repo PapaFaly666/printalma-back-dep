@@ -1,5 +1,5 @@
 import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 import { SaveDesignTransformsDto } from './dto/vendor-design-transform.dto';
 import { ProductTypeDetectorService, DesignPositioning } from './services/product-type-detector.service';
 import { DesignPositionService } from './services/design-position.service';

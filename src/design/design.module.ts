@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { DesignController } from './design.controller';
 import { DesignService } from './design.service';
 import { DesignProductLinkService } from './design-product-link.service';
-import { PrismaService } from '../../prisma.service';
+import { PrismaService } from '../prisma.service';
 import { CloudinaryModule } from '../core/cloudinary/cloudinary.module';
 import { MailModule } from '../core/mail/mail.module';
 import { JwtModule } from '@nestjs/jwt';

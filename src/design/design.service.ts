@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../prisma.service';
+import { PrismaService } from '../prisma.service';
 import { CreateDesignDto, DesignCategory } from './dto/create-design.dto';
 import { UpdateDesignDto } from './dto/update-design.dto';
 import { QueryDesignsDto, DesignStatus } from './dto/query-design.dto';

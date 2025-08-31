@@ -45,7 +45,7 @@ import {
 import { SaveDesignPositionDto } from './dto/save-design-position.dto';
 import { RolesGuard } from 'src/core/guards/roles.guard';
 import { Roles } from 'src/core/guards/roles.decorator';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { multerConfig } from 'multerConfig';
 

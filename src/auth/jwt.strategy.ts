@@ -3,7 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
 import * as process from 'process';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 
 export interface UserPayload {
   sub: number;

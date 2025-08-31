@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CreateColorDto } from './dto/create-color.dto';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 import { CloudinaryService } from 'src/core/cloudinary/cloudinary.service';
 
 @Injectable()

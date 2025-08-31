@@ -4,7 +4,7 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { LoginDto } from './dto/user-dto';
 import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ListClientsResponseDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto } from './dto/create-client.dto';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 import { MailService } from '../core/mail/mail.service';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { Role, VendeurType } from '@prisma/client';

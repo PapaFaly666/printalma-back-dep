@@ -40,7 +40,7 @@ import { IsEnum } from 'class-validator';
 import { FileFieldsInterceptor, FileInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
 import { multerConfig } from 'multerConfig';
 import { Response, Request } from 'express';
-import { PrismaService } from '../../prisma.service';
+import { PrismaService } from '../prisma.service';
 
 // DTO pour la mise à jour du statut
 class UpdateStatusDto {

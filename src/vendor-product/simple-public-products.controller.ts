@@ -10,7 +10,7 @@ import {
   ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 
 @ApiTags('public-vendor-products')
 @Controller('api/public/vendor-products')

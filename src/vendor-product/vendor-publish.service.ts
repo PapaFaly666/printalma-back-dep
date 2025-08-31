@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, Logger, NotFoundException, ForbiddenEx
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { VendorPublishDto, VendorPublishResponseDto } from './dto/vendor-publish.dto';
 import { VendorProductsListResponseDto, VendorStatsResponseDto, VendorProductDetailResponseDto } from './dto/vendor-product-response.dto';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 import * as crypto from 'crypto';
 import { SaveDesignPositionDto } from './dto/save-design-position.dto';
 import { DesignPositionService } from './services/design-position.service';

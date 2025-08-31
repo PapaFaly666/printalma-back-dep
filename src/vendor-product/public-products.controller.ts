@@ -15,7 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { VendorPublishService } from './vendor-publish.service';
 import { BestSellersService } from './best-sellers.service';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 
 @ApiTags('vendor-products-public')
 @Controller('public')

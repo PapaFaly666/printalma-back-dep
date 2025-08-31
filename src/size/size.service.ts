@@ -1,7 +1,7 @@
 // sizes/size.service.ts
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CreateSizeDto } from './dto/create-size.dto';
-import { PrismaService } from 'prisma.service';
+import { PrismaService } from '../prisma.service';
 
 // Enum pour les tailles standard (à synchroniser avec le schéma Prisma)
 enum SizeType {
