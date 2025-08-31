@@ -1,0 +1,507 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+  output        = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int          @id @default(autoincrement())
+  firstName            String
+  lastName             String
+  email                String       @unique
+  password             String
+  role                 Role         @default(VENDEUR)
+  status               Boolean      @default(true)
+  photo_profil         String?
+  login_attempts       Int          @default(0)
+  locked_until         DateTime?
+  last_login_at        DateTime?
+  created_at           DateTime     @default(now())
+  updated_at           DateTime     @updatedAt
+  must_change_password Boolean      @default(false)
+  vendeur_type         VendeurType?
+
+  // 🆕 NOUVEAUX CHAMPS POUR PROFIL VENDEUR ÉTENDU
+  phone             String? // Numéro de téléphone
+  country           String? // Pays de résidence
+  address           String? // Adresse complète
+  shop_name         String? // Nom de la boutique
+  profile_photo_url String? // URL de la photo de profil Cloudinary
+
+  passwordResets          PasswordReset[]
+  orders                  Order[]
+  validatedOrders         Order[]         @relation("OrderValidator")
+  notifications           Notification[]
+  designs                 Design[]
+  validatedDesigns        Design[]        @relation("DesignValidator")
+  validatedProducts       Product[]       @relation("ProductValidator")
+  validatedVendorProducts VendorProduct[] @relation("VendorProductValidator")
+  vendorProducts          VendorProduct[]
+
+  @@index([country])
+  @@index([shop_name])
+}
+
+model PasswordReset {
+  id        Int       @id @default(autoincrement())
+  token     String    @unique
+  userId    Int
+  expiresAt DateTime
+  used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model Product {
+  id          Int               @id @default(autoincrement())
+  name        String
+  price       Float
+  stock       Int
+  status      PublicationStatus @default(DRAFT)
+  description String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Validation admin
+  isValidated              Boolean   @default(false)
+  validatedAt              DateTime?
+  validatedBy              Int?
+  rejectionReason          String?
+  submittedForValidationAt DateTime?
+
+  validator User? @relation("ProductValidator", fields: [validatedBy], references: [id])
+
+  // Champs pour la gestion des designs personnalisés
+  hasCustomDesigns Boolean @default(false)
+  designsMetadata  Json?   @default("{\"totalDesigns\": 0, \"lastUpdated\": null}")
+
+  categories      Category[]       @relation("CategoryToProduct")
+  sizes           ProductSize[]
+  colorVariations ColorVariation[]
+  orderItems      OrderItem[]
+  vendorProducts  VendorProduct[]
+
+  @@index([isValidated])
+  @@index([submittedForValidationAt])
+}
+
+model ProductSize {
+  id        Int     @id @default(autoincrement())
+  productId Int
+  sizeName  String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  products    Product[] @relation("CategoryToProduct")
+}
+
+model ColorVariation {
+  id                  Int                  @id @default(autoincrement())
+  name                String
+  colorCode           String
+  productId           Int
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  images              ProductImage[]
+  orderItems          OrderItem[]
+  vendorProductImages VendorProductImage[]
+}
+
+model ProductImage {
+  id            Int    @id @default(autoincrement())
+  view          String // e.g., 'Front', 'Back'
+  url           String
+  publicId      String
+  naturalWidth  Int? // Largeur originale de l'image
+  naturalHeight Int? // Hauteur originale de l'image
+
+  // Champs étendus pour la gestion des designs personnalisés
+  designUrl          String? // URL du design appliqué sur cette image
+  designPublicId     String? // Public ID Cloudinary du design
+  designFileName     String? // Nom original du fichier design
+  designUploadDate   DateTime? // Date d'upload du design
+  designSize         Int? // Taille du fichier design en bytes
+  designOriginalName String? // Nom original fourni par l'utilisateur
+  designDescription  String? // Description optionnelle du design
+  isDesignActive     Boolean   @default(true) // Design actif ou non
+
+  colorVariationId Int
+  colorVariation   ColorVariation @relation(fields: [colorVariationId], references: [id], onDelete: Cascade)
+  delimitations    Delimitation[]
+
+  @@index([colorVariationId])
+  @@index([designUrl])
+  @@index([isDesignActive])
+}
+
+model Delimitation {
+  id Int @id @default(autoincrement())
+
+  // Coordonnées principales (en pourcentages pour les nouvelles, absolues pour migration)
+  x        Float // Position X (0-100% ou pixels absolus)
+  y        Float // Position Y (0-100% ou pixels absolus)  
+  width    Float // Largeur (0-100% ou pixels absolus)
+  height   Float // Hauteur (0-100% ou pixels absolus)
+  rotation Float @default(0) // Rotation en degrés
+
+  // Métadonnées
+  name           String? // Nom de la zone (ex: "Zone Poitrine")
+  coordinateType CoordinateType @default(ABSOLUTE) // Par défaut ABSOLUTE pour les existantes
+
+  // Données historiques pour migration depuis coordonnées absolues
+  absoluteX           Float? // Ancienne coord X absolue
+  absoluteY           Float? // Ancienne coord Y absolue
+  absoluteWidth       Float? // Ancienne largeur absolue
+  absoluteHeight      Float? // Ancienne hauteur absolue
+  originalImageWidth  Int? // Largeur image originale utilisée pour conversion
+  originalImageHeight Int? // Hauteur image originale utilisée pour conversion
+
+  // Relations et timestamps
+  productImageId Int
+  productImage   ProductImage @relation(fields: [productImageId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  referenceWidth  Int @default(0)
+  referenceHeight Int @default(0)
+
+  @@index([productImageId])
+}
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  orderNumber String      @unique
+  userId      Int
+  status      OrderStatus @default(PENDING)
+  totalAmount Float
+  phoneNumber String
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  validatedAt DateTime?
+  validatedBy Int?
+
+  shippingName        String?
+  shippingStreet      String?
+  shippingCity        String?
+  shippingRegion      String?
+  shippingPostalCode  String?
+  shippingCountry     String?
+  shippingAddressFull String?
+
+  user       User        @relation(fields: [userId], references: [id])
+  validator  User?       @relation("OrderValidator", fields: [validatedBy], references: [id])
+  orderItems OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([orderNumber])
+}
+
+model OrderItem {
+  id             Int             @id @default(autoincrement())
+  orderId        Int
+  productId      Int
+  quantity       Int
+  unitPrice      Float
+  size           String?
+  color          String?
+  colorId        Int?
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id])
+  colorVariation ColorVariation? @relation(fields: [colorId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([colorId])
+}
+
+enum PublicationStatus {
+  PUBLISHED
+  DRAFT
+  PENDING // En attente de validation
+}
+
+// ✅ NOUVEAU: Enum pour les statuts produits vendeur
+enum VendorProductStatus {
+  PUBLISHED
+  DRAFT
+  PENDING
+}
+
+enum ViewType {
+  FRONT
+  BACK
+  LEFT
+  RIGHT
+  TOP
+  BOTTOM
+  DETAIL
+  OTHER
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  VENDEUR
+}
+
+enum VendeurType {
+  DESIGNER
+  INFLUENCEUR
+  ARTISTE
+}
+
+enum SizeType {
+  XS
+  S
+  M
+  L
+  XL
+  XXL
+  XXXL
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REJECTED
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  expiresAt DateTime?
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+enum NotificationType {
+  ORDER_NEW
+  ORDER_UPDATED
+  SYSTEM
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum CoordinateType {
+  PERCENTAGE
+  ABSOLUTE
+}
+
+enum DesignPositioning {
+  CENTER
+  TOP
+  BOTTOM
+}
+
+enum DesignCategory {
+  LOGO
+  PATTERN
+  ILLUSTRATION
+  TYPOGRAPHY
+  ABSTRACT
+}
+
+model Design {
+  id                 Int            @id @default(autoincrement())
+  vendorId           Int
+  name               String
+  description        String?
+  price              Float
+  category           DesignCategory
+  imageUrl           String
+  thumbnailUrl       String?
+  cloudinaryPublicId String
+  thumbnailPublicId  String?
+  fileSize           Int
+  originalFileName   String
+  dimensions         Json // {width: number, height: number}
+  format             String
+  tags               String[]       @default([])
+
+  // Status flags
+  isDraft     Boolean @default(true)
+  isPublished Boolean @default(false)
+  isPending   Boolean @default(false)
+
+  // Validation admin
+  isValidated              Boolean   @default(false)
+  validatedAt              DateTime?
+  validatedBy              Int?
+  rejectionReason          String?
+  submittedForValidationAt DateTime?
+
+  // Metrics
+  views      Int   @default(0)
+  likes      Int   @default(0)
+  earnings   Float @default(0)
+  usageCount Int   @default(0)
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+
+  vendor    User  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  validator User? @relation("DesignValidator", fields: [validatedBy], references: [id])
+
+  @@index([vendorId])
+  @@index([category])
+  @@index([isPublished])
+  @@index([isPending])
+  @@index([isValidated])
+  @@index([submittedForValidationAt])
+  @@index([createdAt])
+}
+
+/// VendorProduct représente un produit mis en vente par un vendeur à partir d'un produit de base (admin).
+/// Il stocke les variantes sélectionnées (tailles, couleurs) sous forme de tableau JSON pour simplifier le schéma.
+model VendorProduct {
+  id            Int                 @id @default(autoincrement())
+  baseProductId Int                 @map("base_product_id")
+  vendorId      Int                 @map("vendor_id")
+  name          String
+  description   String?             @db.Text
+  price         Int
+  stock         Int                 @default(0)
+  status        VendorProductStatus @default(PENDING)
+
+  // ✅ NOUVELLE ARCHITECTURE - Conservation structure admin
+  adminProductName        String? @map("admin_product_name") // Nom original admin
+  adminProductDescription String? @map("admin_product_description") @db.Text // Description originale admin
+  adminProductPrice       Int?    @map("admin_product_price") // Prix original admin
+
+  // ✅ NOUVELLE ARCHITECTURE - Application design centrée
+  designBase64             String? @map("design_base64") @db.Text // ⚠️ DEPRECATED: Remplacé par designCloudinaryUrl
+  designCloudinaryUrl      String? @map("design_cloudinary_url") // URL Cloudinary du design
+  designCloudinaryPublicId String? @map("design_cloudinary_public_id") // Public ID Cloudinary du design
+  designPositioning        String? @default("CENTER") @map("design_positioning") // Toujours CENTER
+  designScale              Float?  @default(0.6) @map("design_scale") // Échelle d'application
+  designApplicationMode    String? @default("PRESERVED") @map("design_application_mode") // Mode conservation
+
+  // Listes d'IDs de variantes sélectionnées (stockées en JSON pour éviter les tables pivot dans cette première version)
+  sizes  Json
+  colors Json
+
+  // Métadonnées de publication
+  vendorName        String?
+  vendorDescription String?
+  vendorStock       Int     @default(0)
+  basePriceAdmin    Float   @default(0)
+
+  // Validation admin
+  isValidated              Boolean   @default(false)
+  validatedAt              DateTime?
+  validatedBy              Int?
+  rejectionReason          String?
+  submittedForValidationAt DateTime?
+
+  validator User? @relation("VendorProductValidator", fields: [validatedBy], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vendor          User                   @relation(fields: [vendorId], references: [id])
+  baseProduct     Product                @relation(fields: [baseProductId], references: [id])
+  images          VendorProductImage[]
+  transformations DesignTransformation[]
+
+  @@index([vendorId])
+  @@index([baseProductId])
+  @@index([isValidated])
+  @@index([submittedForValidationAt])
+}
+
+/// VendorProductImage stocke les images générées pour chaque produit vendeur avec métadonnées Cloudinary
+/// ⚠️ DEPRECATED: Cette table sera progressivement remplacée par VendorProductMockup
+model VendorProductImage {
+  id              Int     @id @default(autoincrement())
+  vendorProductId Int
+  colorId         Int? // Référence à la couleur
+  colorName       String? // Nom de la couleur (ex: "Rouge")
+  colorCode       String? // Code hex de la couleur (ex: "#ff0000")
+  imageType       String  @default("color") // "color" ou "default"
+
+  // Métadonnées Cloudinary
+  cloudinaryUrl      String // URL sécurisée Cloudinary
+  cloudinaryPublicId String // Public ID pour manipulations futures
+  originalImageKey   String? // Clé originale du frontend
+
+  // Métadonnées techniques
+  width    Int? // Largeur de l'image
+  height   Int? // Hauteur de l'image
+  fileSize Int? // Taille en bytes
+  format   String? // Format (jpg, png, webp, etc.)
+
+  createdAt  DateTime @default(now())
+  uploadedAt DateTime @default(now())
+
+  vendorProduct  VendorProduct   @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
+  colorVariation ColorVariation? @relation(fields: [colorId], references: [id])
+
+  @@index([vendorProductId])
+  @@index([colorId])
+  @@index([imageType])
+}
+
+/// DesignTransformation stocke les transformations personnalisées du design pour chaque délimitation
+/// Permet aux vendeurs de redimensionner et recadrer leurs designs de manière persistante
+model DesignTransformation {
+  id                Int @id @default(autoincrement())
+  vendorProductId   Int @map("vendor_product_id")
+  delimitationIndex Int @map("delimitation_index")
+
+  // Transformations de position (en pixels ou pourcentage)
+  xOffset     Float @default(0) @map("x_offset") // Décalage X par rapport au centre
+  yOffset     Float @default(0) @map("y_offset") // Décalage Y par rapport au centre
+  scaleFactor Float @default(1.0) @map("scale_factor") // Facteur d'échelle (0.1 à 3.0)
+
+  // Configuration de positionnement
+  positioning DesignPositioning @default(CENTER) // Position dans la délimitation
+
+  // Métadonnées
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  vendorProduct VendorProduct @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
+
+  // Contrainte unique : une seule transformation par délimitation par produit
+  @@unique([vendorProductId, delimitationIndex])
+  @@index([vendorProductId])
+  @@map("design_transformations")
+}

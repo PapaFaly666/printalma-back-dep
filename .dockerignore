@@ -1,0 +1,39 @@
+# Build outputs
+dist/
+build/
+
+# Node modules
+node_modules/
+npm-debug.log*
+
+# Logs
+logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Tests
+test/
+**/*.spec.ts
+**/*.test.ts
+
+# Exclude generated files that can be rebuilt in container
+generated/

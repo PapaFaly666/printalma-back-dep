@@ -1,0 +1,60 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "T-Shirt Premium",
+      "description": "T-shirt de qualité premium",
+      "price": 25.99,
+      "status": "active",
+      "createdAt": "2025-01-15T10:30:00.000Z",
+      "updatedAt": "2025-01-15T10:30:00.000Z",
+      "designPositions": [
+        {
+          "id": 1,
+          "productId": 1,
+          "designId": 1,
+          "position": {
+            "x": 150,
+            "y": 100,
+            "width": 200,
+            "height": 250,
+            "scale": 1.0,
+            "rotation": 0,
+            "designWidth": 300,
+            "designHeight": 400,
+            "minScale": 0.5,
+            "maxScale": 2.0,
+            "publicConstraints": {
+              "adaptive": true,
+              "responsive": true
+            }
+          }
+        }
+      ],
+      "baseProduct": {
+        "id": 1,
+        "name": "T-Shirt Basic",
+        "category": "clothing",
+        "material": "cotton",
+        "colors": ["white", "black", "blue"],
+        "sizes": ["S", "M", "L", "XL"]
+      },
+      "vendor": {
+        "id": 1,
+        "name": "Vendor ABC",
+        "publicProfile": true
+      },
+      "images": [
+        {
+          "url": "https://example.com/image1.jpg",
+          "type": "main"
+        }
+      ],
+      "tags": ["premium", "cotton", "comfortable"],
+      "isNewArrival": true,
+      "featured": true,
+      "publicRating": 4.5,
+      "reviewCount": 42
+    }
+  ]
+}

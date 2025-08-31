@@ -1,0 +1,251 @@
+{
+  "metadata": {
+    "timestamp": "2025-08-31T15:48:15.184Z",
+    "source": "example-files",
+    "note": "Rapport généré à partir de fichiers d'exemple car les APIs ne sont pas disponibles",
+    "sampleProducts": {
+      "vendor": {
+        "id": 1,
+        "name": "T-Shirt Premium"
+      },
+      "newArrival": {
+        "id": 1,
+        "name": "T-Shirt Premium"
+      }
+    }
+  },
+  "summary": {
+    "totalFieldsVendor": 44,
+    "totalFieldsNewArrival": 44,
+    "commonFieldsCount": 34,
+    "vendorOnlyCount": 10,
+    "publicOnlyCount": 10,
+    "structuralSimilarity": 77
+  },
+  "commonFields": [
+    "baseProduct",
+    "baseProduct.category",
+    "baseProduct.colors",
+    "baseProduct.id",
+    "baseProduct.material",
+    "baseProduct.name",
+    "baseProduct.sizes",
+    "createdAt",
+    "description",
+    "designPositions",
+    "designPositions[0].designId",
+    "designPositions[0].id",
+    "designPositions[0].position",
+    "designPositions[0].position.designHeight",
+    "designPositions[0].position.designWidth",
+    "designPositions[0].position.height",
+    "designPositions[0].position.rotation",
+    "designPositions[0].position.scale",
+    "designPositions[0].position.width",
+    "designPositions[0].position.x",
+    "designPositions[0].position.y",
+    "designPositions[0].productId",
+    "id",
+    "images",
+    "images[0].type",
+    "images[0].url",
+    "name",
+    "price",
+    "status",
+    "tags",
+    "updatedAt",
+    "vendor",
+    "vendor.id",
+    "vendor.name"
+  ],
+  "vendorOnlyFields": [
+    "designPositions[0].position.validation",
+    "designPositions[0].position.validation.aspectRatio",
+    "designPositions[0].position.validation.maxWidth",
+    "designPositions[0].position.validation.minWidth",
+    "internalNotes",
+    "stock",
+    "vendor.email",
+    "vendor.verified",
+    "vendorName",
+    "vendorSpecificField"
+  ],
+  "publicOnlyFields": [
+    "designPositions[0].position.maxScale",
+    "designPositions[0].position.minScale",
+    "designPositions[0].position.publicConstraints",
+    "designPositions[0].position.publicConstraints.adaptive",
+    "designPositions[0].position.publicConstraints.responsive",
+    "featured",
+    "isNewArrival",
+    "publicRating",
+    "reviewCount",
+    "vendor.publicProfile"
+  ],
+  "fieldComparisons": {
+    "designPositions": {
+      "common": [
+        "0",
+        "0.id",
+        "0.productId",
+        "0.designId",
+        "0.position",
+        "0.position.x",
+        "0.position.y",
+        "0.position.width",
+        "0.position.height",
+        "0.position.scale",
+        "0.position.rotation",
+        "0.position.designWidth",
+        "0.position.designHeight"
+      ],
+      "only1": [
+        "0.position.validation",
+        "0.position.validation.minWidth",
+        "0.position.validation.maxWidth",
+        "0.position.validation.aspectRatio"
+      ],
+      "only2": [
+        "0.position.minScale",
+        "0.position.maxScale",
+        "0.position.publicConstraints",
+        "0.position.publicConstraints.adaptive",
+        "0.position.publicConstraints.responsive"
+      ]
+    },
+    "baseProduct": {
+      "common": [
+        "id",
+        "name",
+        "category",
+        "material",
+        "colors",
+        "sizes"
+      ],
+      "only1": [],
+      "only2": []
+    },
+    "vendor": {
+      "common": [
+        "id",
+        "name"
+      ],
+      "only1": [
+        "email",
+        "verified"
+      ],
+      "only2": [
+        "publicProfile"
+      ]
+    },
+    "designPositions[0].position": {
+      "common": [
+        "x",
+        "y",
+        "width",
+        "height",
+        "scale",
+        "rotation",
+        "designWidth",
+        "designHeight"
+      ],
+      "only1": [
+        "validation",
+        "validation.minWidth",
+        "validation.maxWidth",
+        "validation.aspectRatio"
+      ],
+      "only2": [
+        "minScale",
+        "maxScale",
+        "publicConstraints",
+        "publicConstraints.adaptive",
+        "publicConstraints.responsive"
+      ]
+    }
+  },
+  "designPositionAnalysis": {
+    "coordinates": {
+      "x": {
+        "vendor": 150,
+        "newArrival": 150,
+        "identical": true
+      },
+      "y": {
+        "vendor": 100,
+        "newArrival": 100,
+        "identical": true
+      },
+      "width": {
+        "vendor": 200,
+        "newArrival": 200,
+        "identical": true
+      },
+      "height": {
+        "vendor": 250,
+        "newArrival": 250,
+        "identical": true
+      }
+    },
+    "dimensions": {
+      "designWidth": {
+        "vendor": 300,
+        "newArrival": 300,
+        "identical": true
+      },
+      "designHeight": {
+        "vendor": 400,
+        "newArrival": 400,
+        "identical": true
+      }
+    },
+    "additional": {
+      "scale": {
+        "vendor": 1,
+        "newArrival": 1,
+        "identical": true,
+        "presentInVendor": true,
+        "presentInNewArrival": true
+      },
+      "rotation": {
+        "vendor": 0,
+        "newArrival": 0,
+        "identical": true,
+        "presentInVendor": true,
+        "presentInNewArrival": true
+      },
+      "validation": {
+        "vendor": {
+          "minWidth": 100,
+          "maxWidth": 400,
+          "aspectRatio": "preserve"
+        },
+        "identical": false,
+        "presentInVendor": true,
+        "presentInNewArrival": false
+      },
+      "minScale": {
+        "newArrival": 0.5,
+        "identical": false,
+        "presentInVendor": false,
+        "presentInNewArrival": true
+      },
+      "maxScale": {
+        "newArrival": 2,
+        "identical": false,
+        "presentInVendor": false,
+        "presentInNewArrival": true
+      },
+      "publicConstraints": {
+        "newArrival": {
+          "adaptive": true,
+          "responsive": true
+        },
+        "identical": false,
+        "presentInVendor": false,
+        "presentInNewArrival": true
+      }
+    }
+  },
+  "recommendations": []
+}

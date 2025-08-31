@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎨 Affichage Produits avec Vraies Dimensions</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .controls button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+
+        .controls input, .controls select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.2rem;
+            padding: 40px;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .product-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .product-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+
+        .product-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .product-header h3 {
+            font-size: 1.3rem;
+            margin-bottom: 8px;
+        }
+
+        .product-header .price {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .product-preview {
+            position: relative;
+            padding: 20px;
+            background: #f8f9fa;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .product-base-image {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .design-overlay {
+            position: absolute;
+            pointer-events: none;
+            transition: all 0.3s ease;
+            z-index: 10;
+            border-radius: 4px;
+        }
+
+        .product-info {
+            padding: 20px;
+        }
+
+        .dimensions-info {
+            background: #e3f2fd;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .dimensions-info strong {
+            color: #1976d2;
+        }
+
+        .vendor-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .vendor-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #667eea;
+        }
+
+        .vendor-details h4 {
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .vendor-details p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            background: #e8f5e8;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #2e7d32;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .debug-panel {
+            background: #263238;
+            color: #4caf50;
+            padding: 20px;
+            border-radius: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            margin-top: 30px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .debug-panel h3 {
+            color: #81c784;
+            margin-bottom: 15px;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #f44336;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .controls button, .controls input, .controls select {
+                width: 100%;
+            }
+            
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Affichage Produits avec Designs</h1>
+            <p>Démonstration des vraies dimensions et positionnement</p>
+        </div>
+
+        <div class="controls">
+            <button onclick="loadProducts()">🔄 Charger Produits</button>
+            <button onclick="loadProductsV2()">🚀 Charger V2</button>
+            <input type="number" id="limitInput" placeholder="Limite" value="10" min="1" max="50">
+            <select id="vendorSelect">
+                <option value="">Tous les vendeurs</option>
+                <option value="1">Vendeur 1</option>
+                <option value="2">Vendeur 2</option>
+            </select>
+            <button onclick="toggleDebug()">🔧 Debug</button>
+            <button onclick="testDimensions()">📏 Test Dimensions</button>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            ⏳ Chargement des produits...
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="products" class="products-grid"></div>
+
+        <div id="debug" class="debug-panel" style="display: none;">
+            <h3>🔧 Panneau de Debug</h3>
+            <pre id="debugContent"></pre>
+        </div>
+    </div>
+
+    <script>
+        let currentProducts = [];
+        let debugVisible = false;
+
+        // 🔄 Charger les produits depuis l'endpoint principal
+        async function loadProducts() {
+            const limit = document.getElementById('limitInput').value || 10;
+            const vendorId = document.getElementById('vendorSelect').value;
+            
+            let url = `/public/best-sellers?limit=${limit}`;
+            if (vendorId) url += `&vendorId=${vendorId}`;
+
+            showLoading(true);
+            hideError();
+            
+            try {
+                debugLog(`🔍 Chargement depuis: ${url}`);
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                debugLog(`📊 Réponse reçue:`, data);
+                
+                if (data.success && data.data.bestSellers) {
+                    currentProducts = data.data.bestSellers;
+                    displayProducts(currentProducts, 'v1');
+                    debugLog(`✅ ${currentProducts.length} produits chargés`);
+                } else {
+                    showError('Aucun produit trouvé ou erreur de données');
+                }
+            } catch (error) {
+                debugLog(`❌ Erreur:`, error);
+                showError(`Erreur de chargement: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 🚀 Charger les produits depuis l'endpoint V2
+        async function loadProductsV2() {
+            const limit = document.getElementById('limitInput').value || 10;
+            const vendorId = document.getElementById('vendorSelect').value;
+            
+            let url = `/public/best-sellers-v2?limit=${limit}`;
+            if (vendorId) url += `&vendorId=${vendorId}`;
+
+            showLoading(true);
+            hideError();
+            
+            try {
+                debugLog(`🚀 Chargement V2 depuis: ${url}`);
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                debugLog(`📊 Réponse V2 reçue:`, data);
+                
+                if (data.success && data.data) {
+                    currentProducts = data.data;
+                    displayProducts(currentProducts, 'v2');
+                    debugLog(`✅ ${currentProducts.length} produits V2 chargés`);
+                } else {
+                    showError('Aucun produit trouvé ou erreur de données V2');
+                }
+            } catch (error) {
+                debugLog(`❌ Erreur V2:`, error);
+                showError(`Erreur de chargement V2: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 🎨 Afficher les produits
+        function displayProducts(products, version) {
+            const container = document.getElementById('products');
+            container.innerHTML = '';
+
+            products.forEach(product => {
+                const productCard = createProductCard(product, version);
+                container.appendChild(productCard);
+            });
+        }
+
+        // 🏗️ Créer une carte produit
+        function createProductCard(product, version) {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+
+            // Récupérer les données selon la version
+            let baseImage, designUrl, position, vendorInfo, productName, price, stats;
+
+            if (version === 'v1') {
+                baseImage = product.adminProduct?.colorVariations?.[0]?.images?.[0];
+                designUrl = product.designApplication?.designUrl;
+                position = product.designPositions?.[0]?.position;
+                vendorInfo = product.vendor;
+                productName = product.vendorName;
+                price = product.price;
+                stats = product.bestSeller;
+            } else {
+                baseImage = product.baseProduct?.colorVariations?.[0]?.images?.[0];
+                designUrl = product.designCloudinaryUrl;
+                position = JSON.parse(product.designPositioning || '{}');
+                position.designWidth = product.designWidth;
+                position.designHeight = product.designHeight;
+                vendorInfo = product.vendor;
+                productName = product.name;
+                price = product.price;
+                stats = {
+                    salesCount: product.salesCount,
+                    totalRevenue: product.totalRevenue
+                };
+            }
+
+            debugLog(`🎨 Création carte pour produit ${product.id}:`, {
+                baseImage: baseImage?.url,
+                designUrl,
+                position,
+                version
+            });
+
+            card.innerHTML = `
+                <div class="product-header">
+                    <h3>${productName || 'Produit sans nom'}</h3>
+                    <div class="price">${price ? (price / 100).toFixed(2) : '0'}€</div>
+                </div>
+                
+                <div class="product-preview" id="preview-${product.id}">
+                    ${baseImage ? `
+                        <img src="${baseImage.url}" 
+                             alt="Produit" 
+                             class="product-base-image"
+                             onload="positionDesign(${product.id}, '${designUrl || ''}', ${JSON.stringify(position).replace(/"/g, '&quot;')})">
+                    ` : '<p>Pas d\'image de base</p>'}
+                </div>
+                
+                <div class="product-info">
+                    ${position ? `
+                        <div class="dimensions-info">
+                            <strong>📏 Dimensions Design:</strong><br>
+                            Width: <strong>${position.designWidth || 'N/A'}</strong>px<br>
+                            Height: <strong>${position.designHeight || 'N/A'}</strong>px<br>
+                            Scale: <strong>${position.scale || 'N/A'}</strong><br>
+                            Position: <strong>x=${position.x || 0}, y=${position.y || 0}</strong>
+                        </div>
+                    ` : ''}
+                    
+                    ${stats ? `
+                        <div class="stats">
+                            <div class="stat-item">
+                                <div class="stat-value">${stats.salesCount || 0}</div>
+                                <div class="stat-label">Ventes</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${stats.totalRevenue ? (stats.totalRevenue / 100).toFixed(0) : 0}€</div>
+                                <div class="stat-label">Revenus</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">#${product.bestSellerRank || '?'}</div>
+                                <div class="stat-label">Rang</div>
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    ${vendorInfo ? `
+                        <div class="vendor-info">
+                            ${vendorInfo.profile_photo_url || vendorInfo.profilePhotoUrl ? `
+                                <img src="${vendorInfo.profile_photo_url || vendorInfo.profilePhotoUrl}" 
+                                     alt="Vendeur" 
+                                     class="vendor-avatar">
+                            ` : '<div class="vendor-avatar" style="background: #667eea;"></div>'}
+                            <div class="vendor-details">
+                                <h4>${vendorInfo.shop_name || vendorInfo.businessName || 'Boutique'}</h4>
+                                <p>${vendorInfo.fullName || `${vendorInfo.firstName || ''} ${vendorInfo.lastName || ''}`.trim() || 'Vendeur'}</p>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            return card;
+        }
+
+        // 🎯 Positionner le design sur le produit
+        function positionDesign(productId, designUrl, position) {
+            if (!designUrl || !position) return;
+
+            const preview = document.getElementById(`preview-${productId}`);
+            if (!preview) return;
+
+            // Créer l'élément design
+            const designImg = document.createElement('img');
+            designImg.src = designUrl;
+            designImg.className = 'design-overlay';
+            designImg.alt = 'Design';
+
+            designImg.onload = function() {
+                // Calculer la position et taille
+                const baseImg = preview.querySelector('.product-base-image');
+                const baseRect = baseImg.getBoundingClientRect();
+                const previewRect = preview.getBoundingClientRect();
+                
+                const centerX = baseImg.offsetWidth / 2;
+                const centerY = baseImg.offsetHeight / 2;
+                
+                const finalX = centerX + (position.x || 0);
+                const finalY = centerY + (position.y || 0);
+                
+                const designWidth = (position.designWidth || 100) * (position.scale || 1);
+                const designHeight = (position.designHeight || 100) * (position.scale || 1);
+
+                // Appliquer les styles
+                designImg.style.left = `${finalX}px`;
+                designImg.style.top = `${finalY}px`;
+                designImg.style.width = `${designWidth}px`;
+                designImg.style.height = `${designHeight}px`;
+                designImg.style.transform = `
+                    translate(-50%, -50%) 
+                    rotate(${position.rotation || 0}deg)
+                `;
+                designImg.style.transformOrigin = 'center center';
+
+                debugLog(`🎨 Design positionné pour produit ${productId}:`, {
+                    position: { x: finalX, y: finalY },
+                    size: { width: designWidth, height: designHeight },
+                    rotation: position.rotation || 0
+                });
+            };
+
+            preview.appendChild(designImg);
+        }
+
+        // 📏 Tester les dimensions
+        async function testDimensions() {
+            debugLog('🧪 Test des dimensions...');
+            
+            try {
+                const response = await fetch('/public/best-sellers?limit=1');
+                const data = await response.json();
+                
+                if (data.success && data.data.bestSellers.length > 0) {
+                    const product = data.data.bestSellers[0];
+                    const position = product.designPositions[0].position;
+                    
+                    debugLog('✅ Test dimensions réussi:', {
+                        productId: product.id,
+                        productName: product.vendorName,
+                        designWidth: position.designWidth,
+                        designHeight: position.designHeight,
+                        isDefaultSize: position.designWidth === 500 && position.designHeight === 500,
+                        position: { x: position.x, y: position.y },
+                        scale: position.scale
+                    });
+                    
+                    if (position.designWidth !== 500 || position.designHeight !== 500) {
+                        alert(`✅ Vraies dimensions détectées !\nProduit: ${product.vendorName}\nDimensions: ${position.designWidth}x${position.designHeight}`);
+                    } else {
+                        alert(`⚠️ Dimensions par défaut détectées (500x500)`);
+                    }
+                } else {
+                    debugLog('❌ Aucun produit pour test');
+                    alert('❌ Aucun produit disponible pour le test');
+                }
+            } catch (error) {
+                debugLog('❌ Erreur test dimensions:', error);
+                alert(`❌ Erreur: ${error.message}`);
+            }
+        }
+
+        // 🔧 Fonctions utilitaires
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+
+        function toggleDebug() {
+            debugVisible = !debugVisible;
+            document.getElementById('debug').style.display = debugVisible ? 'block' : 'none';
+        }
+
+        function debugLog(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const debugContent = document.getElementById('debugContent');
+            
+            let logEntry = `[${timestamp}] ${message}`;
+            if (data) {
+                logEntry += '\n' + JSON.stringify(data, null, 2);
+            }
+            logEntry += '\n\n';
+            
+            debugContent.textContent += logEntry;
+            debugContent.scrollTop = debugContent.scrollHeight;
+            
+            console.log(message, data);
+        }
+
+        // 🚀 Chargement initial
+        window.addEventListener('load', () => {
+            debugLog('🎉 Application chargée');
+            loadProducts();
+        });
+    </script>
+</body>
+</html> 

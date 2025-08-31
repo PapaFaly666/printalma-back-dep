@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Upload Design - PrintAlma</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, button {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .preview {
+            max-width: 200px;
+            max-height: 200px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Upload Design - PrintAlma</h1>
+        <p><strong>Ce test valide que le frontend envoie correctement le design au backend.</strong></p>
+        
+        <form id="testForm">
+            <div class="form-group">
+                <label for="designInput">Design à uploader :</label>
+                <input type="file" id="designInput" accept="image/*" required>
+                <div id="preview"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="tokenInput">Token d'authentification :</label>
+                <input type="text" id="tokenInput" placeholder="Bearer token..." required>
+                <small>Obtenez un token en vous connectant sur l'API</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="productName">Nom du produit :</label>
+                <input type="text" id="productName" value="Test Design Upload" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="productDescription">Description :</label>
+                <textarea id="productDescription" rows="3">Test d'upload de design depuis le frontend</textarea>
+            </div>
+            
+            <button type="submit" id="submitBtn">🚀 Tester l'Upload</button>
+        </form>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Fonction de conversion File → Base64
+        const convertFileToBase64 = (file) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        };
+
+        // Preview de l'image sélectionnée
+        document.getElementById('designInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const preview = document.getElementById('preview');
+            
+            if (file) {
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(file);
+                img.className = 'preview';
+                img.alt = 'Preview du design';
+                
+                preview.innerHTML = '';
+                preview.appendChild(img);
+                
+                // Afficher les infos du fichier
+                const info = document.createElement('p');
+                info.innerHTML = `<small>📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)</small>`;
+                preview.appendChild(info);
+            } else {
+                preview.innerHTML = '';
+            }
+        });
+
+        // Fonction principale de test
+        async function testDesignUpload(event) {
+            event.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const resultDiv = document.getElementById('result');
+            
+            // Récupérer les données du formulaire
+            const designFile = document.getElementById('designInput').files[0];
+            const token = document.getElementById('tokenInput').value.trim();
+            const productName = document.getElementById('productName').value.trim();
+            const productDescription = document.getElementById('productDescription').value.trim();
+            
+            if (!designFile) {
+                showResult('❌ Veuillez sélectionner un fichier design', 'error');
+                return;
+            }
+            
+            if (!token) {
+                showResult('❌ Veuillez entrer un token d\'authentification', 'error');
+                return;
+            }
+            
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '⏳ Upload en cours...';
+                
+                showResult('🔄 Conversion du design en base64...', 'info');
+                
+                // 1. Convertir le design en base64
+                const designBase64 = await convertFileToBase64(designFile);
+                
+                showResult('📦 Préparation du payload...', 'info');
+                
+                // 2. Construire le payload selon la structure attendue
+                const payload = {
+                    baseProductId: 1,
+                    vendorName: productName,
+                    vendorDescription: productDescription,
+                    vendorPrice: 25000,
+                    basePriceAdmin: 15000,
+                    vendorStock: 10,
+                    
+                    // Métadonnées du design (pour compatibilité)
+                    designUrl: URL.createObjectURL(designFile),
+                    designFile: {
+                        name: designFile.name,
+                        size: designFile.size,
+                        type: designFile.type
+                    },
+                    
+                    // ✅ STRUCTURE CORRIGÉE: Design + Mockup en base64
+                    finalImagesBase64: {
+                        'design': designBase64,  // ← Design original (CRUCIAL)
+                        'blanc': designBase64    // ← Mockup test (même image pour le test)
+                    },
+                    
+                    // Structure finalImages (métadonnées)
+                    finalImages: {
+                        colorImages: {
+                            'blanc': {
+                                colorInfo: { id: 1, name: 'blanc', colorCode: '#FFFFFF' },
+                                imageUrl: URL.createObjectURL(designFile),
+                                imageKey: 'blanc'
+                            }
+                        },
+                        statistics: {
+                            totalColorImages: 1,
+                            hasDefaultImage: false,
+                            availableColors: ['blanc'],
+                            totalImagesGenerated: 2
+                        }
+                    },
+                    
+                    selectedColors: [{ id: 1, name: 'blanc', colorCode: '#FFFFFF' }],
+                    selectedSizes: [{ id: 1, sizeName: 'M' }],
+                    previewView: {
+                        viewType: 'FRONT',
+                        url: 'https://example.com/preview',
+                        delimitations: []
+                    },
+                    publishedAt: new Date().toISOString()
+                };
+                
+                // 3. Validation du payload
+                const payloadSize = JSON.stringify(payload).length / 1024 / 1024;
+                
+                showResult(`📊 Payload préparé:
+- Design présent: ${!!payload.finalImagesBase64.design ? '✅' : '❌'}
+- Taille design: ${(designBase64.length / 1024).toFixed(1)} KB
+- Taille totale: ${payloadSize.toFixed(2)} MB
+- Clés finalImagesBase64: ${Object.keys(payload.finalImagesBase64).join(', ')}
+
+🚀 Envoi vers le backend...`, 'info');
+                
+                // 4. Envoyer au backend
+                const response = await fetch('http://localhost:3004/vendor/publish', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                // 5. Afficher le résultat
+                if (response.ok) {
+                    showResult(`✅ SUCCÈS! Upload réussi (${response.status})
+
+📋 Résultat:
+${JSON.stringify(result, null, 2)}
+
+🎉 Le design a été stocké avec succès!
+Vérifiez les logs backend pour confirmer.`, 'success');
+                } else {
+                    showResult(`❌ ERREUR (${response.status})
+
+📋 Réponse:
+${JSON.stringify(result, null, 2)}
+
+💡 Vérifications:
+- Token valide ?
+- Backend démarré ?
+- Logs backend pour plus d'infos`, 'error');
+                }
+                
+            } catch (error) {
+                showResult(`❌ ERREUR TECHNIQUE
+
+🔍 Détails:
+${error.message}
+
+💡 Vérifications:
+- Backend accessible sur localhost:3004 ?
+- CORS configuré ?
+- Token valide ?`, 'error');
+                
+                console.error('Erreur complète:', error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 Tester l\'Upload';
+            }
+        }
+
+        // Fonction pour afficher les résultats
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+
+        // Event listeners
+        document.getElementById('testForm').addEventListener('submit', testDesignUpload);
+        
+        // Instructions au chargement
+        document.addEventListener('DOMContentLoaded', function() {
+            showResult(`📋 INSTRUCTIONS:
+
+1. Sélectionnez un fichier image (design)
+2. Entrez un token d'authentification valide
+3. Cliquez sur "Tester l'Upload"
+4. Vérifiez les logs backend pour confirmer la réception
+
+🎯 OBJECTIF:
+Ce test valide que le design est envoyé dans finalImagesBase64["design"]
+et que le backend peut le stocker sur Cloudinary.`, 'info');
+        });
+    </script>
+</body>
+</html> 

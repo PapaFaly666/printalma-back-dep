@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Création Produit - Format Correct</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .color-section {
+            border: 2px solid #eee;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 5px;
+            background: #fafafa;
+        }
+        
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            display: inline-block;
+            margin-left: 10px;
+            border: 2px solid #ddd;
+            border-radius: 50%;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        @media (max-width: 600px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛠️ Test Création Produit</h1>
+            <p>Interface de test pour le format correct de création de produits</p>
+            <p><strong>Solution erreur 500 - Format backend NestJS</strong></p>
+        </div>
+
+        <div id="status"></div>
+
+        <form id="productForm">
+            <h2>📦 Informations Produit</h2>
+            
+            <div class="grid">
+                <div class="form-group">
+                    <label for="name">Nom du produit *</label>
+                    <input type="text" id="name" required 
+                           placeholder="Ex: T-shirt Premium Cotton">
+                </div>
+                
+                <div class="form-group">
+                    <label for="price">Prix (€) *</label>
+                    <input type="number" id="price" step="0.01" required 
+                           placeholder="29.99">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description *</label>
+                <textarea id="description" rows="3" required 
+                          placeholder="Description détaillée du produit (minimum 10 caractères)"></textarea>
+            </div>
+            
+            <div class="grid">
+                <div class="form-group">
+                    <label for="stock">Stock *</label>
+                    <input type="number" id="stock" required 
+                           placeholder="100">
+                </div>
+                
+                <div class="form-group">
+                    <label for="status">Statut</label>
+                    <select id="status">
+                        <option value="draft">Brouillon</option>
+                        <option value="published">Publié</option>
+                    </select>
+                </div>
+            </div>
+
+            <h2>🏷️ Catégories et Tailles</h2>
+            
+            <div class="grid">
+                <div class="form-group">
+                    <label for="categories">Catégories *</label>
+                    <input type="text" id="categories" required 
+                           placeholder="T-shirts, Vêtements (séparées par virgule)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="sizes">Tailles</label>
+                    <input type="text" id="sizes" 
+                           placeholder="S, M, L, XL (séparées par virgule)">
+                </div>
+            </div>
+
+            <h2>🎨 Couleur et Images</h2>
+            
+            <div class="color-section">
+                <div class="grid">
+                    <div class="form-group">
+                        <label for="colorName">Nom de la couleur *</label>
+                        <input type="text" id="colorName" required 
+                               placeholder="Rouge, Bleu, Noir...">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="colorCode">Code couleur *</label>
+                        <input type="color" id="colorCode" value="#FF0000">
+                        <span class="color-preview" id="colorPreview"></span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="images">Images du produit *</label>
+                    <input type="file" id="images" multiple accept="image/*" required>
+                    <small>Formats acceptés: JPG, PNG, WEBP (max 5MB chacune)</small>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <button type="submit" class="btn" id="submitBtn">
+                    🚀 Créer le Produit
+                </button>
+                <button type="button" class="btn" onclick="fillTestData()">
+                    📝 Remplir Données Test
+                </button>
+                <button type="button" class="btn" onclick="showJsonPreview()">
+                    👁️ Aperçu JSON
+                </button>
+            </div>
+        </form>
+
+        <div id="jsonPreview" style="display: none;">
+            <h3>📋 Aperçu des données à envoyer:</h3>
+            <pre id="jsonContent"></pre>
+        </div>
+
+        <div id="response" style="display: none;">
+            <h3>📥 Réponse du serveur:</h3>
+            <pre id="responseContent"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Configuration API
+        const API_BASE = 'https://localhost:3004';
+        
+        // Éléments DOM
+        const form = document.getElementById('productForm');
+        const statusDiv = document.getElementById('status');
+        const submitBtn = document.getElementById('submitBtn');
+        const colorCode = document.getElementById('colorCode');
+        const colorPreview = document.getElementById('colorPreview');
+
+        // Mise à jour aperçu couleur
+        colorCode.addEventListener('change', function() {
+            colorPreview.style.backgroundColor = this.value;
+        });
+
+        // Initialiser aperçu couleur
+        colorPreview.style.backgroundColor = colorCode.value;
+
+        // Fonction pour afficher le statut
+        function showStatus(message, type = 'info') {
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // Fonction pour remplir des données de test
+        function fillTestData() {
+            document.getElementById('name').value = 'T-shirt Test API Fix';
+            document.getElementById('description').value = 'T-shirt de test pour valider le nouveau format de création de produits avec le backend NestJS';
+            document.getElementById('price').value = '29.99';
+            document.getElementById('stock').value = '50';
+            document.getElementById('categories').value = 'T-shirts, Vêtements';
+            document.getElementById('sizes').value = 'S, M, L, XL';
+            document.getElementById('colorName').value = 'Rouge Vif';
+            document.getElementById('colorCode').value = '#CC0000';
+            colorPreview.style.backgroundColor = '#CC0000';
+            
+            showStatus('✅ Données de test remplies! Ajoutez maintenant une image.', 'success');
+        }
+
+        // Fonction pour afficher l'aperçu JSON
+        function showJsonPreview() {
+            const productData = buildProductData();
+            document.getElementById('jsonContent').textContent = JSON.stringify(productData, null, 2);
+            document.getElementById('jsonPreview').style.display = 'block';
+        }
+
+        // Fonction pour construire les données du produit
+        function buildProductData() {
+            const categories = document.getElementById('categories').value
+                .split(',').map(c => c.trim()).filter(c => c);
+            
+            const sizes = document.getElementById('sizes').value
+                .split(',').map(s => s.trim()).filter(s => s);
+
+            return {
+                name: document.getElementById('name').value,
+                description: document.getElementById('description').value,
+                price: parseFloat(document.getElementById('price').value),
+                stock: parseInt(document.getElementById('stock').value),
+                status: document.getElementById('status').value,
+                categories: categories,
+                sizes: sizes,
+                colorVariations: [
+                    {
+                        name: document.getElementById('colorName').value,
+                        colorCode: document.getElementById('colorCode').value.toUpperCase(),
+                        images: [
+                            {
+                                fileId: "main_image",
+                                view: "Front",
+                                delimitations: []
+                            }
+                        ]
+                    }
+                ]
+            };
+        }
+
+        // Fonction principale de création
+        async function createProduct(event) {
+            event.preventDefault();
+            
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '⏳ Création en cours...';
+                showStatus('🚀 Envoi de la requête de création...', 'info');
+
+                // Validation
+                const imageFiles = document.getElementById('images').files;
+                if (imageFiles.length === 0) {
+                    throw new Error('Au moins une image est requise');
+                }
+
+                // Construction des données
+                const productData = buildProductData();
+                
+                // Validation des catégories (CRITIQUE pour éviter l'erreur 500)
+                if (!productData.categories || productData.categories.length === 0) {
+                    throw new Error('Au moins une catégorie est requise');
+                }
+
+                console.log('📊 Données à envoyer:', productData);
+
+                // Création FormData avec format EXACT
+                const formData = new FormData();
+                
+                // CRITIQUE: productData en STRING JSON
+                formData.append('productData', JSON.stringify(productData));
+                
+                // CRITIQUE: Fichiers avec préfixe "file_"
+                formData.append('file_main_image', imageFiles[0]);
+
+                console.log('📤 FormData créé:', Array.from(formData.keys()));
+
+                // Envoi de la requête
+                const response = await fetch(`${API_BASE}/products`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                // Affichage de la réponse
+                document.getElementById('responseContent').textContent = JSON.stringify(result, null, 2);
+                document.getElementById('response').style.display = 'block';
+
+                if (response.ok) {
+                    showStatus(`✅ SUCCÈS! Produit créé avec l'ID: ${result.data?.id}`, 'success');
+                    console.log('✅ Produit créé:', result);
+                    
+                    // Réinitialiser le formulaire
+                    form.reset();
+                } else {
+                    throw new Error(result.message || `Erreur ${response.status}`);
+                }
+
+            } catch (error) {
+                console.error('❌ Erreur:', error);
+                showStatus(`❌ Erreur: ${error.message}`, 'error');
+                
+                // Afficher les détails de l'erreur
+                document.getElementById('responseContent').textContent = error.message;
+                document.getElementById('response').style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 Créer le Produit';
+            }
+        }
+
+        // Écouteur d'événement pour le formulaire
+        form.addEventListener('submit', createProduct);
+
+        // Message d'accueil
+        showStatus('🎯 Prêt à tester la création de produits avec le format correct!', 'info');
+    </script>
+</body>
+</html> 
