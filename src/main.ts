@@ -68,9 +68,10 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
   
-  await app.listen(process.env.PORT ?? 3004);
-  console.log(`🚀 Application running on port ${process.env.PORT ?? 3004}`);
-  console.log(`📚 Swagger UI available at: http://localhost:${process.env.PORT ?? 3004}/api-docs`);
+  const port = process.env.PORT || 3004;
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 Application running on port ${port}`);
+  console.log(`📚 Swagger UI available at: http://localhost:${port}/api-docs`);
   console.log(`📊 Payload limits configured:`);
   console.log(`   - General JSON: 50MB`);
   console.log(`   - Vendor publish: 100MB`);
