@@ -35,8 +35,8 @@ export class AuthController {
 		response.cookie('auth_token', result.access_token, {
 			httpOnly: true,
 			secure: process.env.NODE_ENV === 'production', // HTTPS en production
-			sameSite: 'strict',
-			maxAge: 24 * 60 * 60 * 1000, // 24 heures
+			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' pour cross-domain HTTPS
+			maxAge: 30 * 24 * 60 * 60 * 1000, // 30 jours (correspond au JWT)
 			path: '/'
 		});
 
@@ -71,7 +71,7 @@ export class AuthController {
 			response.clearCookie('auth_token', {
 				httpOnly: true,
 				secure: process.env.NODE_ENV === 'production',
-				sameSite: 'strict',
+				sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
 				path: '/'
 			});
 
@@ -91,7 +91,7 @@ export class AuthController {
 			response.clearCookie('auth_token', {
 				httpOnly: true,
 				secure: process.env.NODE_ENV === 'production',
-				sameSite: 'strict',
+				sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
 				path: '/'
 			});
 
@@ -147,8 +147,8 @@ export class AuthController {
 		response.cookie('auth_token', result.access_token, {
 			httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
-			sameSite: 'strict',
-			maxAge: 24 * 60 * 60 * 1000, // 24 heures
+			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+			maxAge: 30 * 24 * 60 * 60 * 1000, // 30 jours (correspond au JWT)
 			path: '/'
 		});
 
@@ -388,5 +388,23 @@ export class AuthController {
 
 		const existingUser = await this.authService.checkShopNameAvailability(name.trim());
 		return { available: !existingUser };
+	}
+
+	/**
+	 * Endpoint de debug pour tester les cookies (temporaire)
+	 */
+	@Get('debug-cookies')
+	async debugCookies(@Req() req: Request) {
+		return {
+			cookies: req.cookies,
+			headers: {
+				'user-agent': req.headers['user-agent'],
+				'origin': req.headers.origin,
+				'referer': req.headers.referer,
+				'cookie': req.headers.cookie
+			},
+			timestamp: new Date().toISOString(),
+			environment: process.env.NODE_ENV
+		};
 	}
 }
