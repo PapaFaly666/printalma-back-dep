@@ -62,7 +62,11 @@ async function bootstrap() {
   SwaggerModule.setup('api-docs', app, documentFactory);
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5174',
+    origin: [
+      'http://localhost:5174',
+      'https://printalma-website-dep.onrender.com',
+      process.env.FRONTEND_URL
+    ].filter(Boolean),
     credentials: true, // Important pour les cookies
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
