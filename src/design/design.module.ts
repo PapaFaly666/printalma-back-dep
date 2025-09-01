@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { DesignController } from './design.controller';
 import { DesignService } from './design.service';
 import { DesignProductLinkService } from './design-product-link.service';
+import { DesignAutoValidationService } from './design-auto-validation.service';
+import { DesignAutoValidationController } from './design-auto-validation.controller';
 import { PrismaService } from '../prisma.service';
 import { CloudinaryModule } from '../core/cloudinary/cloudinary.module';
 import { MailModule } from '../core/mail/mail.module';
@@ -21,8 +23,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       inject: [ConfigService],
     }),
   ],
-  controllers: [DesignController],
-  providers: [DesignService, DesignProductLinkService, PrismaService],
-  exports: [DesignService, DesignProductLinkService],
+  controllers: [DesignController, DesignAutoValidationController],
+  providers: [DesignService, DesignProductLinkService, DesignAutoValidationService, PrismaService],
+  exports: [DesignService, DesignProductLinkService, DesignAutoValidationService],
 })
 export class DesignModule {} 

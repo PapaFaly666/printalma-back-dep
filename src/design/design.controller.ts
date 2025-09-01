@@ -528,11 +528,23 @@ export class DesignController {
       ? 'Design validé avec succès'
       : 'Design rejeté avec succès';
 
-    return {
+    // Construire la réponse selon guidefr.md avec auto-validation
+    const response: any = {
       success: true,
       message,
       data: design,
     };
+
+    // Inclure les résultats de l'auto-validation si disponibles
+    if (validationData.action === 'VALIDATE' && (design as any).autoValidation) {
+      response.data.autoValidation = (design as any).autoValidation;
+      // Ajouter au message principal si des produits ont été auto-validés
+      if ((design as any).autoValidation.count > 0) {
+        response.message += ` + ${(design as any).autoValidation.count} produit(s) auto-validé(s)`;
+      }
+    }
+
+    return response;
   }
 
   @Get('vendor/by-status')

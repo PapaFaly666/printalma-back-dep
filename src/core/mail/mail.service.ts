@@ -31,6 +31,13 @@ export class MailService {
   }
 
   /**
+   * Génère un code d'activation à 6 chiffres
+   */
+  generateActivationCode(): string {
+    return crypto.randomInt(100000, 999999).toString();
+  }
+
+  /**
    * Formate le type de vendeur pour l'affichage
    */
   private formatVendeurType(vendeurType: VendeurType): string {
@@ -1391,6 +1398,63 @@ export class MailService {
     } catch (error) {
       console.error('❌ Erreur envoi email bienvenue vendeur:', error);
       throw new Error('Impossible d\'envoyer l\'email de bienvenue');
+    }
+  }
+
+  /**
+   * Envoie un email avec le code d'activation (version optimisée et rapide)
+   */
+  async sendActivationCode(to: string, firstName: string, lastName: string, activationCode: string, vendeurType: VendeurType): Promise<void> {
+    const subject = '🔑 Votre code d\'activation PrintAlma';
+    const formattedVendeurType = this.formatVendeurType(vendeurType);
+    
+    // Email simple et optimisé pour la vitesse
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #007bff; text-align: center;">PrintAlma - Code d'Activation</h2>
+        
+        <p>Bonjour <strong>${firstName} ${lastName}</strong>,</p>
+        
+        <p>Votre compte <strong>${formattedVendeurType}</strong> a été créé par un administrateur.</p>
+        
+        <div style="background: #f0f8ff; border: 2px solid #007bff; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
+          <h3 style="margin: 0; color: #007bff;">Votre code d'activation</h3>
+          <div style="font-size: 32px; font-weight: bold; color: #007bff; letter-spacing: 4px; margin: 10px 0;">${activationCode}</div>
+        </div>
+        
+        <p><strong>Pour activer votre compte :</strong></p>
+        <ol>
+          <li>Allez sur la page de connexion</li>
+          <li>Cliquez sur "Première connexion"</li>
+          <li>Saisissez votre email : <strong>${to}</strong></li>
+          <li>Entrez ce code : <strong>${activationCode}</strong></li>
+          <li>Créez votre mot de passe</li>
+        </ol>
+        
+        <p style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 15px 0;">
+          ⚠️ <strong>Important :</strong> Ce code expire dans 24 heures.
+        </p>
+        
+        <p style="text-align: center; font-size: 12px; color: #666; margin-top: 30px;">
+          PrintAlma - Email automatique
+        </p>
+      </div>
+    `;
+
+    try {
+      // Envoi asynchrone pour la vitesse
+      this.mailerService.sendMail({
+        to,
+        subject,
+        html,
+      }).catch(error => {
+        console.error('Erreur envoi email activation:', error);
+      });
+      
+      console.log(`📧 Code d'activation envoyé à ${to} (${formattedVendeurType})`);
+    } catch (error) {
+      console.error('Erreur immédiate envoi email:', error);
+      // Ne pas bloquer la création du compte pour un problème d'email
     }
   }
 }

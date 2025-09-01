@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/user-dto';
 import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, AdminResetPasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto } from './dto/create-client.dto';
+import { FirstLoginDto, FirstLoginResponseDto } from './dto/first-login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AdminGuard } from '../core/guards/admin.guard';
 import { RequestWithUser } from './jwt.strategy';
@@ -42,6 +43,33 @@ export class AuthController {
 
 		// Retourner seulement les données utilisateur (pas le token)
 		return {
+			user: result.user
+		};
+	}
+
+	@Post('first-login')
+	@ApiOperation({ summary: 'Première connexion avec code d\'activation' })
+	@ApiResponse({ status: 201, description: 'Compte activé avec succès', type: FirstLoginResponseDto })
+	@ApiResponse({ status: 400, description: 'Code invalide ou mots de passe non correspondants' })
+	@ApiResponse({ status: 401, description: 'Email ou code d\'activation invalide' })
+	async firstLogin(
+		@Body() firstLoginDto: FirstLoginDto,
+		@Res({ passthrough: true }) response: Response
+	) {
+		const result = await this.authService.firstLogin(firstLoginDto);
+
+		// Définir le cookie httpOnly avec le token
+		response.cookie('auth_token', result.access_token, {
+			httpOnly: true,
+			secure: process.env.NODE_ENV === 'production',
+			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+			maxAge: 30 * 24 * 60 * 60 * 1000, // 30 jours
+			path: '/'
+		});
+
+		// Retourner seulement le message et les données utilisateur
+		return {
+			message: result.message,
 			user: result.user
 		};
 	}

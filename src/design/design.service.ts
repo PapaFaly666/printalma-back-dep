@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateDesignDto, DesignCategory } from './dto/create-design.dto';
 import { UpdateDesignDto } from './dto/update-design.dto';
@@ -8,6 +8,7 @@ import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { UploadApiResponse } from 'cloudinary';
 import { DesignCategory as PrismaDesignCategory, PublicationStatus, VendorProductStatus } from '@prisma/client';
 import { MailService } from '../core/mail/mail.service';
+import { DesignAutoValidationService } from './design-auto-validation.service';
 
 @Injectable()
 export class DesignService {
@@ -17,6 +18,8 @@ export class DesignService {
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly mailService: MailService,
+    @Inject(forwardRef(() => DesignAutoValidationService))
+    private readonly autoValidationService: DesignAutoValidationService,
   ) {}
 
   async createDesign(
@@ -611,11 +614,6 @@ export class DesignService {
       throw new BadRequestException('Une raison de rejet est obligatoire pour rejeter un design');
     }
 
-    // 🆕 NOUVELLE LOGIQUE: Si le design est validé, appliquer l'action sur tous les produits qui l'utilisent
-    if (isApproved) {
-      await this.applyValidationActionToProducts(existingDesign.imageUrl, existingDesign.vendorId, adminId);
-    }
-
     const updatedDesign = await this.prisma.design.update({
       where: { id },
       data: {
@@ -652,13 +650,36 @@ export class DesignService {
       }
     });
 
+    // 🆕 NOUVEAU: Auto-validation des VendorProducts selon guidefr.md
+    let autoValidationResult = null;
+    if (isApproved) {
+      try {
+        // Déclencher l'auto-validation automatiquement après validation du design
+        autoValidationResult = await this.autoValidationService.autoValidateProductsForDesign(id);
+        this.logger.log(`🤖 Auto-validation: ${autoValidationResult.message}`);
+      } catch (error) {
+        // Ne pas faire échouer la validation du design si l'auto-validation échoue
+        this.logger.warn(`⚠️ Erreur auto-validation après validation design ${id}:`, error.message);
+      }
+    }
+
     if (isApproved) {
       await this.notifyVendorDesignApproved(updatedDesign);
     } else {
       await this.notifyVendorDesignRejected(updatedDesign, rejectionReason);
     }
 
-    return this.formatDesignResponse(updatedDesign);
+    // Inclure les résultats de l'auto-validation dans la réponse
+    const response = this.formatDesignResponse(updatedDesign);
+    if (autoValidationResult) {
+      // Cast temporaire pour ajouter les données d'auto-validation
+      (response as any).autoValidation = {
+        updatedProducts: autoValidationResult.data.updatedProducts,
+        count: autoValidationResult.data.updatedProducts.length
+      };
+    }
+
+    return response;
   }
 
   /**

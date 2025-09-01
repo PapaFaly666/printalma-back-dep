@@ -199,12 +199,13 @@ export class AuthService {
             }
         }
 
-        // Générer un mot de passe temporaire
-        const temporaryPassword = this.mailService.generateRandomPassword();
+        // Générer un code d'activation et une date d'expiration
+        const activationCode = this.mailService.generateActivationCode();
+        const activationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 heures
 
-        // Hasher le mot de passe
-        const saltRounds = 10;
-        const hashedPassword = await bcrypt.hash(temporaryPassword, saltRounds);
+        // Pas de mot de passe initial - sera défini lors de l'activation
+        const tempPassword = 'TEMP_' + crypto.randomBytes(16).toString('hex');
+        const hashedTempPassword = await bcrypt.hash(tempPassword, 10);
 
         try {
             // Créer l'utilisateur avec les nouveaux champs étendus
@@ -213,11 +214,13 @@ export class AuthService {
                     firstName,
                     lastName,
                     email,
-                    password: hashedPassword,
+                    password: hashedTempPassword,
                     role: Role.VENDEUR,
                     vendeur_type: vendeur_type as any,
-                    must_change_password: true,
-                    status: true,
+                    must_change_password: false, // Sera activé avec le code
+                    status: false, // Compte inactif jusqu'à l'activation
+                    activation_code: activationCode,
+                    activation_code_expires: activationExpires,
                     // 🆕 Nouveaux champs étendus
                     phone: phone || null,
                     country: country || null,
@@ -241,18 +244,19 @@ export class AuthService {
                 }
             });
 
-            // Envoyer l'email avec le mot de passe temporaire et le type de vendeur
-            await this.mailService.sendPasswordEmailWithType(
+            // Envoyer l'email avec le code d'activation (version optimisée)
+            await this.mailService.sendActivationCode(
                 email,
                 firstName,
                 lastName,
-                temporaryPassword,
+                activationCode,
                 vendeur_type as any // Conversion pour compatibilité avec MailService
             );
 
             return {
-                message: 'Vendeur créé avec succès. Un email avec le mot de passe temporaire a été envoyé.',
-                user: newUser
+                message: 'Vendeur créé avec succès. Un email avec le code d\'activation a été envoyé. Le compte sera activé après la première connexion.',
+                user: newUser,
+                activationRequired: true
             };
         } catch (error) {
             console.error('Erreur lors de la création du vendeur:', error);
@@ -1342,5 +1346,79 @@ export class AuthService {
     // 4. (Optionnel) Notifier l'utilisateur
     // ...
     return { success: true, message: 'Votre adresse email a été mise à jour.' };
+    }
+
+    /**
+     * Première connexion avec code d'activation
+     */
+    async firstLogin(firstLoginDto: any) {
+        const { email, activationCode, newPassword, confirmPassword } = firstLoginDto;
+
+        // Vérifier que les mots de passe correspondent
+        if (newPassword !== confirmPassword) {
+            throw new BadRequestException('Les mots de passe ne correspondent pas');
+        }
+
+        // Chercher l'utilisateur avec ce code d'activation
+        const user = await this.prisma.user.findFirst({
+            where: {
+                email,
+                activation_code: activationCode,
+                status: false, // Compte pas encore activé
+                activation_code_expires: {
+                    gt: new Date() // Code non expiré
+                }
+            }
+        });
+
+        if (!user) {
+            throw new UnauthorizedException('Email ou code d\'activation invalide, ou code expiré');
+        }
+
+        // Hasher le nouveau mot de passe
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+        // Activer le compte et définir le nouveau mot de passe
+        const activatedUser = await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password: hashedPassword,
+                status: true, // Activer le compte
+                must_change_password: false,
+                activation_code: null, // Supprimer le code utilisé
+                activation_code_expires: null,
+                login_attempts: 0, // Reset des tentatives
+                locked_until: null
+            }
+        });
+
+        // Générer le token JWT
+        const payload = {
+            sub: activatedUser.id,
+            email: activatedUser.email,
+            role: activatedUser.role,
+            vendeur_type: activatedUser.vendeur_type,
+            firstName: activatedUser.firstName,
+            lastName: activatedUser.lastName
+        };
+
+        const access_token = this.jwtService.sign(payload);
+
+        console.log(`✅ Activation réussie pour ${activatedUser.email} (ID: ${activatedUser.id})`);
+
+        return {
+            message: 'Compte activé avec succès',
+            user: {
+                id: activatedUser.id,
+                email: activatedUser.email,
+                firstName: activatedUser.firstName,
+                lastName: activatedUser.lastName,
+                role: activatedUser.role,
+                vendeur_type: activatedUser.vendeur_type,
+                shop_name: activatedUser.shop_name
+            },
+            access_token
+        };
     }
 }

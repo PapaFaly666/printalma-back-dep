@@ -26,6 +26,10 @@ model User {
   must_change_password Boolean      @default(false)
   vendeur_type         VendeurType?
   
+  // 🆕 CHAMPS POUR L'ACTIVATION PAR CODE EMAIL
+  activation_code         String?     // Code d'activation à 6 chiffres
+  activation_code_expires DateTime?   // Date d'expiration du code
+  
   // 🆕 NOUVEAUX CHAMPS POUR PROFIL VENDEUR ÉTENDU
   phone                String?      // Numéro de téléphone
   country              String?      // Pays de résidence
