@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ProductViewResponseDto } from 'src/product-view/dto/product-view-response-dto';
+import { ProductViewResponseDto } from '../../product-view/dto/product-view-response-dto';
 
 class SizeDto {
   @ApiProperty({ example: 1 })

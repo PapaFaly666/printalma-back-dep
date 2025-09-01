@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../../prisma.service';
+import { PrismaService } from '../../prisma.service';
 import { UpdateDesignPositionDto } from '../dto/update-design-position.dto';
 import { normalizePosition } from './design-position.helpers';
 

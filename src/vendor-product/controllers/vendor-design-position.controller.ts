@@ -4,8 +4,8 @@ import { UpdateDesignPositionDto } from '../dto/update-design-position.dto';
 import { VendorDesignPositionService } from '../services/vendor-design-position.service';
 import { ApiTags } from '@nestjs/swagger';
 import { ForbiddenException } from '@nestjs/common';
-import { RolesGuard } from 'src/core/guards/roles.guard';
-import { Roles } from 'src/core/guards/roles.decorator';
+import { RolesGuard } from '../../core/guards/roles.guard';
+import { Roles } from '../../core/guards/roles.decorator';
 import { Role } from '@prisma/client';
 
 @ApiTags('Vendor Product Design Positioning (Legacy)')

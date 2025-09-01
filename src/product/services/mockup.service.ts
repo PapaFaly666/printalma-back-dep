@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../../prisma.service';
 import { CreateMockupDto, UpdateMockupDto, MockupResponseDto, MockupGenre } from '../dto/create-mockup.dto';
 import { CloudinaryService } from '../../core/cloudinary/cloudinary.service';
 

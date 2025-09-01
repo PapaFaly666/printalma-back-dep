@@ -21,8 +21,8 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { VendorGuard } from 'src/core/guards/vendor.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { VendorGuard } from '../core/guards/vendor.guard';
 import {
   SaveDesignTransformsDto,
   LoadDesignTransformsQueryDto,

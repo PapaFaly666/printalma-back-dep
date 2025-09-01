@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CloudinaryService } from 'src/core/cloudinary/cloudinary.service';
+import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { CreateThemeDto, ThemeStatus } from './dto/create-theme.dto';
 import { UpdateThemeDto } from './dto/update-theme.dto';
 import { AddProductsToThemeDto } from './dto/add-products-to-theme.dto';

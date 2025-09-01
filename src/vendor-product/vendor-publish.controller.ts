@@ -28,8 +28,8 @@ import {
   ApiBody,
   ApiConsumes,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { VendorGuard } from 'src/core/guards/vendor.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { VendorGuard } from '../core/guards/vendor.guard';
 import { VendorPublishService } from './vendor-publish.service';
 import {
   VendorPublishDto,
@@ -43,11 +43,11 @@ import {
   VendorProductDetailResponseDto
 } from './dto/vendor-product-response.dto';
 import { SaveDesignPositionDto } from './dto/save-design-position.dto';
-import { RolesGuard } from 'src/core/guards/roles.guard';
-import { Roles } from 'src/core/guards/roles.decorator';
+import { RolesGuard } from '../core/guards/roles.guard';
+import { Roles } from '../core/guards/roles.decorator';
 import { PrismaService } from '../prisma.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { multerConfig } from 'multerConfig';
+import { multerConfig } from '../../multerConfig';
 
 @ApiBearerAuth()
 @ApiTags('Vendor Publication v2 - Designs & Products')

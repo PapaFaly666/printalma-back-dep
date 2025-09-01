@@ -35,10 +35,10 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ProductResponseDto } from './dto/product-response.dto';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { IsEnum } from 'class-validator';
 import { FileFieldsInterceptor, FileInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
-import { multerConfig } from 'multerConfig';
+import { multerConfig } from '../../multerConfig';
 import { Response, Request } from 'express';
 import { PrismaService } from '../prisma.service';
 

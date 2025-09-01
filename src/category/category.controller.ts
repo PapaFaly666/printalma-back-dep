@@ -3,7 +3,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, HttpSt
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @ApiBearerAuth()

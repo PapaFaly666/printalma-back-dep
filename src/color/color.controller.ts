@@ -19,8 +19,8 @@ import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ColorService } from './color.service';
 import { CreateColorDto } from './dto/create-color.dto';
 import { ApiOperation, ApiResponse, ApiTags, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
-import { multerConfig } from 'multerConfig';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { multerConfig } from '../../multerConfig';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiBearerAuth()
 @ApiTags('Colors')

@@ -3,7 +3,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, HttpSt
 import { SizeService } from './size.service';
 import { CreateSizeDto } from './dto/create-size.dto';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiBody } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiBearerAuth()
 @ApiTags('Sizes')

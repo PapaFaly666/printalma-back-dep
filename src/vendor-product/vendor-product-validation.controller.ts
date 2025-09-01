@@ -23,9 +23,9 @@ import {
   ApiBody,
   ApiQuery,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { VendorGuard } from 'src/core/guards/vendor.guard';
-import { AdminGuard } from 'src/core/guards/admin.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { VendorGuard } from '../core/guards/vendor.guard';
+import { AdminGuard } from '../core/guards/admin.guard';
 import { VendorProductValidationService, PostValidationAction } from './vendor-product-validation.service';
 import { UpdatePostValidationActionDto } from './dto/update-post-validation-action.dto';
 import { CompleteVendorProductsResponseDto } from './dto/vendor-product-complete-response.dto';

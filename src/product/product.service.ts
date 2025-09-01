@@ -2,7 +2,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CreateProductDto, CoordinateType as DTOCoordinateType } from './dto/create-product.dto';
 import { CreateReadyProductDto } from './dto/create-ready-product.dto';
-import { CloudinaryService } from 'src/core/cloudinary/cloudinary.service';
+import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { PrismaService } from '../prisma.service';
 import { PublicationStatus, CoordinateType as PrismaCoordinateType, ProductGenre } from '@prisma/client';
 import { DelimitationService } from '../delimitation/delimitation.service';

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ThemeService } from './theme.service';
 import { ThemeController } from './theme.controller';
 import { PrismaService } from '../prisma.service';
-import { CloudinaryService } from 'src/core/cloudinary/cloudinary.service';
+import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 
 @Module({
   controllers: [ThemeController],

@@ -17,12 +17,12 @@ import {
   } from '@nestjs/common';
   import { FileInterceptor } from '@nestjs/platform-express';
   import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiParam, ApiQuery, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-  import { multerConfig } from 'multerConfig';
+  import { multerConfig } from '../../multerConfig';
   import { ProductViewService } from './product-view.service';
 import { ProductViewResponseDto } from './dto/product-view-response-dto';
 import { CreateProductViewDto } from './dto/create-product-view-dto';
 import { ViewType } from './dto/view-type';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
   
 
