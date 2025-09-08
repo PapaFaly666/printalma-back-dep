@@ -313,6 +313,28 @@ export class CommissionService {
   }
 
   /**
+   * Obtient les informations d'un admin par ID
+   */
+  async getAdminInfo(adminId: number) {
+    try {
+      const admin = await this.prisma.user.findUnique({
+        where: { id: adminId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          role: true
+        }
+      });
+
+      return admin;
+    } catch (error) {
+      this.logger.warn(`Erreur récupération info admin ${adminId}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Obtient l'historique des changements pour un vendeur
    */
   async getCommissionHistory(vendorId: number) {
@@ -340,6 +362,51 @@ export class CommissionService {
     } catch (error) {
       this.logger.error(`Erreur récupération historique vendeur ${vendorId}: ${error.message}`);
       throw new BadRequestException('Erreur lors de la récupération de l\'historique');
+    }
+  }
+
+  /**
+   * Obtient l'historique global de toutes les modifications de commission
+   */
+  async getGlobalCommissionHistory(limit: number = 50) {
+    try {
+      const history = await this.prisma.commissionAuditLog.findMany({
+        include: {
+          vendor: {
+            select: { 
+              firstName: true, 
+              lastName: true, 
+              email: true 
+            }
+          },
+          changedByUser: {
+            select: { 
+              firstName: true, 
+              lastName: true 
+            }
+          }
+        },
+        orderBy: { changedAt: 'desc' },
+        take: limit
+      });
+
+      return history.map(log => ({
+        id: log.id,
+        vendorId: log.vendorId,
+        vendorName: `${log.vendor.firstName} ${log.vendor.lastName}`,
+        vendorEmail: log.vendor.email,
+        oldRate: log.oldRate,
+        newRate: log.newRate,
+        changedAt: log.changedAt.toISOString(),
+        changedBy: `${log.changedByUser.firstName} ${log.changedByUser.lastName}`,
+        ipAddress: log.ipAddress,
+        changeType: log.oldRate === null ? 'CREATION' : 'UPDATE',
+        rateDifference: log.oldRate ? (log.newRate - log.oldRate) : log.newRate
+      }));
+
+    } catch (error) {
+      this.logger.error(`Erreur récupération historique global: ${error.message}`);
+      throw new BadRequestException('Erreur lors de la récupération de l\'historique global');
     }
   }
 }

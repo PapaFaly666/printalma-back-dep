@@ -352,4 +352,55 @@ export class CommissionController {
       };
     }
   }
+
+  /**
+   * Obtenir l'historique global de toutes les modifications de commission (Admin)
+   */
+  @Get('commission-history/all')
+  @ApiOperation({ 
+    summary: 'Obtenir l\'historique global des modifications',
+    description: 'Récupère les dernières modifications de commission de tous les vendeurs pour l\'admin' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Historique global récupéré avec succès',
+    schema: {
+      example: {
+        success: true,
+        data: [
+          {
+            id: 1,
+            vendorName: "John Doe",
+            vendorEmail: "john@example.com",
+            oldRate: 40.0,
+            newRate: 35.0,
+            changedAt: "2024-01-15T10:30:00Z",
+            changedBy: "Admin Principal",
+            ipAddress: "192.168.1.1"
+          }
+        ]
+      }
+    }
+  })
+  async getGlobalCommissionHistory() {
+    try {
+      this.logger.log('Récupération historique global des commissions');
+
+      const history = await this.commissionService.getGlobalCommissionHistory();
+
+      return {
+        success: true,
+        data: history
+      };
+
+    } catch (error) {
+      this.logger.error(`Erreur récupération historique global: ${error.message}`, error.stack);
+      
+      return {
+        success: false,
+        error: 'GLOBAL_HISTORY_ERROR',
+        message: 'Erreur lors de la récupération de l\'historique global'
+      };
+    }
+  }
 }
