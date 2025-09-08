@@ -104,6 +104,9 @@ export class ProductResponseDto {
   @ApiProperty({ example: 19.99 })
   price: number;
 
+  @ApiProperty({ example: 19.99, required: false, description: 'Prix suggéré (optionnel)' })
+  suggestedPrice?: number;
+
   @ApiProperty({ example: 100 })
   stock: number;
 

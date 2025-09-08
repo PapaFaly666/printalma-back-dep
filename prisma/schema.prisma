@@ -77,6 +77,7 @@ model Product {
   id          Int      @id @default(autoincrement())
   name        String
   price       Float
+  suggestedPrice Float? @map("suggested_price")
   stock       Int
   status      PublicationStatus @default(DRAFT)
   description String

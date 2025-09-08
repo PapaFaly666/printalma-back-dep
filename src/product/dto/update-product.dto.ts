@@ -18,6 +18,11 @@ export class UpdateProductDto {
   @IsNumber()
   price?: number;
 
+  @ApiPropertyOptional({ description: 'Prix suggéré (optionnel)' })
+  @IsOptional()
+  @IsNumber()
+  suggestedPrice?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsNumber()

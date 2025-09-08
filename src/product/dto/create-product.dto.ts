@@ -216,6 +216,17 @@ export class CreateProductDto {
   price: number;
 
   @ApiProperty({ 
+    description: 'Prix suggéré du produit (optionnel)',
+    example: 8500,
+    required: false
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Type(() => Number)
+  suggestedPrice?: number;
+
+  @ApiProperty({ 
     description: 'Quantité en stock (optionnel, défaut: 0)',
     example: 150,
     required: false
