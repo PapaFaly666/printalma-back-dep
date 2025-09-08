@@ -1,228 +1,713 @@
-# Guide de Résolution - Problème de Cookies HTTP-Only en Production
+# 📋 Guide Backend - Système de Commission PrintAlma
 
-## 🎯 Problème Identifié
+> **Guide complet pour l'implémentation du système de commission côté backend**
+> 
+> Version: 1.0 | Date: 2024 | PrintAlma Commission System
 
-**Symptôme :** L'utilisateur se déconnecte à chaque actualisation de page en production
-**Cause :** Les cookies HTTP-only ne persistent pas correctement entre les requêtes en production avec `credentials: 'include'`
+---
 
-## 📊 Analyse des Logs de Production
+## 🎯 Vue d'ensemble
 
-```javascript
-// ✅ CONNEXION RÉUSSIE
-🔄 Requête vers: https://printalma-back-dep.onrender.com/auth/login
-📡 Réponse de /auth/login: {status: 201, headers: {…}}
-💾 Session utilisateur sauvegardée en localStorage
+Le système de commission PrintAlma permet aux admins de définir des pourcentages de prélèvement (0-100%) sur les revenus des vendeurs directement depuis l'interface d'administration. Ce guide détaille l'implémentation côté serveur.
 
-// ❌ PROBLÈME - Toutes les requêtes suivantes échouent
-📡 Réponse de /auth/check: {status: 401, headers: {…}}
-📡 Réponse de /auth/profile: {status: 401, headers: {…}}
-📡 Réponse de /auth/admin/clients: {status: 401, headers: {…}}
+### ✨ Fonctionnalités Frontend Implémentées
+
+- ✅ **Jauge interactive** dans le tableau de gestion des vendeurs
+- ✅ **Plage flexible** : 0% à 100% avec précision décimale (step: 0.1)
+- ✅ **Devise** : Francs CFA avec formatage localisé
+- ✅ **UX optimisée** : Couleurs simplifiées, presets rapides, feedback visuel
+- ✅ **Callback** : `onUpdateCommission(vendeurId, commission)` prêt à connecter
+
+---
+
+## 🗄️ Structure de Base de Données
+
+### Table `vendor_commissions`
+
+```sql
+CREATE TABLE vendor_commissions (
+    id SERIAL PRIMARY KEY,
+    vendor_id INTEGER NOT NULL REFERENCES users(id),
+    commission_rate DECIMAL(5,2) NOT NULL DEFAULT 40.00,
+    -- Plage: 0.00 à 100.00 (avec 2 décimales de précision)
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER REFERENCES users(id), -- Admin qui a défini la commission
+    
+    -- Index pour performances
+    UNIQUE(vendor_id),
+    CHECK (commission_rate >= 0.00 AND commission_rate <= 100.00)
+);
+
+-- Index pour recherche rapide
+CREATE INDEX idx_vendor_commissions_vendor_id ON vendor_commissions(vendor_id);
+CREATE INDEX idx_vendor_commissions_rate ON vendor_commissions(commission_rate);
 ```
 
-**Diagnostic :** Les cookies sont créés à la connexion mais ne sont pas transmis dans les requêtes suivantes malgré `credentials: 'include'`.
+### Extension de la table `users` (optionnel)
 
-## 🔧 Solution Temporaire Implémentée
+```sql
+-- Alternative: Ajouter directement dans la table users
+ALTER TABLE users ADD COLUMN commission_rate DECIMAL(5,2) DEFAULT 40.00;
+ALTER TABLE users ADD CONSTRAINT check_commission_rate 
+    CHECK (commission_rate >= 0.00 AND commission_rate <= 100.00);
+```
 
-### 1. Système de Session localStorage (FONCTIONNE)
-- ✅ Sauvegarde des données utilisateur en localStorage après connexion
-- ✅ Vérification prioritaire du localStorage au chargement
-- ✅ Session persistante de 7 jours avec nettoyage automatique
-- ✅ Plus de déconnexion à l'actualisation
+---
 
-### 2. Configuration Actuelle
-```typescript
-// src/config/api.ts
-export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_URL || 'https://printalma-back-dep.onrender.com',
-};
+## 🔌 API Endpoints
 
-// src/services/auth.service.ts
-const response = await fetch(`${this.baseUrl}${endpoint}`, {
-  ...options,
-  credentials: 'include', // ⭐ Toujours inclure les cookies
-  headers: {
-    ...defaultHeaders,
-    ...options.headers
+### 1. Mettre à jour la commission d'un vendeur
+
+```http
+PUT /api/admin/vendors/:vendorId/commission
+Content-Type: application/json
+Authorization: Bearer {admin_token}
+
+{
+  "commissionRate": 35.5
+}
+```
+
+**Réponse succès:**
+```json
+{
+  "success": true,
+  "message": "Commission mise à jour avec succès",
+  "data": {
+    "vendorId": 123,
+    "commissionRate": 35.5,
+    "updatedAt": "2024-01-15T10:30:00Z",
+    "updatedBy": 1
   }
+}
+```
+
+**Réponse erreur:**
+```json
+{
+  "success": false,
+  "error": "INVALID_COMMISSION_RATE",
+  "message": "La commission doit être entre 0 et 100%"
+}
+```
+
+### 2. Obtenir la commission d'un vendeur
+
+```http
+GET /api/admin/vendors/:vendorId/commission
+Authorization: Bearer {admin_token}
+```
+
+**Réponse:**
+```json
+{
+  "success": true,
+  "data": {
+    "vendorId": 123,
+    "commissionRate": 35.5,
+    "setAt": "2024-01-15T10:30:00Z",
+    "setBy": {
+      "id": 1,
+      "name": "Admin Principal"
+    }
+  }
+}
+```
+
+### 3. Obtenir toutes les commissions (pour le tableau)
+
+```http
+GET /api/admin/vendors/commissions
+Authorization: Bearer {admin_token}
+```
+
+**Réponse:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "vendorId": 123,
+      "firstName": "Jean",
+      "lastName": "Dupont",
+      "email": "jean@example.com",
+      "vendeur_type": "DESIGNER",
+      "commissionRate": 35.5,
+      "estimatedMonthlyRevenue": 150000,
+      "lastUpdated": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## 🛠️ Implémentation Backend (Node.js/Express)
+
+### 1. Controller - Commission Management
+
+```javascript
+// controllers/commissionController.js
+const { validateCommissionRate, calculateRevenueSplit } = require('../utils/commissionUtils');
+const CommissionService = require('../services/commissionService');
+
+class CommissionController {
+  
+  /**
+   * Mettre à jour la commission d'un vendeur
+   * PUT /api/admin/vendors/:vendorId/commission
+   */
+  async updateVendorCommission(req, res) {
+    try {
+      const { vendorId } = req.params;
+      const { commissionRate } = req.body;
+      const adminId = req.user.id;
+
+      // Validation
+      if (!validateCommissionRate(commissionRate)) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_COMMISSION_RATE',
+          message: 'La commission doit être entre 0 et 100%'
+        });
+      }
+
+      // Vérifier que le vendeur existe
+      const vendor = await CommissionService.getVendorById(vendorId);
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          error: 'VENDOR_NOT_FOUND',
+          message: 'Vendeur introuvable'
+        });
+      }
+
+      // Mettre à jour la commission
+      const result = await CommissionService.updateCommission({
+        vendorId: parseInt(vendorId),
+        commissionRate: parseFloat(commissionRate),
+        updatedBy: adminId
+      });
+
+      // Log de l'action admin
+      await CommissionService.logCommissionChange({
+        vendorId,
+        oldRate: vendor.commissionRate,
+        newRate: commissionRate,
+        adminId,
+        timestamp: new Date()
+      });
+
+      res.json({
+        success: true,
+        message: 'Commission mise à jour avec succès',
+        data: result
+      });
+
+    } catch (error) {
+      console.error('Erreur mise à jour commission:', error);
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_ERROR',
+        message: 'Erreur lors de la mise à jour de la commission'
+      });
+    }
+  }
+
+  /**
+   * Obtenir la commission d'un vendeur
+   * GET /api/admin/vendors/:vendorId/commission
+   */
+  async getVendorCommission(req, res) {
+    try {
+      const { vendorId } = req.params;
+
+      const commission = await CommissionService.getCommissionByVendorId(vendorId);
+      
+      if (!commission) {
+        return res.status(404).json({
+          success: false,
+          error: 'COMMISSION_NOT_FOUND',
+          message: 'Commission non trouvée pour ce vendeur'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: commission
+      });
+
+    } catch (error) {
+      console.error('Erreur récupération commission:', error);
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_ERROR',
+        message: 'Erreur lors de la récupération de la commission'
+      });
+    }
+  }
+
+  /**
+   * Obtenir toutes les commissions pour le tableau admin
+   * GET /api/admin/vendors/commissions
+   */
+  async getAllVendorCommissions(req, res) {
+    try {
+      const commissions = await CommissionService.getAllCommissionsWithVendorInfo();
+
+      res.json({
+        success: true,
+        data: commissions
+      });
+
+    } catch (error) {
+      console.error('Erreur récupération commissions:', error);
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_ERROR',
+        message: 'Erreur lors de la récupération des commissions'
+      });
+    }
+  }
+}
+
+module.exports = new CommissionController();
+```
+
+### 2. Service - Commission Logic
+
+```javascript
+// services/commissionService.js
+const db = require('../config/database');
+
+class CommissionService {
+  
+  /**
+   * Mettre à jour la commission d'un vendeur
+   */
+  async updateCommission({ vendorId, commissionRate, updatedBy }) {
+    const query = `
+      INSERT INTO vendor_commissions (vendor_id, commission_rate, created_by, updated_at)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (vendor_id) 
+      DO UPDATE SET 
+        commission_rate = EXCLUDED.commission_rate,
+        updated_at = CURRENT_TIMESTAMP,
+        created_by = EXCLUDED.created_by
+      RETURNING *;
+    `;
+
+    const result = await db.query(query, [vendorId, commissionRate, updatedBy]);
+    return result.rows[0];
+  }
+
+  /**
+   * Obtenir la commission d'un vendeur
+   */
+  async getCommissionByVendorId(vendorId) {
+    const query = `
+      SELECT 
+        vc.*,
+        u.firstName as admin_first_name,
+        u.lastName as admin_last_name
+      FROM vendor_commissions vc
+      LEFT JOIN users u ON vc.created_by = u.id
+      WHERE vc.vendor_id = $1;
+    `;
+
+    const result = await db.query(query, [vendorId]);
+    return result.rows[0];
+  }
+
+  /**
+   * Obtenir toutes les commissions avec infos vendeurs
+   */
+  async getAllCommissionsWithVendorInfo() {
+    const query = `
+      SELECT 
+        u.id as vendorId,
+        u.firstName,
+        u.lastName,
+        u.email,
+        u.vendeur_type,
+        COALESCE(vc.commission_rate, 40.00) as commissionRate,
+        vc.updated_at as lastUpdated,
+        -- Calcul du revenu estimé (exemple basé sur les ventes du mois)
+        COALESCE(
+          (SELECT SUM(amount) FROM sales s WHERE s.vendor_id = u.id AND s.created_at > CURRENT_DATE - INTERVAL '30 days'),
+          0
+        ) as estimatedMonthlyRevenue
+      FROM users u
+      LEFT JOIN vendor_commissions vc ON u.id = vc.vendor_id
+      WHERE u.role = 'VENDEUR'
+      ORDER BY u.firstName, u.lastName;
+    `;
+
+    const result = await db.query(query);
+    return result.rows;
+  }
+
+  /**
+   * Obtenir un vendeur par ID
+   */
+  async getVendorById(vendorId) {
+    const query = `
+      SELECT 
+        u.*,
+        COALESCE(vc.commission_rate, 40.00) as commissionRate
+      FROM users u
+      LEFT JOIN vendor_commissions vc ON u.id = vc.vendor_id
+      WHERE u.id = $1 AND u.role = 'VENDEUR';
+    `;
+
+    const result = await db.query(query, [vendorId]);
+    return result.rows[0];
+  }
+
+  /**
+   * Logger les changements de commission pour audit
+   */
+  async logCommissionChange({ vendorId, oldRate, newRate, adminId, timestamp }) {
+    const query = `
+      INSERT INTO commission_audit_log (
+        vendor_id, old_rate, new_rate, changed_by, changed_at
+      ) VALUES ($1, $2, $3, $4, $5);
+    `;
+
+    await db.query(query, [vendorId, oldRate, newRate, adminId, timestamp]);
+  }
+}
+
+module.exports = new CommissionService();
+```
+
+### 3. Utilitaires de Validation
+
+```javascript
+// utils/commissionUtils.js
+
+/**
+ * Valider un taux de commission
+ */
+function validateCommissionRate(rate) {
+  if (typeof rate !== 'number') {
+    return false;
+  }
+  
+  return rate >= 0 && rate <= 100 && !isNaN(rate);
+}
+
+/**
+ * Calculer la répartition des revenus
+ */
+function calculateRevenueSplit(totalAmount, commissionRate) {
+  const commission = (totalAmount * commissionRate) / 100;
+  const vendorRevenue = totalAmount - commission;
+  
+  return {
+    totalAmount,
+    commissionRate,
+    commissionAmount: Math.round(commission),
+    vendorRevenue: Math.round(vendorRevenue)
+  };
+}
+
+/**
+ * Formater un montant en FCFA
+ */
+function formatCFA(amount) {
+  return new Intl.NumberFormat('fr-FR').format(amount) + ' FCFA';
+}
+
+module.exports = {
+  validateCommissionRate,
+  calculateRevenueSplit,
+  formatCFA
+};
+```
+
+### 4. Routes
+
+```javascript
+// routes/adminRoutes.js
+const express = require('express');
+const router = express.Router();
+const commissionController = require('../controllers/commissionController');
+const { requireAdmin } = require('../middleware/auth');
+
+// Routes de gestion des commissions
+router.put('/vendors/:vendorId/commission', requireAdmin, commissionController.updateVendorCommission);
+router.get('/vendors/:vendorId/commission', requireAdmin, commissionController.getVendorCommission);
+router.get('/vendors/commissions', requireAdmin, commissionController.getAllVendorCommissions);
+
+module.exports = router;
+```
+
+---
+
+## 🔐 Sécurité et Permissions
+
+### Middleware d'authentification
+
+```javascript
+// middleware/auth.js
+const jwt = require('jsonwebtoken');
+
+function requireAdmin(req, res, next) {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Token requis' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    if (!['ADMIN', 'SUPERADMIN'].includes(decoded.role)) {
+      return res.status(403).json({ error: 'Permissions insuffisantes' });
+    }
+
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Token invalide' });
+  }
+}
+
+module.exports = { requireAdmin };
+```
+
+---
+
+## 📊 Tables d'Audit
+
+### Table de logs pour traçabilité
+
+```sql
+-- Table pour tracer tous les changements de commission
+CREATE TABLE commission_audit_log (
+    id SERIAL PRIMARY KEY,
+    vendor_id INTEGER NOT NULL REFERENCES users(id),
+    old_rate DECIMAL(5,2),
+    new_rate DECIMAL(5,2) NOT NULL,
+    changed_by INTEGER NOT NULL REFERENCES users(id),
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Informations contextuelles
+    ip_address INET,
+    user_agent TEXT
+);
+
+CREATE INDEX idx_commission_audit_vendor ON commission_audit_log(vendor_id);
+CREATE INDEX idx_commission_audit_admin ON commission_audit_log(changed_by);
+CREATE INDEX idx_commission_audit_date ON commission_audit_log(changed_at);
+```
+
+---
+
+## 🧪 Tests
+
+### Tests unitaires avec Jest
+
+```javascript
+// tests/commission.test.js
+const CommissionService = require('../services/commissionService');
+const { validateCommissionRate, calculateRevenueSplit } = require('../utils/commissionUtils');
+
+describe('Commission System', () => {
+  
+  describe('validateCommissionRate', () => {
+    test('should accept valid rates', () => {
+      expect(validateCommissionRate(0)).toBe(true);
+      expect(validateCommissionRate(50.5)).toBe(true);
+      expect(validateCommissionRate(100)).toBe(true);
+    });
+
+    test('should reject invalid rates', () => {
+      expect(validateCommissionRate(-1)).toBe(false);
+      expect(validateCommissionRate(101)).toBe(false);
+      expect(validateCommissionRate('invalid')).toBe(false);
+      expect(validateCommissionRate(NaN)).toBe(false);
+    });
+  });
+
+  describe('calculateRevenueSplit', () => {
+    test('should calculate correct split', () => {
+      const result = calculateRevenueSplit(50000, 40);
+      
+      expect(result.totalAmount).toBe(50000);
+      expect(result.commissionRate).toBe(40);
+      expect(result.commissionAmount).toBe(20000);
+      expect(result.vendorRevenue).toBe(30000);
+    });
+
+    test('should handle 0% commission', () => {
+      const result = calculateRevenueSplit(50000, 0);
+      
+      expect(result.commissionAmount).toBe(0);
+      expect(result.vendorRevenue).toBe(50000);
+    });
+
+    test('should handle 100% commission', () => {
+      const result = calculateRevenueSplit(50000, 100);
+      
+      expect(result.commissionAmount).toBe(50000);
+      expect(result.vendorRevenue).toBe(0);
+    });
+  });
 });
 ```
 
-## 🚨 Problème Restant à Résoudre
+---
 
-**Les requêtes API protégées retournent 401** car les cookies ne persistent pas.
+## 🚀 Déploiement
 
-### Exemples d'erreurs actuelles :
-- `/auth/admin/clients` → 401
-- `/auth/profile` → 401  
-- `/auth/vendors` → 401
-- Toutes les routes protégées → 401
+### Variables d'environnement
 
-## 📋 Plan d'Action pour le Backend
+```env
+# .env
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=printalma
+DB_USER=printalma_user
+DB_PASSWORD=secure_password
 
-### Option 1 : Corriger la Configuration des Cookies (RECOMMANDÉ)
+JWT_SECRET=your-super-secret-jwt-key
+JWT_EXPIRES_IN=24h
 
-Le backend doit configurer les cookies avec les bonnes options pour la production :
+# Commission par défaut pour nouveaux vendeurs
+DEFAULT_COMMISSION_RATE=40.00
+
+# Logs d'audit
+AUDIT_LOG_ENABLED=true
+```
+
+### Migration de base de données
 
 ```javascript
-// Configuration cookies backend pour production
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production', // true en production HTTPS
-    httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' pour cross-domain HTTPS
-    domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
-  }
-}));
+// migrations/001_create_commission_tables.js
+exports.up = function(knex) {
+  return knex.schema
+    .createTable('vendor_commissions', table => {
+      table.increments('id');
+      table.integer('vendor_id').unsigned().notNullable().references('id').inTable('users');
+      table.decimal('commission_rate', 5, 2).notNullable().defaultTo(40.00);
+      table.integer('created_by').unsigned().references('id').inTable('users');
+      table.timestamps(true, true);
+      
+      table.unique('vendor_id');
+      table.check('commission_rate >= 0 AND commission_rate <= 100');
+    })
+    .createTable('commission_audit_log', table => {
+      table.increments('id');
+      table.integer('vendor_id').unsigned().notNullable().references('id').inTable('users');
+      table.decimal('old_rate', 5, 2);
+      table.decimal('new_rate', 5, 2).notNullable();
+      table.integer('changed_by').unsigned().notNullable().references('id').inTable('users');
+      table.timestamp('changed_at').defaultTo(knex.fn.now());
+      table.string('ip_address');
+      table.text('user_agent');
+    });
+};
 
-// Configuration CORS
-app.use(cors({
-  origin: [
-    'http://localhost:5174', // dev
-    'https://printalma-website-dep.onrender.com' // production
-  ],
-  credentials: true, // CRITIQUE pour les cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+exports.down = function(knex) {
+  return knex.schema
+    .dropTable('commission_audit_log')
+    .dropTable('vendor_commissions');
+};
 ```
 
-### Option 2 : Système de Token JWT (ALTERNATIVE)
+---
 
-Si les cookies ne peuvent pas être corrigés, implémenter un système de tokens :
+## 📈 Monitoring et Analytics
+
+### Endpoint de statistiques
 
 ```javascript
-// Backend - Retourner un token à la connexion
-POST /auth/login → { user: {...}, token: "jwt_token_here" }
+// Statistiques des commissions
+router.get('/commission-stats', requireAdmin, async (req, res) => {
+  const stats = await db.query(`
+    SELECT 
+      AVG(commission_rate) as average_commission,
+      MIN(commission_rate) as min_commission,
+      MAX(commission_rate) as max_commission,
+      COUNT(*) as total_vendors,
+      COUNT(CASE WHEN commission_rate = 0 THEN 1 END) as free_vendors,
+      COUNT(CASE WHEN commission_rate > 50 THEN 1 END) as high_commission_vendors
+    FROM vendor_commissions vc
+    JOIN users u ON vc.vendor_id = u.id
+    WHERE u.role = 'VENDEUR'
+  `);
 
-// Frontend - Stocker et utiliser le token
-localStorage.setItem('auth_token', response.token);
-
-// Toutes les requêtes suivantes
-headers: {
-  'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-}
+  res.json({
+    success: true,
+    data: stats.rows[0]
+  });
+});
 ```
 
-## 🔍 Tests de Diagnostic
+---
 
-### Pour tester les cookies en production :
+## ✅ Checklist d'Implémentation
 
-```javascript
-// Dans la console du navigateur après connexion
-console.log('Cookies:', document.cookie);
-console.log('LocalStorage auth:', localStorage.getItem('auth_session'));
+### Phase 1: Base de données
+- [ ] Créer la table `vendor_commissions`
+- [ ] Créer la table `commission_audit_log`
+- [ ] Ajouter les index nécessaires
+- [ ] Tester les contraintes de validation
 
-// Tester une requête manuelle
-fetch('https://printalma-back-dep.onrender.com/auth/profile', {
-  credentials: 'include',
-  method: 'GET',
-  headers: { 'Content-Type': 'application/json' }
-})
-.then(r => console.log('Status:', r.status, r.headers))
-.catch(e => console.log('Erreur:', e));
-```
+### Phase 2: API
+- [ ] Implémenter les endpoints CRUD
+- [ ] Ajouter la validation des données
+- [ ] Implémenter les permissions admin
+- [ ] Tester tous les endpoints
 
-## 📁 Fichiers Modifiés (Solution Temporaire)
+### Phase 3: Intégration Frontend
+- [ ] Connecter le callback `onUpdateCommission`
+- [ ] Tester la mise à jour en temps réel
+- [ ] Gérer les erreurs utilisateur
+- [ ] Optimiser les performances
 
-### Frontend - Fichiers affectés :
-- `src/services/auth.service.ts` - Ajout localStorage + logs
-- `src/contexts/AuthContext.tsx` - Priorité localStorage
-- `src/config/api.ts` - Variables d'environnement
-- `.env.production` - Configuration production
-- `.env.development` - Configuration développement
+### Phase 4: Sécurité
+- [ ] Audit des permissions
+- [ ] Logs de traçabilité
+- [ ] Tests de sécurité
+- [ ] Documentation des endpoints
 
-### Logs à surveiller :
-```
-🔍 Vérification de la session localStorage...
-📦 Données brutes localStorage: {...}
-✅ Session stockée valide trouvée: {...}
-📱 ✅ SUCCÈS : Utilisation de la session localStorage
-```
+### Phase 5: Déploiement
+- [ ] Tests en environnement de staging
+- [ ] Migration de données existantes
+- [ ] Monitoring de performance
+- [ ] Formation équipe support
 
-## 🎯 Actions Prioritaires Backend
+---
 
-### 1. Vérification CORS (URGENT)
-```bash
-# Vérifier que le backend accepte l'origine du frontend
-curl -H "Origin: https://printalma-website-dep.onrender.com" \
-     -H "Access-Control-Request-Method: GET" \
-     -H "Access-Control-Request-Headers: Content-Type" \
-     -X OPTIONS \
-     https://printalma-back-dep.onrender.com/auth/profile
-```
+## 🆘 Support et Maintenance
 
-### 2. Configuration Session (URGENT)
-- Vérifier `sameSite: 'none'` en production
-- Vérifier `secure: true` en production
-- Vérifier que `credentials: true` est activé dans CORS
+### Problèmes courants
 
-### 3. Test de Cookie (DEBUG)
-```javascript
-// Endpoint de test à ajouter temporairement
-GET /auth/debug-cookies
-Response: {
-  cookies: req.cookies,
-  session: req.session,
-  headers: req.headers
-}
-```
+1. **Commission non mise à jour**
+   - Vérifier les permissions admin
+   - Contrôler les logs de la base de données
+   - Valider le format des données
 
-## ✅ Résultat Attendu
+2. **Performance lente**
+   - Optimiser les requêtes avec EXPLAIN
+   - Vérifier les index de la base
+   - Implémenter du cache Redis si nécessaire
 
-Après correction backend :
-- ✅ Connexion fonctionne
-- ✅ Actualisation maintient la session  
-- ✅ Toutes les requêtes API fonctionnent
-- ✅ Cookies persistent correctement
-- ✅ Plus besoin du fallback localStorage
+3. **Erreurs de validation**
+   - Contrôler les contraintes de base
+   - Vérifier la validation côté serveur
+   - Tester les cas limites (0%, 100%)
 
-## 📞 Support
+### Contacts
+- **Tech Lead**: [email@printalma.com]
+- **DevOps**: [devops@printalma.com]
+- **Documentation**: [docs@printalma.com]
 
-En cas de problème, vérifier dans l'ordre :
-1. Logs de connexion - doit voir `💾 Session utilisateur sauvegardée`
-2. Logs d'actualisation - doit voir `📱 Utilisation de la session localStorage`
-3. Requêtes API - ne doivent plus retourner 401 après correction backend
+---
 
-## ✅ PROBLÈME RÉSOLU - Cookies HTTP-Only Corrigés
-
-**Status actuel :** ✅ Configuration des cookies HTTP-only CORRIGÉE
-
-### 🔧 Corrections Apportées (01/09/2025)
-
-#### 1. Configuration des cookies mise à jour dans `src/auth/auth.controller.ts`
-- ✅ `sameSite: 'none'` en production (au lieu de 'strict')
-- ✅ `maxAge: 30 jours` (correspond à la durée du JWT)
-- ✅ Configuration identique pour login, logout et force-change-password
-
-#### 2. Configuration CORS validée dans `src/main.ts`
-- ✅ `credentials: true` activé
-- ✅ Origins autorisés: localhost + production
-
-#### 3. Endpoint de debug ajouté
-- ✅ `/auth/debug-cookies` pour tester les headers et cookies
-
-### 📋 Tests Après Redéploiement
-
-Après le redéploiement du backend, tester:
-
-```bash
-# 1. Test CORS 
-curl -H "Origin: https://printalma-website-dep.onrender.com" \
-     -H "Access-Control-Request-Method: GET" \
-     -X OPTIONS \
-     https://printalma-back-dep.onrender.com/auth/profile
-
-# 2. Test cookies après connexion
-fetch('https://printalma-back-dep.onrender.com/auth/profile', {
-  credentials: 'include',
-  method: 'GET'
-}).then(r => console.log('Status:', r.status))
-```
-
-**Résultat attendu :** Status 200 (au lieu de 401)
-
-**Status actuel :** ✅ Configuration CORRIGÉE - En attente de redéploiement
+*Guide généré pour PrintAlma Commission System v1.0*

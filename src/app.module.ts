@@ -19,6 +19,7 @@ import { VendorProductModule } from './vendor-product/vendor-product.module';
 import { CloudinaryModule } from './core/cloudinary/cloudinary.module';
 import { DesignModule } from './design/design.module';
 import { ThemeModule } from './theme/theme.module';
+import { CommissionModule } from './commission/commission.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DebugDesignMiddleware } from './core/middleware/debug-design.middleware';
 
@@ -42,7 +43,8 @@ import { DebugDesignMiddleware } from './core/middleware/debug-design.middleware
     VendorProductModule,
     CloudinaryModule,
     DesignModule,
-    ThemeModule
+    ThemeModule,
+    CommissionModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

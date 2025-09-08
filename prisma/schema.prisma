@@ -48,6 +48,12 @@ model User {
   vendorProducts       VendorProduct[]
   vendorDesignTransforms VendorDesignTransform[]
   emailChangeRequests  EmailChangeRequest[]
+  
+  // Relations commission system
+  vendorCommission     VendorCommission? @relation("VendorCommissionToUser")
+  createdCommissions   VendorCommission[] @relation("CommissionCreatedByUser")
+  commissionAuditLogs  CommissionAuditLog[] @relation("CommissionAuditVendor")
+  commissionChanges    CommissionAuditLog[] @relation("CommissionAuditChanger")
 
   @@index([country])
   @@index([shop_name])
@@ -645,4 +651,45 @@ model ThemeProduct {
 enum ThemeStatus {
   ACTIVE
   INACTIVE
+}
+
+/// Système de commission vendeur - Table principale
+model VendorCommission {
+  id            Int      @id @default(autoincrement()) @map("id")
+  vendorId      Int      @unique @map("vendor_id")
+  commissionRate Float   @default(40.00) @map("commission_rate") // Taux entre 0 et 100
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdBy     Int?     @map("created_by")
+
+  // Relations
+  vendor        User     @relation("VendorCommissionToUser", fields: [vendorId], references: [id], onDelete: Cascade)
+  createdByUser User?    @relation("CommissionCreatedByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  auditLogs     CommissionAuditLog[]
+
+  @@map("vendor_commissions")
+  @@index([vendorId])
+  @@index([commissionRate])
+}
+
+/// Logs d'audit pour traçabilité des changements de commission
+model CommissionAuditLog {
+  id             Int      @id @default(autoincrement()) @map("id")
+  vendorId       Int      @map("vendor_id")
+  oldRate        Float?   @map("old_rate")
+  newRate        Float    @map("new_rate")
+  changedBy      Int      @map("changed_by")
+  changedAt      DateTime @default(now()) @map("changed_at")
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+
+  // Relations
+  vendor         User             @relation("CommissionAuditVendor", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_fkey")
+  changedByUser  User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
+  vendorCommission VendorCommission @relation(fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_commission_fkey")
+
+  @@map("commission_audit_log")
+  @@index([vendorId])
+  @@index([changedBy])
+  @@index([changedAt])
 }

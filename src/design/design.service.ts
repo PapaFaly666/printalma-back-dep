@@ -344,114 +344,22 @@ export class DesignService {
     }
 
     try {
-      // 🆕 SUPPRESSION EN CASCADE DES PRODUITS ASSOCIÉS
-      this.logger.log(`🗑️ Début suppression en cascade pour design ${id}`);
-      
-      // 1. Trouver tous les VendorProducts liés via designId
-      const linkedVendorProducts = await this.prisma.vendorProduct.findMany({
-        where: { designId: id, isDelete: false },
-        select: { id: true, name: true, vendorId: true }
+      // Suppression des images de Cloudinary
+      if (existingDesign.cloudinaryPublicId) {
+        await this.cloudinaryService.deleteImage(existingDesign.cloudinaryPublicId);
+      }
+      if (existingDesign.thumbnailPublicId) {
+        await this.cloudinaryService.deleteImage(existingDesign.thumbnailPublicId);
+      }
+
+      // Suppression du design en base
+      await this.prisma.design.update({
+        where: { id },
+        data: { isDelete: true }
       });
-
-      // 2. Trouver tous les VendorProducts liés via DesignProductLink
-      const linkedProducts = await this.prisma.designProductLink.findMany({
-        where: { designId: id },
-        include: {
-          vendorProduct: {
-            select: { id: true, name: true, vendorId: true, isDelete: true }
-          }
-        }
-      });
-
-      // 3. Trouver tous les VendorProducts liés via URL Cloudinary (fallback)
-      const urlLinkedProducts = await this.prisma.vendorProduct.findMany({
-        where: { 
-          designCloudinaryUrl: existingDesign.imageUrl,
-          vendorId: vendorId,
-          isDelete: false
-        },
-        select: { id: true, name: true, vendorId: true }
-      });
-
-      // Créer une liste unique de tous les produits à supprimer
-      const allProductsToDelete = new Set<number>();
-      
-      linkedVendorProducts.forEach(p => allProductsToDelete.add(p.id));
-      linkedProducts.forEach(link => {
-        if (!link.vendorProduct.isDelete) {
-          allProductsToDelete.add(link.vendorProduct.id);
-        }
-      });
-      urlLinkedProducts.forEach(p => allProductsToDelete.add(p.id));
-
-      const productIds = Array.from(allProductsToDelete);
-      
-      this.logger.log(`🔍 Produits trouvés à supprimer: ${productIds.length}`);
-      this.logger.log(`📋 IDs des produits: ${productIds.join(', ')}`);
-
-      // Utiliser une transaction pour garantir la cohérence
-      await this.prisma.$transaction(async (tx) => {
-        if (productIds.length > 0) {
-          // Supprimer en cascade tous les éléments liés aux VendorProducts
-          
-          // 1. Supprimer les images des produits
-          await tx.vendorProductImage.deleteMany({
-            where: { vendorProductId: { in: productIds } }
-          });
-
-          // 2. Supprimer les transformations de design
-          await tx.vendorDesignTransform.deleteMany({
-            where: { vendorProductId: { in: productIds } }
-          });
-
-          // 3. Supprimer les positions de design
-          await tx.productDesignPosition.deleteMany({
-            where: { vendorProductId: { in: productIds } }
-          });
-
-          // 4. Supprimer les liens design-produit
-          await tx.designProductLink.deleteMany({
-            where: { vendorProductId: { in: productIds } }
-          });
-
-          // 5. Soft delete des VendorProducts
-          await tx.vendorProduct.updateMany({
-            where: { id: { in: productIds } },
-            data: { isDelete: true }
-          });
-
-          this.logger.log(`✅ ${productIds.length} produit(s) supprimé(s) en cascade`);
-        }
-
-        // Supprimer les liens directs du design
-        await tx.designProductLink.deleteMany({
-          where: { designId: id }
-        });
-
-        await tx.productDesignPosition.deleteMany({
-          where: { designId: id }
-        });
-
-        // Suppression des images de Cloudinary
-        if (existingDesign.cloudinaryPublicId) {
-          await this.cloudinaryService.deleteImage(existingDesign.cloudinaryPublicId);
-        }
-        if (existingDesign.thumbnailPublicId) {
-          await this.cloudinaryService.deleteImage(existingDesign.thumbnailPublicId);
-        }
-
-        // Soft delete du design
-        await tx.design.update({
-          where: { id },
-          data: { isDelete: true }
-        });
-
-        this.logger.log(`✅ Design ${id} et ses ${productIds.length} produit(s) associé(s) supprimé(s) avec succès`);
-      });
-
     } catch (error) {
-      this.logger.error('Erreur lors de la suppression du design et produits associés:', error);
-      throw new BadRequestException('Erreur lors de la suppression du design et de ses produits associés');
+      console.error('Erreur lors de la suppression du design:', error);
+      throw new BadRequestException('Erreur lors de la suppression du design');
     }
   }
 
