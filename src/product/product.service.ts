@@ -1311,7 +1311,7 @@ export class ProductService {
   }
 
   async softDeleteProduct(id: number): Promise<void> {
-    const product = await this.prisma.product.findUnique({ where: { id, isDelete: false } });
+    const product = await this.prisma.product.findFirst({ where: { id, isDelete: false } });
     if (!product) throw new NotFoundException('Produit admin introuvable');
     await this.prisma.product.update({ where: { id }, data: { isDelete: true } });
   }
@@ -1350,23 +1350,34 @@ export class ProductService {
     console.log('🔍 [BACKEND] updateProduct - data avant mise à jour:', JSON.stringify(data, null, 2));
 
     // 3. Mettre à jour le produit principal
-    const updatedProduct = await this.prisma.product.update({
-      where: { id },
-      data,
-      include: {
-        categories: true,
-        sizes: true,
-        colorVariations: {
-          include: {
-            images: {
-              include: {
-                delimitations: true,
+    let updatedProduct: any;
+    try {
+      updatedProduct = await this.prisma.product.update({
+        where: { id },
+        data,
+        include: {
+          categories: true,
+          sizes: true,
+          colorVariations: {
+            include: {
+              images: {
+                include: {
+                  delimitations: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
+    } catch (error) {
+      console.error('❌ [BACKEND] updateProduct - Prisma update error:', {
+        message: error?.message,
+        code: error?.code,
+        meta: error?.meta,
+        dataAttempted: data
+      });
+      throw new BadRequestException('Mise à jour invalide: ' + (error?.message || 'Erreur inconnue'));
+    }
     
     console.log('🔍 [BACKEND] updateProduct - Produit après mise à jour principale:');
     console.log('   - suggestedPrice:', updatedProduct.suggestedPrice);
