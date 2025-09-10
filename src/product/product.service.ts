@@ -18,15 +18,6 @@ export class ProductService {
   ) {}
 
   async create(dto: CreateProductDto, files: Express.Multer.File[]) {
-    // ✅ LOGS DE DÉBOGAGE POUR LE GENRE ET SUGGESTED PRICE
-    console.log('🔍 [BACKEND] create method - DTO reçu:', JSON.stringify(dto, null, 2));
-    console.log('🔍 [BACKEND] create method - Genre reçu:', dto.genre);
-    console.log('🔍 [BACKEND] create method - Genre type:', typeof dto.genre);
-    console.log('🔍 [BACKEND] create method - suggestedPrice reçu:', dto.suggestedPrice);
-    console.log('🔍 [BACKEND] create method - suggestedPrice type:', typeof dto.suggestedPrice);
-    console.log('🔍 [BACKEND] create method - suggestedPrice value:', dto.suggestedPrice);
-    console.log('🔍 [BACKEND] create method - isReadyProduct reçu:', dto.isReadyProduct);
-    console.log('🔍 [BACKEND] create method - isReadyProduct type:', typeof dto.isReadyProduct);
 
     // 1. Create file mapping
     const fileMap = new Map<string, Express.Multer.File>();
@@ -66,36 +57,25 @@ export class ProductService {
       });
       const categories = await Promise.all(categoryPromises);
 
-      // ✅ TRAITER LES CHAMPS GENRE ET isReadyProduct
-      const isReadyProduct = dto.isReadyProduct ?? false; // Par défaut false (mockup)
+      // Process genre and isReadyProduct fields
+      const isReadyProduct = dto.isReadyProduct ?? false; // Default false (mockup)
       const genreValue = dto.genre || 'UNISEXE';
-      
-      console.log('🔍 [BACKEND] create method - Valeur finale isReadyProduct:', isReadyProduct);
-      console.log('🔍 [BACKEND] create method - Valeur finale genre:', genreValue);
-      console.log('🔍 [BACKEND] create method - Valeur finale suggestedPrice:', dto.suggestedPrice);
 
       // 3.2. Create the Product first (without categories and sizes)
-      const productData = {
-        name: dto.name,
-        description: dto.description,
-        price: dto.price,
-        suggestedPrice: dto.suggestedPrice, // ✅ AJOUTER LE CHAMP suggestedPrice
-        stock: dto.stock,
-        status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
-        isReadyProduct: isReadyProduct, // ✅ AJOUTER LE CHAMP isReadyProduct
-        genre: genreValue as ProductGenre, // ✅ AJOUTER LE CHAMP GENRE
-        isValidated: true, // ✅ MOCKUPS CRÉÉS PAR ADMIN SONT VALIDÉS PAR DÉFAUT
-      };
-      
-      console.log('🔍 [BACKEND] create method - productData avant création:', JSON.stringify(productData, null, 2));
-      
       const product = await tx.product.create({
-        data: productData,
+        data: {
+          name: dto.name,
+          description: dto.description,
+          price: dto.price,
+          suggestedPrice: dto.suggestedPrice,
+          stock: dto.stock,
+          status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
+          isReadyProduct: isReadyProduct,
+          genre: genreValue as ProductGenre,
+          isValidated: true,
+        },
       });
 
-      console.log('💾 [BACKEND] create method - Produit créé avec genre:', product.genre);
-      console.log('💾 [BACKEND] create method - Produit créé avec isReadyProduct:', product.isReadyProduct);
-      console.log('💾 [BACKEND] create method - Produit créé avec suggestedPrice:', product.suggestedPrice);
 
       // 3.3. Connect categories to the product
       if (categories.length > 0) {
@@ -1332,11 +1312,6 @@ export class ProductService {
     const product = await this.prisma.product.findUnique({ where: { id, isDelete: false } });
     if (!product) throw new NotFoundException('Produit admin introuvable');
 
-    // ✅ LOGS DE DÉBOGAGE POUR SUGGESTED PRICE
-    console.log('🔍 [BACKEND] updateProduct - updateDto reçu:', JSON.stringify(updateDto, null, 2));
-    console.log('🔍 [BACKEND] updateProduct - suggestedPrice reçu:', updateDto.suggestedPrice);
-    console.log('🔍 [BACKEND] updateProduct - suggestedPrice type:', typeof updateDto.suggestedPrice);
-
     // 2. Préparer les données à mettre à jour
     const data: any = {};
     if (updateDto.name !== undefined) data.name = updateDto.name;
@@ -1346,43 +1321,25 @@ export class ProductService {
     if (updateDto.stock !== undefined) data.stock = updateDto.stock;
     if (updateDto.status !== undefined) data.status = updateDto.status;
     if (updateDto.genre !== undefined) data.genre = updateDto.genre;
-    
-    console.log('🔍 [BACKEND] updateProduct - data avant mise à jour:', JSON.stringify(data, null, 2));
 
     // 3. Mettre à jour le produit principal
-    let updatedProduct: any;
-    try {
-      updatedProduct = await this.prisma.product.update({
-        where: { id },
-        data,
-        include: {
-          categories: true,
-          sizes: true,
-          colorVariations: {
-            include: {
-              images: {
-                include: {
-                  delimitations: true,
-                },
+    const updatedProduct = await this.prisma.product.update({
+      where: { id },
+      data,
+      include: {
+        categories: true,
+        sizes: true,
+        colorVariations: {
+          include: {
+            images: {
+              include: {
+                delimitations: true,
               },
             },
           },
         },
-      });
-    } catch (error) {
-      console.error('❌ [BACKEND] updateProduct - Prisma update error:', {
-        message: error?.message,
-        code: error?.code,
-        meta: error?.meta,
-        dataAttempted: data
-      });
-      throw new BadRequestException('Mise à jour invalide: ' + (error?.message || 'Erreur inconnue'));
-    }
-    
-    console.log('🔍 [BACKEND] updateProduct - Produit après mise à jour principale:');
-    console.log('   - suggestedPrice:', updatedProduct.suggestedPrice);
-    console.log('   - genre:', updatedProduct.genre);
-    console.log('   - status:', updatedProduct.status);
+      },
+    });
 
     // 4. Mettre à jour les catégories si fourni
     if (updateDto.categories) {
@@ -1611,7 +1568,7 @@ export class ProductService {
     }
 
     // 7. Retourner le produit mis à jour
-    const finalProduct = await this.prisma.product.findUnique({
+    return this.prisma.product.findUnique({
       where: { id },
       include: {
         categories: true,
@@ -1627,13 +1584,6 @@ export class ProductService {
         },
       },
     });
-    
-    console.log('🔍 [BACKEND] updateProduct - Produit final retourné:');
-    console.log('   - suggestedPrice:', finalProduct.suggestedPrice);
-    console.log('   - genre:', finalProduct.genre);
-    console.log('   - status:', finalProduct.status);
-    
-    return finalProduct;
   }
 
   async uploadColorImage(productId: number, colorId: number, image: Express.Multer.File) {
@@ -1681,14 +1631,6 @@ export class ProductService {
 
   // Méthodes pour les produits prêts (sans délimitations)
   async createReadyProduct(dto: CreateReadyProductDto, files: Express.Multer.File[]) {
-    // ✅ LOGS DE DÉBOGAGE DÉTAILLÉS
-    console.log('🔍 [BACKEND] createReadyProduct - DTO reçu:', JSON.stringify(dto, null, 2));
-    console.log('🔍 [BACKEND] createReadyProduct - isReadyProduct:', dto.isReadyProduct);
-    console.log('🔍 [BACKEND] createReadyProduct - Type isReadyProduct:', typeof dto.isReadyProduct);
-    console.log('🔍 [BACKEND] createReadyProduct - Genre reçu:', dto.genre);
-    console.log('🔍 [BACKEND] createReadyProduct - Genre est-il défini?', !!dto.genre);
-    console.log('🔍 [BACKEND] createReadyProduct - Genre est-il différent de UNISEXE?', dto.genre !== 'UNISEXE');
-    console.log('🔍 [BACKEND] createReadyProduct - Type de genre:', typeof dto.genre);
 
     // 1. Create file mapping
     const fileMap = new Map<string, Express.Multer.File>();
@@ -1729,17 +1671,9 @@ export class ProductService {
       const categories = await Promise.all(categoryPromises);
 
       // 3.2. Create the Product first (without categories and sizes)
-      // ✅ UTILISER LA VALEUR ENVOYÉE PAR LE FRONTEND
+      // Process isReadyProduct and genre fields
       const isReadyProduct = dto.isReadyProduct === true;
-      console.log('🔍 [BACKEND] createReadyProduct - Valeur finale isReadyProduct:', isReadyProduct);
-
-      // ✅ LOGS POUR LE GENRE
       const genreValue = dto.genre || 'UNISEXE';
-      console.log('🔍 [BACKEND] createReadyProduct - Genre avant création:', genreValue);
-      console.log('🔍 [BACKEND] createReadyProduct - Genre est-il HOMME?', genreValue === 'HOMME');
-      console.log('🔍 [BACKEND] createReadyProduct - Genre est-il FEMME?', genreValue === 'FEMME');
-      console.log('🔍 [BACKEND] createReadyProduct - Genre est-il BEBE?', genreValue === 'BEBE');
-      console.log('🔍 [BACKEND] createReadyProduct - Genre est-il UNISEXE?', genreValue === 'UNISEXE');
 
       const product = await tx.product.create({
         data: {
@@ -1755,8 +1689,6 @@ export class ProductService {
         },
       });
 
-      console.log('💾 Produit créé avec isReadyProduct:', product.isReadyProduct);
-      console.log('💾 Produit créé - Genre reçu dans DTO:', genreValue);
 
       // 3.3. Connect categories to the product
       if (categories.length > 0) {
