@@ -76,7 +76,6 @@ export class ProductService {
           name: dto.name,
           description: dto.description,
           price: dto.price,
-          suggestedPrice: dto.suggestedPrice,
           stock: dto.stock,
           status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
           isReadyProduct: isReadyProduct, // ✅ AJOUTER LE CHAMP isReadyProduct
@@ -1328,7 +1327,6 @@ export class ProductService {
     if (updateDto.name !== undefined) data.name = updateDto.name;
     if (updateDto.description !== undefined) data.description = updateDto.description;
     if (updateDto.price !== undefined) data.price = updateDto.price;
-    if (updateDto.suggestedPrice !== undefined) data.suggestedPrice = updateDto.suggestedPrice;
     if (updateDto.stock !== undefined) data.stock = updateDto.stock;
     if (updateDto.status !== undefined) data.status = updateDto.status;
 
@@ -1706,7 +1704,6 @@ export class ProductService {
           name: dto.name,
           description: dto.description,
           price: dto.price,
-          suggestedPrice: dto.suggestedPrice,
           stock: dto.stock,
           status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
           isReadyProduct: isReadyProduct, // ✅ UTILISER LA VALEUR DU DTO
@@ -1942,7 +1939,6 @@ export class ProductService {
       if (updateDto.name) updateData.name = updateDto.name;
       if (updateDto.description) updateData.description = updateDto.description;
       if (updateDto.price) updateData.price = updateDto.price;
-      if (updateDto.suggestedPrice !== undefined) updateData.suggestedPrice = updateDto.suggestedPrice;
       if (updateDto.stock !== undefined) updateData.stock = updateDto.stock;
       if (updateDto.status) {
         updateData.status = updateDto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT;

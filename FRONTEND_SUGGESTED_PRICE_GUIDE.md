@@ -176,3 +176,6 @@ Notes
 - Le backend peut un jour calculer automatiquement `suggestedPrice` (coût + marge) et l’exposer tel quel.
 
 
+
+
+

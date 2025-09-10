@@ -938,6 +938,29 @@ export class ProductController {
     return { success: true, message: 'Produit supprimé définitivement' };
   }
 
+  @Get('debug/user-role')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Debug - Vérifier le rôle de l\'utilisateur connecté' })
+  async debugUserRole(@Req() req: any) {
+    return {
+      success: true,
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role,
+        roleType: typeof req.user.role,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+      },
+      debug: {
+        isAdmin: req.user.role === 'ADMIN',
+        isSuperAdmin: req.user.role === 'SUPERADMIN',
+        includesAdminCheck: ['ADMIN', 'SUPERADMIN'].includes(req.user.role),
+        rawUserObject: req.user
+      }
+    };
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Modifier un produit admin (mockup) - toutes infos (délimitation, couleur, face, etc.)' })
@@ -948,9 +971,18 @@ export class ProductController {
     @Body() updateDto: UpdateProductDto,
     @Req() req: any
   ) {
+    // DEBUG: Ajouter des logs pour comprendre le problème
+    console.log('🔍 DEBUG UPDATE PRODUCT:');
+    console.log('User ID:', req.user.id);
+    console.log('User Role:', req.user.role);
+    console.log('User Role Type:', typeof req.user.role);
+    console.log('Is ADMIN?', req.user.role === 'ADMIN');
+    console.log('Is SUPERADMIN?', req.user.role === 'SUPERADMIN');
+    console.log('Array includes check:', ['ADMIN', 'SUPERADMIN'].includes(req.user.role));
+
     // Vérifier que l'utilisateur est admin ou superadmin
     if (!['ADMIN', 'SUPERADMIN'].includes(req.user.role)) {
-      throw new BadRequestException('Seuls les administrateurs peuvent modifier les produits.');
+      throw new BadRequestException(`Seuls les administrateurs peuvent modifier les produits. Rôle actuel: ${req.user.role}`);
     }
 
     return this.productService.updateProduct(id, updateDto);

@@ -1,49 +1,47 @@
-🔍 [DEBUG] Structure backendProductData: {
-  "name": "grgrtgr",
-  "description": "eeeeeeeeee",
-  "price": 9801,
-  "stock": 0,
-  "status": "published",
+ProductFormMain.tsx:1045 
+ 📊 Status: 400 StatusText: 
+ProductFormMain.tsx:1046 
+ 📤 Payload envoyé: {
+  "name": "Tshirt de luxe",
+  "description": "Thirt prenium haute qualité",
+  "price": 12000,
+  "stock": 12,
+  "status": "PUBLISHED",
   "categories": [
-    "Vêtements > T-shirts"
+    1
   ],
   "sizes": [
     "XS",
     "S",
-    "M",
-    "L",
-    "XL",
-    "XXL",
-    "3XL"
+    3,
+    4,
+    5,
+    "XXL"
   ],
-  "genre": "UNISEXE",
-  "isReadyProduct": false,
   "colorVariations": [
     {
-      "name": "dzdzdz",
+      "name": "Noir",
       "colorCode": "#000000",
       "images": [
         {
-          "fileId": "1757347940770",
+          "url": "https://res.cloudinary.com/dsxab4qnu/image/upload/v1756691644/printalma/1756691643712-T-Shirt_Premium_Noir.jpg",
           "view": "Front",
           "delimitations": [
             {
-              "x": 397.1063232421875,
-              "y": 273.4142806945078,
-              "width": 396.6666666666667,
-              "height": 593.3332880655961,
+              "id": "delim_1757467358829",
+              "x": 393.2557642061674,
+              "y": 421.8954668147812,
+              "width": 376.2016726663775,
+              "height": 572.2716453649954,
               "rotation": 0,
-              "coordinateType": "PERCENTAGE"
+              "type": "rectangle"
             }
-          ]
+          ],
+          "id": 1,
+          "publicId": "printalma/1756691643712-T-Shirt_Premium_Noir"
         }
-      ]
+      ],
+      "id": 1
     }
   ]
 }
-index-Co4t2xXH.js:786 🔍 [DEBUG] Genre dans backendProductData: UNISEXE
-index-Co4t2xXH.js:786 📎 [DEBUG] Ajout fichier: file_1757347940770 -> test.jpg
-index-Co4t2xXH.js:786 🔍 [DEBUG] FormData contents:
-index-Co4t2xXH.js:786   productData: {"name":"grgrtgr","description":"eeeeeeeeee","price":9801,"stock":0,"status":"published","categories...
-index-Co4t2xXH.js:786   file_1757347940770: File(test.jpg, 100443 bytes)
-index-Co4t2xXH.js:786 ✅ [ProductService] Produit créé avec succès (format direct)
