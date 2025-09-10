@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsNumber, IsArray, IsEnum, ValidateNested, IsBoolean } from 'class-validator';
+import { IsOptional, IsString, IsNumber, IsArray, IsEnum, ValidateNested, IsBoolean, IsIn, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateProductDto {
@@ -18,10 +18,18 @@ export class UpdateProductDto {
   @IsNumber()
   price?: number;
 
-  @ApiPropertyOptional({ description: 'Prix suggéré (optionnel)' })
+  @ApiPropertyOptional({ description: 'Prix suggéré (optionnel, null pour effacer)' })
   @IsOptional()
+  @ValidateIf((o) => o.suggestedPrice !== null)
   @IsNumber()
-  suggestedPrice?: number;
+  @Type(() => Number)
+  suggestedPrice?: number | null;
+
+  @ApiPropertyOptional({ enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE'], description: 'Genre du produit' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['HOMME', 'FEMME', 'BEBE', 'UNISEXE'])
+  genre?: 'HOMME' | 'FEMME' | 'BEBE' | 'UNISEXE';
 
   @ApiPropertyOptional()
   @IsOptional()

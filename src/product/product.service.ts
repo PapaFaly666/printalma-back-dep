@@ -18,10 +18,13 @@ export class ProductService {
   ) {}
 
   async create(dto: CreateProductDto, files: Express.Multer.File[]) {
-    // ✅ LOGS DE DÉBOGAGE POUR LE GENRE
+    // ✅ LOGS DE DÉBOGAGE POUR LE GENRE ET SUGGESTED PRICE
     console.log('🔍 [BACKEND] create method - DTO reçu:', JSON.stringify(dto, null, 2));
     console.log('🔍 [BACKEND] create method - Genre reçu:', dto.genre);
     console.log('🔍 [BACKEND] create method - Genre type:', typeof dto.genre);
+    console.log('🔍 [BACKEND] create method - suggestedPrice reçu:', dto.suggestedPrice);
+    console.log('🔍 [BACKEND] create method - suggestedPrice type:', typeof dto.suggestedPrice);
+    console.log('🔍 [BACKEND] create method - suggestedPrice value:', dto.suggestedPrice);
     console.log('🔍 [BACKEND] create method - isReadyProduct reçu:', dto.isReadyProduct);
     console.log('🔍 [BACKEND] create method - isReadyProduct type:', typeof dto.isReadyProduct);
 
@@ -69,23 +72,30 @@ export class ProductService {
       
       console.log('🔍 [BACKEND] create method - Valeur finale isReadyProduct:', isReadyProduct);
       console.log('🔍 [BACKEND] create method - Valeur finale genre:', genreValue);
+      console.log('🔍 [BACKEND] create method - Valeur finale suggestedPrice:', dto.suggestedPrice);
 
       // 3.2. Create the Product first (without categories and sizes)
+      const productData = {
+        name: dto.name,
+        description: dto.description,
+        price: dto.price,
+        suggestedPrice: dto.suggestedPrice, // ✅ AJOUTER LE CHAMP suggestedPrice
+        stock: dto.stock,
+        status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
+        isReadyProduct: isReadyProduct, // ✅ AJOUTER LE CHAMP isReadyProduct
+        genre: genreValue as ProductGenre, // ✅ AJOUTER LE CHAMP GENRE
+        isValidated: true, // ✅ MOCKUPS CRÉÉS PAR ADMIN SONT VALIDÉS PAR DÉFAUT
+      };
+      
+      console.log('🔍 [BACKEND] create method - productData avant création:', JSON.stringify(productData, null, 2));
+      
       const product = await tx.product.create({
-        data: {
-          name: dto.name,
-          description: dto.description,
-          price: dto.price,
-          stock: dto.stock,
-          status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
-          isReadyProduct: isReadyProduct, // ✅ AJOUTER LE CHAMP isReadyProduct
-          genre: genreValue as ProductGenre, // ✅ AJOUTER LE CHAMP GENRE
-          isValidated: true, // ✅ MOCKUPS CRÉÉS PAR ADMIN SONT VALIDÉS PAR DÉFAUT
-        },
+        data: productData,
       });
 
       console.log('💾 [BACKEND] create method - Produit créé avec genre:', product.genre);
       console.log('💾 [BACKEND] create method - Produit créé avec isReadyProduct:', product.isReadyProduct);
+      console.log('💾 [BACKEND] create method - Produit créé avec suggestedPrice:', product.suggestedPrice);
 
       // 3.3. Connect categories to the product
       if (categories.length > 0) {
@@ -1322,13 +1332,22 @@ export class ProductService {
     const product = await this.prisma.product.findUnique({ where: { id, isDelete: false } });
     if (!product) throw new NotFoundException('Produit admin introuvable');
 
+    // ✅ LOGS DE DÉBOGAGE POUR SUGGESTED PRICE
+    console.log('🔍 [BACKEND] updateProduct - updateDto reçu:', JSON.stringify(updateDto, null, 2));
+    console.log('🔍 [BACKEND] updateProduct - suggestedPrice reçu:', updateDto.suggestedPrice);
+    console.log('🔍 [BACKEND] updateProduct - suggestedPrice type:', typeof updateDto.suggestedPrice);
+
     // 2. Préparer les données à mettre à jour
     const data: any = {};
     if (updateDto.name !== undefined) data.name = updateDto.name;
     if (updateDto.description !== undefined) data.description = updateDto.description;
     if (updateDto.price !== undefined) data.price = updateDto.price;
+    if (updateDto.suggestedPrice !== undefined) data.suggestedPrice = updateDto.suggestedPrice;
     if (updateDto.stock !== undefined) data.stock = updateDto.stock;
     if (updateDto.status !== undefined) data.status = updateDto.status;
+    if (updateDto.genre !== undefined) data.genre = updateDto.genre;
+    
+    console.log('🔍 [BACKEND] updateProduct - data avant mise à jour:', JSON.stringify(data, null, 2));
 
     // 3. Mettre à jour le produit principal
     const updatedProduct = await this.prisma.product.update({
@@ -1348,6 +1367,11 @@ export class ProductService {
         },
       },
     });
+    
+    console.log('🔍 [BACKEND] updateProduct - Produit après mise à jour principale:');
+    console.log('   - suggestedPrice:', updatedProduct.suggestedPrice);
+    console.log('   - genre:', updatedProduct.genre);
+    console.log('   - status:', updatedProduct.status);
 
     // 4. Mettre à jour les catégories si fourni
     if (updateDto.categories) {
@@ -1576,7 +1600,7 @@ export class ProductService {
     }
 
     // 7. Retourner le produit mis à jour
-    return this.prisma.product.findUnique({
+    const finalProduct = await this.prisma.product.findUnique({
       where: { id },
       include: {
         categories: true,
@@ -1592,6 +1616,13 @@ export class ProductService {
         },
       },
     });
+    
+    console.log('🔍 [BACKEND] updateProduct - Produit final retourné:');
+    console.log('   - suggestedPrice:', finalProduct.suggestedPrice);
+    console.log('   - genre:', finalProduct.genre);
+    console.log('   - status:', finalProduct.status);
+    
+    return finalProduct;
   }
 
   async uploadColorImage(productId: number, colorId: number, image: Express.Multer.File) {
@@ -1704,6 +1735,7 @@ export class ProductService {
           name: dto.name,
           description: dto.description,
           price: dto.price,
+          suggestedPrice: dto.suggestedPrice, // ✅ AJOUTER LE CHAMP suggestedPrice
           stock: dto.stock,
           status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
           isReadyProduct: isReadyProduct, // ✅ UTILISER LA VALEUR DU DTO
@@ -1939,6 +1971,7 @@ export class ProductService {
       if (updateDto.name) updateData.name = updateDto.name;
       if (updateDto.description) updateData.description = updateDto.description;
       if (updateDto.price) updateData.price = updateDto.price;
+      if (updateDto.suggestedPrice !== undefined) updateData.suggestedPrice = updateDto.suggestedPrice; // ✅ AJOUTER LE CHAMP suggestedPrice
       if (updateDto.stock !== undefined) updateData.stock = updateDto.stock;
       if (updateDto.status) {
         updateData.status = updateDto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT;
