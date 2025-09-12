@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CreateDesignDto, DesignCategory } from './dto/create-design.dto';
+import { CreateDesignDto } from './dto/create-design.dto';
 import { UpdateDesignDto } from './dto/update-design.dto';
 import { QueryDesignsDto, DesignStatus } from './dto/query-design.dto';
 import { DesignResponseDto, DesignListResponseDto } from './dto/design-response.dto';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { UploadApiResponse } from 'cloudinary';
-import { DesignCategory as PrismaDesignCategory, PublicationStatus, VendorProductStatus } from '@prisma/client';
+import { PublicationStatus, VendorProductStatus } from '@prisma/client';
 import { MailService } from '../core/mail/mail.service';
 import { DesignAutoValidationService } from './design-auto-validation.service';
 
@@ -59,8 +59,17 @@ export class DesignService {
         height: originalUpload.height
       };
 
-      // Conversion de la catégorie
-      const prismaCategory = this.convertCategoryToPrisma(createDesignDto.category);
+      // Vérifier que la catégorie existe et est active
+      const category = await this.prisma.designCategory.findFirst({
+        where: { 
+          id: createDesignDto.categoryId,
+          isActive: true 
+        },
+      });
+      
+      if (!category) {
+        throw new BadRequestException('Catégorie non trouvée ou inactive');
+      }
 
       // Création du design en base
       const design = await this.prisma.design.create({
@@ -69,7 +78,7 @@ export class DesignService {
           name: createDesignDto.name,
           description: createDesignDto.description || null,
           price: createDesignDto.price,
-          category: prismaCategory,
+          categoryId: createDesignDto.categoryId,
           imageUrl: originalUpload.secure_url,
           thumbnailUrl: thumbnailUpload.secure_url,
           cloudinaryPublicId: originalUpload.public_id,
@@ -111,7 +120,7 @@ export class DesignService {
     vendorId: number,
     queryDto: QueryDesignsDto,
   ): Promise<DesignListResponseDto> {
-    const { page, limit, category, status, search, sortBy, sortOrder } = queryDto;
+    const { page, limit, categoryId, status, search, sortBy, sortOrder } = queryDto;
     const currentPage = page && !isNaN(Number(page)) && Number(page) > 0 ? Number(page) : 1;
     const take = limit && !isNaN(Number(limit)) && Number(limit) > 0 ? Number(limit) : 20;
     const skip = (currentPage - 1) * take;
@@ -121,8 +130,8 @@ export class DesignService {
       vendorId,
     };
 
-    if (category) {
-      where.category = this.convertCategoryToPrisma(category);
+    if (categoryId) {
+      where.categoryId = categoryId;
     }
 
     if (status && status !== DesignStatus.ALL) {
@@ -194,7 +203,8 @@ export class DesignService {
               firstName: true,
               lastName: true
             }
-          }
+          },
+          category: true
         }
       }),
       this.prisma.design.count({ where: { ...where, isDelete: false } })
@@ -269,8 +279,20 @@ export class DesignService {
         : [];
     }
 
-    if (updateDesignDto.category) {
-      updateData.category = this.convertCategoryToPrisma(updateDesignDto.category);
+    if (updateDesignDto.categoryId) {
+      // Vérifier que la nouvelle catégorie existe et est active
+      const category = await this.prisma.designCategory.findFirst({
+        where: { 
+          id: updateDesignDto.categoryId,
+          isActive: true 
+        },
+      });
+      
+      if (!category) {
+        throw new BadRequestException('Catégorie non trouvée ou inactive');
+      }
+      
+      updateData.categoryId = updateDesignDto.categoryId;
     }
 
     // Mise à jour du design
@@ -388,27 +410,6 @@ export class DesignService {
     }
   }
 
-  private convertCategoryToPrisma(category: DesignCategory): PrismaDesignCategory {
-    const categoryMap = {
-      [DesignCategory.LOGO]: PrismaDesignCategory.LOGO,
-      [DesignCategory.PATTERN]: PrismaDesignCategory.PATTERN,
-      [DesignCategory.ILLUSTRATION]: PrismaDesignCategory.ILLUSTRATION,
-      [DesignCategory.TYPOGRAPHY]: PrismaDesignCategory.TYPOGRAPHY,
-      [DesignCategory.ABSTRACT]: PrismaDesignCategory.ABSTRACT,
-    };
-    return categoryMap[category];
-  }
-
-  private convertCategoryFromPrisma(category: PrismaDesignCategory): DesignCategory {
-    const categoryMap = {
-      [PrismaDesignCategory.LOGO]: DesignCategory.LOGO,
-      [PrismaDesignCategory.PATTERN]: DesignCategory.PATTERN,
-      [PrismaDesignCategory.ILLUSTRATION]: DesignCategory.ILLUSTRATION,
-      [PrismaDesignCategory.TYPOGRAPHY]: DesignCategory.TYPOGRAPHY,
-      [PrismaDesignCategory.ABSTRACT]: DesignCategory.ABSTRACT,
-    };
-    return categoryMap[category] || DesignCategory.ILLUSTRATION;
-  }
 
   private formatDesignResponse(design: any): DesignResponseDto {
     // Déterminer le statut de validation selon la logique demandée
@@ -439,7 +440,14 @@ export class DesignService {
       name: design.name,
       description: design.description || undefined,
       price: design.price,
-      category: this.convertCategoryFromPrisma(design.category),
+      categoryId: design.categoryId,
+      category: design.category ? {
+        id: design.category.id,
+        name: design.category.name,
+        slug: design.category.slug,
+        icon: design.category.icon,
+        color: design.category.color,
+      } : undefined,
       imageUrl: design.imageUrl,
       thumbnailUrl: design.thumbnailUrl || undefined,
       fileSize: design.fileSize || undefined,
@@ -1535,8 +1543,8 @@ export class DesignService {
       isPending: true,
     };
 
-    if (category) {
-      where.category = this.convertCategoryToPrisma(category);
+    if (categoryId) {
+      where.categoryId = categoryId;
     }
 
     if (search) {
@@ -1652,8 +1660,8 @@ export class DesignService {
       }
     }
 
-    if (category) {
-      where.category = this.convertCategoryToPrisma(category);
+    if (categoryId) {
+      where.categoryId = categoryId;
     }
 
     if (search) {

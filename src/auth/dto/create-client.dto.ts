@@ -336,6 +336,93 @@ export class UpdateVendorProfileDto {
   shop_name?: string;
 }
 
+// 🆕 DTO pour mise à jour des informations vendeur par l'admin
+export class AdminUpdateVendorDto {
+  @ApiProperty({ 
+    example: 'Jean',
+    description: 'Prénom',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @ApiProperty({ 
+    example: 'Dupont',
+    description: 'Nom de famille',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @ApiProperty({ 
+    example: 'jean.dupont@gmail.com',
+    description: 'Adresse email',
+    required: false
+  })
+  @IsOptional()
+  @IsEmail({}, { message: 'Format d\'email invalide' })
+  email?: string;
+
+  @ApiProperty({ 
+    example: 'DESIGNER',
+    description: 'Type de vendeur',
+    enum: VendeurType,
+    required: false
+  })
+  @IsOptional()
+  @IsEnum(VendeurType, { message: 'Le type de vendeur doit être DESIGNER, INFLUENCEUR ou ARTISTE' })
+  vendeur_type?: VendeurType;
+
+  @ApiProperty({ 
+    example: '+33 6 12 34 56 78',
+    description: 'Numéro de téléphone',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[\+]?[0-9\s\-\(\)]{8,}$/, { message: 'Format de téléphone invalide' })
+  phone?: string;
+
+  @ApiProperty({ 
+    example: 'France',
+    description: 'Pays de résidence',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiProperty({ 
+    example: '123 Rue de la Paix, 75001 Paris',
+    description: 'Adresse complète',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiProperty({ 
+    example: 'Boutique Design Jean',
+    description: 'Nom de la boutique',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  shop_name?: string;
+
+  @ApiProperty({ 
+    example: true,
+    description: 'Statut actif du vendeur',
+    required: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  status?: boolean;
+
+}
+
 // 🆕 DTO de réponse pour le profil vendeur étendu
 export class ExtendedVendorProfileResponseDto {
   id: number;
@@ -353,6 +440,9 @@ export class ExtendedVendorProfileResponseDto {
     required: false
   })
   profile_photo_url?: string;
-  created_at: Date;
+  status: boolean;
+  must_change_password: boolean;
   last_login_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 } 

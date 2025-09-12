@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength, MaxLength, IsNumber, Min, Max, IsEnum } from 'class-validator';
-import { Transform } from 'class-transformer';
-import { DesignCategory } from './create-design.dto';
+import { IsOptional, IsString, MinLength, MaxLength, IsNumber, Min, Max, IsInt } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export class UpdateDesignDto {
   @ApiProperty({
@@ -45,14 +44,16 @@ export class UpdateDesignDto {
   price?: number;
 
   @ApiProperty({
-    description: 'Catégorie du design',
-    enum: DesignCategory,
-    example: DesignCategory.LOGO,
+    description: 'ID de la nouvelle catégorie du design',
+    example: 2,
+    type: 'number',
     required: false
   })
   @IsOptional()
-  @IsEnum(DesignCategory, { message: 'Catégorie invalide' })
-  category?: DesignCategory;
+  @Type(() => Number)
+  @IsInt({ message: 'L\'ID de la catégorie doit être un nombre entier' })
+  @Min(1, { message: 'L\'ID de la catégorie doit être supérieur à 0' })
+  categoryId?: number;
 
   @ApiProperty({
     description: 'Tags optionnels (séparés par des virgules)',

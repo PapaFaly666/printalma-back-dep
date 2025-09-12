@@ -1,5 +1,4 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { DesignCategory } from './create-design.dto';
 
 // =============================
 // 🆕 INFOS VENDEUR POUR VALIDATION
@@ -46,8 +45,27 @@ export class DesignResponseDto {
   @ApiProperty({ example: 2500 })
   price: number;
 
-  @ApiProperty({ enum: DesignCategory, example: DesignCategory.LOGO })
-  category: DesignCategory;
+  @ApiProperty({ example: 1, description: 'ID de la catégorie de design' })
+  categoryId?: number;
+
+  @ApiProperty({ 
+    example: { 
+      id: 1, 
+      name: 'Logo Design', 
+      slug: 'logo-design',
+      icon: '🎨',
+      color: '#FF5722'
+    }, 
+    nullable: true,
+    description: 'Informations de la catégorie' 
+  })
+  category?: {
+    id: number;
+    name: string;
+    slug: string;
+    icon?: string;
+    color?: string;
+  };
 
   @ApiProperty({ example: 'https://res.cloudinary.com/example/image/upload/v1620123456/designs/design_123.jpg' })
   imageUrl: string;

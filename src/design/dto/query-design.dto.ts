@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsEnum, IsString, IsNumber, Min } from 'class-validator';
-import { Transform } from 'class-transformer';
-import { DesignCategory } from './create-design.dto';
+import { IsOptional, IsEnum, IsString, IsNumber, Min, IsInt } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export enum DesignStatus {
   ALL = 'all',
@@ -28,10 +27,12 @@ export class QueryDesignsDto {
   @Min(1)
   limit?: number = 20;
 
-  @ApiProperty({ enum: DesignCategory, required: false })
+  @ApiProperty({ type: 'number', required: false, description: 'ID de la catégorie de design' })
   @IsOptional()
-  @IsEnum(DesignCategory)
-  category?: DesignCategory;
+  @Type(() => Number)
+  @IsInt({ message: 'L\'ID de la catégorie doit être un nombre entier' })
+  @Min(1, { message: 'L\'ID de la catégorie doit être supérieur à 0' })
+  categoryId?: number;
 
   @ApiProperty({ enum: DesignStatus, required: false })
   @IsOptional()

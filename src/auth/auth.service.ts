@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { LoginDto } from './dto/user-dto';
-import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ListClientsResponseDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto } from './dto/create-client.dto';
+import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ListClientsResponseDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
 import { PrismaService } from '../prisma.service';
 import { MailService } from '../core/mail/mail.service';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
@@ -1420,5 +1420,221 @@ export class AuthService {
             },
             access_token
         };
+    }
+
+    /**
+     * Admin: Mettre à jour les informations d'un vendeur
+     */
+    async adminUpdateVendor(vendorId: number, updateDto: AdminUpdateVendorDto, profilePhoto?: Express.Multer.File): Promise<ExtendedVendorProfileResponseDto> {
+        try {
+            // Vérifier que le vendeur existe
+            const existingVendor = await this.prisma.user.findUnique({
+                where: { id: vendorId },
+            });
+
+            if (!existingVendor) {
+                throw new NotFoundException('Vendeur non trouvé');
+            }
+
+            if (existingVendor.role !== Role.VENDEUR) {
+                throw new BadRequestException('Cet utilisateur n\'est pas un vendeur');
+            }
+
+            // Protection SUPERADMIN
+            if (existingVendor.role === Role.SUPERADMIN) {
+                throw new BadRequestException('Impossible de modifier un compte SUPERADMIN');
+            }
+
+            // Vérifier l'unicité de l'email si modifié
+            if (updateDto.email && updateDto.email !== existingVendor.email) {
+                const emailExists = await this.prisma.user.findUnique({
+                    where: { email: updateDto.email },
+                });
+                if (emailExists) {
+                    throw new ConflictException('Cette adresse email est déjà utilisée');
+                }
+            }
+
+            // Vérifier l'unicité du nom de boutique si modifié
+            if (updateDto.shop_name && updateDto.shop_name !== existingVendor.shop_name) {
+                const shopNameExists = await this.prisma.user.findUnique({
+                    where: { shop_name: updateDto.shop_name },
+                });
+                if (shopNameExists) {
+                    throw new ConflictException('Ce nom de boutique est déjà utilisé');
+                }
+            }
+
+            // Gérer l'upload de la photo de profil si fournie
+            let profile_photo_url = existingVendor.profile_photo_url;
+            if (profilePhoto) {
+                try {
+                    // Supprimer l'ancienne photo si elle existe
+                    if (existingVendor.profile_photo_url) {
+                        try {
+                            // Extraire le public_id de l'URL Cloudinary
+                            const urlParts = existingVendor.profile_photo_url.split('/');
+                            const publicIdWithExtension = urlParts[urlParts.length - 1];
+                            const publicId = `profile-photos/${publicIdWithExtension.split('.')[0]}`;
+                            await this.cloudinaryService.deleteImage(publicId);
+                        } catch (deleteError) {
+                            console.warn('Impossible de supprimer l\'ancienne photo de profil:', deleteError.message);
+                        }
+                    }
+
+                    // Uploader la nouvelle photo
+                    const uploadResult = await this.cloudinaryService.uploadImage(profilePhoto, {
+                        folder: 'profile-photos',
+                        resource_type: 'image',
+                        format: 'png',
+                        transformation: [
+                            { width: 300, height: 300, crop: 'fill' },
+                            { quality: 'auto:good' }
+                        ]
+                    });
+
+                    profile_photo_url = uploadResult.secure_url;
+                } catch (uploadError) {
+                    console.error('Erreur lors de l\'upload de la photo de profil:', uploadError);
+                    throw new BadRequestException('Erreur lors de l\'upload de la photo de profil');
+                }
+            }
+
+            // Créer l'objet de mise à jour
+            const updateData: any = {
+                ...updateDto,
+                profile_photo_url,
+                must_change_password: false, // Toujours défini à false lors de la modification par admin
+                updated_at: new Date(),
+            };
+
+            // Supprimer les champs undefined
+            Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
+            // Effectuer la mise à jour
+            const updatedVendor = await this.prisma.user.update({
+                where: { id: vendorId },
+                data: updateData,
+                select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                    vendeur_type: true,
+                    phone: true,
+                    country: true,
+                    address: true,
+                    shop_name: true,
+                    profile_photo_url: true,
+                    status: true,
+                    must_change_password: true,
+                    last_login_at: true,
+                    created_at: true,
+                    updated_at: true,
+                },
+            });
+
+            console.log(`✅ Vendeur ${vendorId} mis à jour par admin`);
+
+            return updatedVendor;
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour du vendeur par admin:', error);
+            
+            if (error instanceof NotFoundException || error instanceof BadRequestException || error instanceof ConflictException) {
+                throw error;
+            }
+            
+            throw new BadRequestException('Erreur lors de la mise à jour du vendeur');
+        }
+    }
+
+    /**
+     * Admin: Liste complète des vendeurs avec filtres avancés
+     */
+    async listAllVendors(queryDto: ListClientsQueryDto) {
+        const { page = 1, limit = 10, status, vendeur_type, search } = queryDto;
+
+        // Construire la condition WHERE pour filtrer uniquement les vendeurs
+        const whereCondition: any = {
+            role: Role.VENDEUR, // Seuls les vendeurs
+        };
+
+        // Ajouter les filtres optionnels
+        if (status !== undefined) {
+            whereCondition.status = status;
+        }
+
+        if (vendeur_type) {
+            whereCondition.vendeur_type = vendeur_type;
+        }
+
+        if (search) {
+            whereCondition.OR = [
+                { firstName: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { shop_name: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        const skip = (page - 1) * limit;
+
+        try {
+            const [vendors, total] = await Promise.all([
+                this.prisma.user.findMany({
+                    where: whereCondition,
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        vendeur_type: true,
+                        phone: true,
+                        country: true,
+                        address: true,
+                        shop_name: true,
+                        profile_photo_url: true,
+                        status: true,
+                        must_change_password: true,
+                        last_login_at: true,
+                        created_at: true,
+                        updated_at: true,
+                        login_attempts: true,
+                        locked_until: true,
+                    },
+                    orderBy: { created_at: 'desc' },
+                    skip,
+                    take: limit,
+                }),
+                this.prisma.user.count({
+                    where: whereCondition,
+                })
+            ]);
+
+            const totalPages = Math.ceil(total / limit);
+            const hasNext = page < totalPages;
+            const hasPrevious = page > 1;
+
+            return {
+                vendors,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages,
+                    hasNext,
+                    hasPrevious,
+                },
+                filters: {
+                    ...(status !== undefined && { status }),
+                    ...(vendeur_type && { vendeur_type }),
+                    ...(search && { search }),
+                },
+                message: `${total} vendeur(s) trouvé(s)`,
+            };
+        } catch (error) {
+            console.error('Erreur lors de la récupération des vendeurs:', error);
+            throw new BadRequestException('Erreur lors de la récupération des vendeurs');
+        }
     }
 }

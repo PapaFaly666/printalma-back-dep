@@ -54,6 +54,7 @@ model User {
   createdCommissions   VendorCommission[] @relation("CommissionCreatedByUser")
   commissionAuditLogs  CommissionAuditLog[] @relation("CommissionAuditVendor")
   commissionChanges    CommissionAuditLog[] @relation("CommissionAuditChanger")
+  createdDesignCategories DesignCategory[] @relation("DesignCategoryCreator")
 
   @@index([country])
   @@index([shop_name])
@@ -354,12 +355,36 @@ enum CoordinateType {
   ABSOLUTE
 }
 
-enum DesignCategory {
-  LOGO
-  PATTERN
-  ILLUSTRATION
-  TYPOGRAPHY
-  ABSTRACT
+// ✅ ANCIEN ENUM SUPPRIMÉ - Remplacé par un modèle dynamique
+// enum DesignCategory {
+//   LOGO
+//   PATTERN
+//   ILLUSTRATION
+//   TYPOGRAPHY
+//   ABSTRACT
+// }
+
+/// Catégories de design dynamiques créées par l'admin
+model DesignCategory {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // Nom de la catégorie (ex: "Logo", "Illustration")
+  description String?  // Description optionnelle
+  slug        String   @unique // Slug pour URL (ex: "logo", "illustration")
+  coverImageUrl String? // URL de l'image de couverture uploadée
+  coverImagePublicId String? // Public ID Cloudinary pour l'image de couverture
+  isActive    Boolean  @default(true) // Catégorie active ou désactivée
+  sortOrder   Int      @default(0) // Ordre d'affichage
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   Int      // ID de l'admin qui a créé la catégorie
+  
+  // Relations
+  creator     User     @relation("DesignCategoryCreator", fields: [createdBy], references: [id])
+  designs     Design[] @relation("DesignToCategory")
+  
+  @@index([isActive])
+  @@index([sortOrder])
+  @@index([slug])
 }
 
 model Design {
@@ -368,7 +393,8 @@ model Design {
   name                String
   description         String?
   price               Float
-  category            DesignCategory
+  categoryId          Int?             // ID de la catégorie sélectionnée (nullable pour compatibilité)
+  category            DesignCategory?  @relation("DesignToCategory", fields: [categoryId], references: [id])
   imageUrl            String
   thumbnailUrl        String?
   cloudinaryPublicId  String
@@ -413,7 +439,7 @@ model Design {
   productPositions    ProductDesignPosition[] @relation("DesignToDesignPosition")
   
   @@index([vendorId])
-  @@index([category])
+  @@index([categoryId])
   @@index([isPublished])
   @@index([isPending])
   @@index([isValidated])

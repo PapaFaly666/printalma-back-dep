@@ -2,7 +2,7 @@ import { Controller, Post, Body, UseGuards, Get, Put, Req, BadRequestException, 
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/user-dto';
-import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, AdminResetPasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto } from './dto/create-client.dto';
+import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, AdminResetPasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
 import { FirstLoginDto, FirstLoginResponseDto } from './dto/first-login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AdminGuard } from '../core/guards/admin.guard';
@@ -416,6 +416,66 @@ export class AuthController {
 
 		const existingUser = await this.authService.checkShopNameAvailability(name.trim());
 		return { available: !existingUser };
+	}
+
+	/**
+	 * Admin: Récupérer un vendeur spécifique pour modification
+	 */
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@Get('admin/vendors/:id')
+	@ApiOperation({ summary: 'Récupérer les informations détaillées d\'un vendeur' })
+	@ApiResponse({ status: 200, description: 'Informations du vendeur récupérées avec succès', type: ExtendedVendorProfileResponseDto })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	async getVendorById(@Param('id', ParseIntPipe) vendorId: number): Promise<ExtendedVendorProfileResponseDto> {
+		return this.authService.getExtendedVendorProfile(vendorId);
+	}
+
+	/**
+	 * Admin: Mettre à jour les informations d'un vendeur
+	 */
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@Put('admin/vendors/:id')
+	@UseInterceptors(FileInterceptor('profilePhoto', profilePhotoConfig))
+	@ApiOperation({ summary: 'Mettre à jour les informations d\'un vendeur par l\'admin' })
+	@ApiConsumes('multipart/form-data')
+	@ApiBody({
+		description: 'Données de mise à jour du vendeur avec photo optionnelle',
+		schema: {
+			type: 'object',
+			properties: {
+				firstName: { type: 'string', example: 'Jean' },
+				lastName: { type: 'string', example: 'Dupont' },
+				email: { type: 'string', example: 'jean.dupont@gmail.com' },
+				vendeur_type: { type: 'string', enum: ['DESIGNER', 'INFLUENCEUR', 'ARTISTE'] },
+				phone: { type: 'string', example: '+33 6 12 34 56 78' },
+				country: { type: 'string', example: 'France' },
+				address: { type: 'string', example: '123 Rue de la Paix, 75001 Paris' },
+				shop_name: { type: 'string', example: 'Boutique Design Jean' },
+				status: { type: 'boolean', example: true },
+				profilePhoto: { type: 'string', format: 'binary', description: 'Nouvelle photo de profil (optionnelle)' }
+			}
+		}
+	})
+	@ApiResponse({ status: 200, description: 'Vendeur mis à jour avec succès', type: ExtendedVendorProfileResponseDto })
+	@ApiResponse({ status: 400, description: 'Données invalides' })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	async adminUpdateVendor(
+		@Param('id', ParseIntPipe) vendorId: number,
+		@Body() updateDto: AdminUpdateVendorDto,
+		@UploadedFile() profilePhoto?: Express.Multer.File
+	): Promise<ExtendedVendorProfileResponseDto> {
+		return this.authService.adminUpdateVendor(vendorId, updateDto, profilePhoto);
+	}
+
+	/**
+	 * Admin: Liste complète des vendeurs avec filtres avancés
+	 */
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@Get('admin/vendors')
+	@ApiOperation({ summary: 'Récupérer la liste complète des vendeurs avec filtres' })
+	@ApiResponse({ status: 200, description: 'Liste des vendeurs récupérée avec succès' })
+	async listAllVendors(@Query() queryDto: ListClientsQueryDto) {
+		return this.authService.listAllVendors(queryDto);
 	}
 
 	/**

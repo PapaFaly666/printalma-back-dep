@@ -1,33 +1,20 @@
-❌ Erreur updateVendorCommission: Error: Token d'authentification requis
-    at j8e.getAuthToken (index-s5xv7qbK.js:939:94496)
-    at j8e.getHeaders (index-s5xv7qbK.js:939:94633)
-    at j8e.updateVendorCommission (index-s5xv7qbK.js:939:95545)
-    at B (index-s5xv7qbK.js:940:100)
-    at E (index-s5xv7qbK.js:939:85962)
-    at b (index-s5xv7qbK.js:939:81247)
-    at JM (index-s5xv7qbK.js:49:119074)
-    at index-s5xv7qbK.js:49:124421
-    at i3 (index-s5xv7qbK.js:49:9076)
-    at Y2 (index-s5xv7qbK.js:49:120342)
-updateVendorCommission @ index-s5xv7qbK.js:939
-index-s5xv7qbK.js:940  ❌ Erreur lors de la mise à jour de la commission: Error: Token d'authentification requis
-    at j8e.getAuthToken (index-s5xv7qbK.js:939:94496)
-    at j8e.getHeaders (index-s5xv7qbK.js:939:94633)
-    at j8e.updateVendorCommission (index-s5xv7qbK.js:939:95545)
-    at B (index-s5xv7qbK.js:940:100)
-    at E (index-s5xv7qbK.js:939:85962)
-    at b (index-s5xv7qbK.js:939:81247)
-    at JM (index-s5xv7qbK.js:49:119074)
-    at index-s5xv7qbK.js:49:124421
-    at i3 (index-s5xv7qbK.js:49:9076)
-    at Y2 (index-s5xv7qbK.js:49:120342)
-B @ index-s5xv7qbK.js:940
-index-s5xv7qbK.js:939  Erreur lors de la mise à jour de la commission: Error: Token d'authentification requis
-    at B (index-s5xv7qbK.js:940:281)
-    at async E (index-s5xv7qbK.js:939:85956)
-    at async b (index-s5xv7qbK.js:939:81241)
-E @ index-s5xv7qbK.js:939
-index-s5xv7qbK.js:939  Erreur lors de la sauvegarde: Error: Token d'authentification requis
-    at B (index-s5xv7qbK.js:940:281)
-    at async E (index-s5xv7qbK.js:939:85956)
-    at async b (index-s5xv7qbK.js:939:81241)
+pfdev@PC:/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep$ npm run start
+
+> printalma-back@0.0.1 start
+> cross-env TS_NODE_TRANSPILE_ONLY=true node --max-old-space-size=512 -r ts-node/register src/main.ts
+
+/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/src/decorator/typechecker/IsEnum.ts:18
+  return Object.entries(entity)
+                ^
+TypeError: Cannot convert undefined or null to object
+    at Function.entries (<anonymous>)
+    at validEnumValues (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/src/decorator/typechecker/IsEnum.ts:18:17)
+    at IsEnum (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/src/decorator/typechecker/IsEnum.ts:30:29)
+    at Object.<anonymous> (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/dto/query-design.dto.ts:33:10)
+    at Module._compile (node:internal/modules/cjs/loader:1546:14)
+    at Module.m._compile (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/ts-node/src/index.ts:1618:23)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1691:10)
+    at Object.require.extensions.<computed> [as .ts] (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1317:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1127:12)
+pfdev@PC:/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep$
