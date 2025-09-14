@@ -394,3 +394,5 @@ commissionRate: Number(formState.commissionRate)
 Pour toute question technique liée à la modification des vendeurs côté admin, référez-vous à ce guide et aux logs réseau du navigateur pour diagnostiquer les erreurs.
 
 
+
+

@@ -1265,6 +1265,7 @@ export class VendorPublishService {
       category: string;
       imageBase64: string;
       tags?: string[];
+      price?: number;
     },
     vendorId: number
   ): Promise<{
@@ -1274,6 +1275,7 @@ export class VendorPublishService {
     designUrl: string;
   }> {
     this.logger.log(`🎨 Création design par vendeur ${vendorId}`);
+    this.logger.log(`💰 Prix reçu: ${designData.price} (type: ${typeof designData.price})`);
 
     try {
       // ✅ VALIDATION: Image fournie
@@ -1303,8 +1305,8 @@ export class VendorPublishService {
           vendorId: vendorId,
           name: designData.name,
           description: designData.description || '',
-          price: 0,
-          category: designData.category as any,
+          price: designData.price !== undefined ? designData.price : 0,
+          categoryId: this.getCategoryId(designData.category),
           imageUrl: uploadResult.secure_url,
           thumbnailUrl: uploadResult.secure_url,
           cloudinaryPublicId: uploadResult.public_id,
@@ -2226,6 +2228,35 @@ export class VendorPublishService {
       }
       throw new BadRequestException(`Erreur lors de la publication: ${error.message}`);
     }
+  }
+
+  /**
+   * 🏷️ Convertir nom de catégorie en ID
+   */
+  private getCategoryId(categoryName: string): number {
+    const CATEGORY_MAPPING = {
+      'Mangas': 5,
+      'ILLUSTRATION': 1,
+      'LOGO': 2,
+      'PATTERN': 3,
+      'TYPOGRAPHY': 4,
+      'ABSTRACT': 6,
+      'illustration': 1,
+      'logo': 2,
+      'pattern': 3,
+      'typography': 4,
+      'abstract': 6
+    };
+
+    const categoryId = CATEGORY_MAPPING[categoryName];
+
+    if (!categoryId) {
+      this.logger.warn(`⚠️ Catégorie "${categoryName}" non reconnue, utilisation de l'ID par défaut (1)`);
+      return 1; // ID par défaut pour ILLUSTRATION
+    }
+
+    this.logger.log(`🏷️ Conversion catégorie: "${categoryName}" → ID ${categoryId}`);
+    return categoryId;
   }
 }
  

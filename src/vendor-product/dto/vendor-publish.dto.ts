@@ -301,6 +301,12 @@ export class CreateDesignDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @ApiProperty({ example: 1200, required: false, description: 'Prix du design en FCFA' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price?: number;
 }
 
 export class CreateDesignResponseDto {
