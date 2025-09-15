@@ -1660,8 +1660,8 @@ export class DesignService {
       }
     }
 
-    if (categoryId) {
-      where.categoryId = categoryId;
+    if (category) {
+      where.categoryId = category;
     }
 
     if (search) {
