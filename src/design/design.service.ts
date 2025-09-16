@@ -1656,9 +1656,6 @@ export class DesignService {
       }
     }
 
-    if (category) {
-      where.categoryId = category;
-    }
 
     if (search) {
       where.OR = [
