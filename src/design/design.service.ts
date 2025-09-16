@@ -1533,7 +1533,7 @@ export class DesignService {
       throw new ForbiddenException('Seuls les administrateurs peuvent voir les designs en attente');
     }
 
-    const { page, limit, category, search, sortBy, sortOrder } = queryDto;
+    const { page, limit, search, sortBy, sortOrder } = queryDto;
     const currentPage = page && !isNaN(Number(page)) && Number(page) > 0 ? Number(page) : 1;
     const take = limit && !isNaN(Number(limit)) && Number(limit) > 0 ? Number(limit) : 20;
     const skip = (currentPage - 1) * take;
@@ -1542,10 +1542,6 @@ export class DesignService {
     const where: any = {
       isPending: true,
     };
-
-    if (categoryId) {
-      where.categoryId = categoryId;
-    }
 
     if (search) {
       where.OR = [
@@ -1632,7 +1628,7 @@ export class DesignService {
       throw new ForbiddenException('Seuls les administrateurs peuvent voir tous les designs');
     }
 
-    const { page, limit, category, search, sortBy, sortOrder } = queryDto;
+    const { page, limit, search, sortBy, sortOrder } = queryDto;
     const currentPage = page && !isNaN(Number(page)) && Number(page) > 0 ? Number(page) : 1;
     const take = limit && !isNaN(Number(limit)) && Number(limit) > 0 ? Number(limit) : 20;
     const skip = (currentPage - 1) * take;

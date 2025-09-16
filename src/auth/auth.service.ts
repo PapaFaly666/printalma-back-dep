@@ -1133,7 +1133,10 @@ export class AuthService {
                 address: true,
                 shop_name: true,
                 profile_photo_url: true,
+                status: true,
+                must_change_password: true,
                 created_at: true,
+                updated_at: true,
                 last_login_at: true,
             }
         });
@@ -1440,11 +1443,6 @@ export class AuthService {
                 throw new BadRequestException('Cet utilisateur n\'est pas un vendeur');
             }
 
-            // Protection SUPERADMIN
-            if (existingVendor.role === Role.SUPERADMIN) {
-                throw new BadRequestException('Impossible de modifier un compte SUPERADMIN');
-            }
-
             // Vérifier l'unicité de l'email si modifié
             if (updateDto.email && updateDto.email !== existingVendor.email) {
                 const emailExists = await this.prisma.user.findUnique({
@@ -1483,7 +1481,7 @@ export class AuthService {
                     }
 
                     // Uploader la nouvelle photo
-                    const uploadResult = await this.cloudinaryService.uploadImage(profilePhoto, {
+                    const uploadResult = await this.cloudinaryService.uploadImageWithOptions(profilePhoto, {
                         folder: 'profile-photos',
                         resource_type: 'image',
                         format: 'png',

@@ -1400,7 +1400,7 @@ export class VendorPublishService {
         description: design.description,
         imageUrl: design.imageUrl,
         thumbnailUrl: design.thumbnailUrl,
-        category: design.category,
+        categoryId: design.categoryId,
         tags: design.tags,
         isValidated: design.isValidated,
         isPending: design.isPending,
