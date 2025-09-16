@@ -1,43 +1,32 @@
-vccessfully
-[Nest] 69905  - 09/15/2025, 1:33:17 AM     LOG [NestApplication] Nest application successfully started +20ms
-🚀 Application running on port 3004
-📚 Swagger UI available at: http://localhost:3004/api-docs
-📊 Payload limits configured:
-   - General JSON: 50MB
-   - Vendor publish: 100MB
-🍪 Token trouvé dans cookies: { auth_token: true, jwt: false, authToken: false, access_token: false }
-🔍 Validation JWT pour utilisateur: { sub: 3, email: 'lazou@gmail.com', role: 'SUPERADMIN' }       
-🍪 Token trouvé dans cookies: { auth_token: true, jwt: false, authToken: false, access_token: false }
-🔍 Validation JWT pour utilisateur: { sub: 3, email: 'lazou@gmail.com', role: 'SUPERADMIN' }       
-✅ Authentification réussie pour lazou@gmail.com (ID: 3, Rôle: SUPERADMIN)
-[Nest] 69905  - 09/15/2025, 1:35:56 AM   ERROR [ExceptionsHandler] categoryId is not defined
-ReferenceError: categoryId is not defined
-    at DesignService.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.service.ts:1663:5)
-    at async DesignController.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.controller.ts:448:18)
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-execution-context.js:46:28
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-proxy.js:9:17
-🍪 Token trouvé dans cookies: { auth_token: true, jwt: false, authToken: false, access_token: false }
-🔍 Validation JWT pour utilisateur: { sub: 3, email: 'lazou@gmail.com', role: 'SUPERADMIN' }       
-✅ Authentification réussie pour lazou@gmail.com (ID: 3, Rôle: SUPERADMIN)
-✅ Authentification réussie pour lazou@gmail.com (ID: 3, Rôle: SUPERADMIN)
-[Nest] 69905  - 09/15/2025, 1:35:56 AM   ERROR [ExceptionsHandler] categoryId is not defined       
-ReferenceError: categoryId is not defined
-    at DesignService.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.service.ts:1663:5)
-    at async DesignController.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.controller.ts:448:18)
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-execution-context.js:46:28
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-proxy.js:9:17
-[Nest] 69905  - 09/15/2025, 1:35:57 AM   ERROR [ExceptionsHandler] categoryId is not defined
-ReferenceError: categoryId is not defined
-    at DesignService.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.service.ts:1663:5)
-    at async DesignController.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.controller.ts:448:18)
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-execution-context.js:46:28
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-proxy.js:9:17
-🍪 Token trouvé dans cookies: { auth_token: true, jwt: false, authToken: false, access_token: false }
-🔍 Validation JWT pour utilisateur: { sub: 3, email: 'lazou@gmail.com', role: 'SUPERADMIN' }       
-✅ Authentification réussie pour lazou@gmail.com (ID: 3, Rôle: SUPERADMIN)
-[Nest] 69905  - 09/15/2025, 1:35:58 AM   ERROR [ExceptionsHandler] categoryId is not defined
-ReferenceError: categoryId is not defined
-    at DesignService.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.service.ts:1663:5)
-    at async DesignController.getAllDesignsForAdmin (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/design/design.controller.ts:448:18)
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-execution-context.js:46:28
-    at async /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@nestjs/core/router/router-proxy.js:9:17
+pfdev@PC:/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep$ npm run start
+
+> printalma-back@0.0.1 start
+> cross-env TS_NODE_TRANSPILE_ONLY=true node --max-old-space-size=512 -r ts-node/register src/main.ts
+
+Error: Cannot find module '.prisma/client/default'
+Require stack:
+- /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@prisma/client/default.js
+- /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/prisma.service.ts
+- /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/app.controller.ts
+- /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/app.module.ts
+- /mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/main.ts
+    at Function.Module._resolveFilename (node:internal/modules/cjs/loader:1248:15)
+    at Function.Module._resolveFilename.sharedData.moduleResolveFilenameHook.installedValue [as _resolveFilename] (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@cspotcode/source-map-support/source-map-support.js:811:30)
+    at Function.Module._load (node:internal/modules/cjs/loader:1074:27)
+    at TracingChannel.traceSync (node:diagnostics_channel:315:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:217:24)
+    at Module.require (node:internal/modules/cjs/loader:1339:12)
+    at require (node:internal/modules/helpers:125:16)
+    at Object.<anonymous> (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@prisma/client/default.js:2:6)
+    at Module._compile (node:internal/modules/cjs/loader:1546:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1691:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/@prisma/client/default.js',
+    '/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/prisma.service.ts',
+    '/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/app.controller.ts',
+    '/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/app.module.ts',
+    '/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/main.ts'
+  ]
+}
+pfdev@PC:/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep$

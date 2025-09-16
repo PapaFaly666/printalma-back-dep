@@ -154,6 +154,129 @@ export class VendorProductValidationService {
   }
 
   /**
+   * 🎯 LOGIQUE CORRECTE: Mettre en brouillon ou publier selon validation admin
+   * Si le vendeur choisit BROUILLON:
+   *   - Si design validé → DRAFT
+   *   - Si design pas validé → PENDING (en attente)
+   * Si le vendeur choisit PUBLIER DIRECTEMENT:
+   *   - Si design validé → PUBLISHED
+   *   - Si design pas validé → PENDING (en attente de validation admin)
+   */
+  async setProductDraftOrPublish(
+    productId: number,
+    vendorId: number,
+    isDraft: boolean
+  ): Promise<{
+    success: boolean;
+    message: string;
+    status: string;
+    isValidated: boolean;
+    canPublish: boolean;
+    designValidationStatus: 'validated' | 'pending' | 'not_found';
+  }> {
+    try {
+      // Récupérer le produit avec son design
+      const product = await this.prisma.vendorProduct.findFirst({
+        where: {
+          id: productId,
+          vendorId: vendorId,
+          isDelete: false
+        },
+        include: {
+          design: true
+        }
+      });
+
+      if (!product) {
+        throw new NotFoundException('Produit non trouvé ou non autorisé');
+      }
+
+      // Vérifier le statut de validation du design
+      let designValidated = false;
+      let designValidationStatus: 'validated' | 'pending' | 'not_found' = 'not_found';
+
+      if (product.design) {
+        designValidated = product.design.isValidated;
+        designValidationStatus = product.design.isValidated ? 'validated' : 'pending';
+      } else if (product.designId) {
+        // Fallback: vérifier par designId
+        const design = await this.prisma.design.findUnique({
+          where: { id: product.designId }
+        });
+        if (design) {
+          designValidated = design.isValidated;
+          designValidationStatus = design.isValidated ? 'validated' : 'pending';
+        }
+      }
+
+      // Déterminer le nouveau statut selon la logique correcte
+      let newStatus: string;
+      let message: string;
+
+      if (isDraft) {
+        // Vendeur veut mettre en brouillon
+        if (designValidated) {
+          newStatus = 'DRAFT';
+          message = 'Produit mis en brouillon (design validé - prêt à publier)';
+        } else {
+          newStatus = 'PENDING';
+          message = 'Produit en attente (design non validé par l\'admin)';
+        }
+      } else {
+        // Vendeur veut publier directement
+        if (designValidated) {
+          newStatus = 'PUBLISHED';
+          message = 'Produit publié (design validé)';
+        } else {
+          newStatus = 'PENDING';
+          message = 'Produit en attente de validation du design par l\'admin';
+        }
+      }
+
+      // Mettre à jour le produit
+      const updatedProduct = await this.prisma.vendorProduct.update({
+        where: { id: productId },
+        data: {
+          status: newStatus as any,
+          isValidated: designValidated,
+          updatedAt: new Date()
+        }
+      });
+
+      this.logger.log(`📦 Produit ${productId} → ${newStatus} (design ${designValidated ? 'validé' : 'non validé'})`);
+
+      return {
+        success: true,
+        message,
+        status: newStatus,
+        isValidated: designValidated,
+        canPublish: designValidated && newStatus === 'DRAFT',
+        designValidationStatus
+      };
+
+    } catch (error) {
+      this.logger.error('❌ Erreur mise en brouillon/publication:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🎯 ENDPOINT VENDEUR: Publier directement (nouvelle logique)
+   */
+  async publishProductDirect(
+    productId: number,
+    vendorId: number
+  ): Promise<{
+    success: boolean;
+    message: string;
+    status: string;
+    isValidated: boolean;
+    designValidationStatus: 'validated' | 'pending' | 'not_found';
+  }> {
+    return this.setProductDraftOrPublish(productId, vendorId, false);
+  }
+
+  /**
    * 🎯 ENDPOINT ADMIN: Récupérer les produits en attente de validation
    */
   async getPendingProducts(

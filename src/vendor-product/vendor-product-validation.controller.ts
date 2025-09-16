@@ -34,6 +34,7 @@ import { Roles } from '../core/guards/roles.decorator';
 import { AdminCreateVendorProductDto } from './dto/admin-create-vendor-product.dto';
 import { AdminCreateVendorProductResponseDto } from './dto/admin-create-vendor-product.dto';
 import { VendorListResponseDto, VendorDesignsResponseDto } from './dto/admin-create-vendor-product.dto';
+import { SetProductDraftDto, DraftProductResponseDto } from './dto/draft-product.dto';
 
 class ValidateProductDto {
   approved: boolean;
@@ -54,7 +55,7 @@ export class VendorProductValidationController {
   // =================== ENDPOINTS VENDEUR ===================
 
   @Put('post-validation-action/:productId')
-  @Roles('VENDOR')
+  @Roles('VENDEUR')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Modifier l\'action après validation du design',
@@ -82,9 +83,9 @@ export class VendorProductValidationController {
   }
 
   @Post('publish/:productId')
-  @Roles('VENDOR')
+  @Roles('VENDEUR')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Publier manuellement un produit validé',
     description: 'Permet au vendeur de publier un produit qui a été validé et mis en brouillon'
   })
@@ -96,8 +97,94 @@ export class VendorProductValidationController {
     @Request() req: any
   ) {
     const vendorId = req.user.id;
-    
+
     return await this.validationService.publishValidatedProduct(productId, vendorId);
+  }
+
+  // =================== NOUVEAUX ENDPOINTS POUR LA LOGIQUE BROUILLON/PUBLICATION ===================
+
+  @Put('set-draft/:productId')
+  @Roles('VENDEUR')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '🎯 Mettre un produit en brouillon ou publier selon validation admin',
+    description: `
+    **LOGIQUE AVEC VALIDATION ADMIN OBLIGATOIRE:**
+
+    Si le vendeur choisit **BROUILLON** (isDraft: true):
+    - ✅ Design validé par l'admin → Statut: **DRAFT** (prêt à publier)
+    - ❌ Design non validé → Statut: **PENDING** (en attente de validation)
+
+    Si le vendeur choisit **PUBLIER DIRECTEMENT** (isDraft: false):
+    - ✅ Design validé par l'admin → Statut: **PUBLISHED** (publié)
+    - ❌ Design non validé → Statut: **PENDING** (en attente de validation)
+
+    **Important:**
+    - La validation du design par l'admin est OBLIGATOIRE pour publier
+    - Le vendeur peut choisir son intention mais doit attendre la validation
+    `
+  })
+  @ApiBody({
+    type: SetProductDraftDto,
+    examples: {
+      mettre_en_brouillon: {
+        summary: 'Mettre en brouillon',
+        description: 'Le produit sera mis en brouillon si le design est validé, sinon en attente',
+        value: { isDraft: true }
+      },
+      publier_directement: {
+        summary: 'Publier directement',
+        description: 'Le produit sera publié si le design est validé, sinon en attente',
+        value: { isDraft: false }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Statut mis à jour selon la validation du design',
+    type: DraftProductResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'Produit non trouvé' })
+  @ApiResponse({ status: 403, description: 'Accès non autorisé' })
+  async setProductDraftOrPublish(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Body() dto: SetProductDraftDto,
+    @Request() req: any
+  ) {
+    const vendorId = req.user.id;
+
+    return await this.validationService.setProductDraftOrPublish(productId, vendorId, dto.isDraft);
+  }
+
+  @Post('publish-direct/:productId')
+  @Roles('VENDEUR')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '🎯 Publier directement selon validation admin',
+    description: `
+    **PUBLICATION AVEC VALIDATION OBLIGATOIRE:**
+
+    - ✅ Design validé par l'admin → Statut: **PUBLISHED** (publié)
+    - ❌ Design non validé → Statut: **PENDING** (en attente de validation)
+
+    **Important:** Le design DOIT être validé par l'admin pour pouvoir publier.
+
+    Équivalent à appeler \`set-draft/:productId\` avec \`isDraft: false\`
+    `
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Publication selon validation admin',
+    type: DraftProductResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'Produit non trouvé' })
+  async publishProductDirect(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Request() req: any
+  ) {
+    const vendorId = req.user.id;
+
+    return await this.validationService.publishProductDirect(productId, vendorId);
   }
 
   // =================== ENDPOINTS ADMIN ===================

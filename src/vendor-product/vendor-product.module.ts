@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { VendorPublishController } from './vendor-publish.controller';
 import { VendorPublishService } from './vendor-publish.service';
+import { VendorProductValidationController } from './vendor-product-validation.controller';
+import { VendorProductValidationService } from './vendor-product-validation.service';
 import { BestSellersController } from './best-sellers.controller';
 import { BestSellersService } from './best-sellers.service';
 import { PublicBestSellersController } from './public-best-sellers.controller';
@@ -14,10 +16,12 @@ import { SalesStatsUpdaterService } from './services/sales-stats-updater.service
 import { PrismaService } from '../prisma.service';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { DesignPositionService } from './services/design-position.service';
+import { MailService } from '../core/mail/mail.service';
 
 @Module({
   controllers: [
     VendorPublishController,
+    VendorProductValidationController,
     BestSellersController,
     PublicBestSellersController,
     PublicNewArrivalsController,
@@ -28,12 +32,14 @@ import { DesignPositionService } from './services/design-position.service';
   ],
   providers: [
     VendorPublishService,
+    VendorProductValidationService,
     BestSellersService,
     RealBestSellersService,
     SalesStatsUpdaterService,
     PrismaService,
     CloudinaryService,
     DesignPositionService,
+    MailService,
   ],
   exports: [
     VendorPublishService,
