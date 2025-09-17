@@ -56,6 +56,11 @@ model User {
   commissionChanges    CommissionAuditLog[] @relation("CommissionAuditChanger")
   createdDesignCategories DesignCategory[] @relation("DesignCategoryCreator")
 
+  // Relations pour le système d'appel de fonds
+  vendorFundsRequests  VendorFundsRequest[] @relation("VendorFundsRequests")
+  processedFundsRequests VendorFundsRequest[] @relation("ProcessedFundsRequests")
+  vendorEarnings       VendorEarnings?      @relation("VendorEarnings")
+
   @@index([country])
   @@index([shop_name])
 }
@@ -238,6 +243,7 @@ model Order {
   user            User        @relation(fields: [userId], references: [id])
   validator       User?       @relation("OrderValidator", fields: [validatedBy], references: [id])
   orderItems      OrderItem[]
+  fundsRequestLinks VendorFundsRequestOrder[]
 
   @@index([userId])
   @@index([status])
@@ -728,4 +734,86 @@ model CommissionAuditLog {
   @@index([vendorId])
   @@index([changedBy])
   @@index([changedAt])
+}
+
+/// Table principale pour les demandes d'appel de fonds
+model VendorFundsRequest {
+  id                Int                      @id @default(autoincrement())
+  vendorId          Int                      @map("vendor_id")
+  amount            Float                    // Montant demandé en FCFA
+  requestedAmount   Float                    @map("requested_amount") // Montant original
+  description       String                   @db.Text
+  paymentMethod     PaymentMethodType        @map("payment_method")
+  phoneNumber       String                   @map("phone_number") @db.VarChar(20)
+  status            FundsRequestStatus       @default(PENDING)
+  rejectReason      String?                  @map("reject_reason") @db.Text
+  adminNote         String?                  @map("admin_note") @db.Text
+  processedBy       Int?                     @map("processed_by")
+  processedAt       DateTime?                @map("processed_at")
+  availableBalance  Float                    @map("available_balance") // Solde au moment de la demande
+  commissionRate    Float                    @default(0.10) @map("commission_rate") // Taux de commission
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  // Relations
+  vendor            User                     @relation("VendorFundsRequests", fields: [vendorId], references: [id], onDelete: Cascade)
+  processedByUser   User?                    @relation("ProcessedFundsRequests", fields: [processedBy], references: [id], onDelete: SetNull)
+  orderLinks        VendorFundsRequestOrder[]
+
+  @@map("vendor_funds_requests")
+  @@index([vendorId, status], name: "idx_vendor_status")
+  @@index([status, createdAt], name: "idx_status_date")
+  @@index([processedAt], name: "idx_processed_date")
+}
+
+/// Table de liaison entre demandes de fonds et commandes
+model VendorFundsRequestOrder {
+  id             Int                @id @default(autoincrement())
+  fundsRequestId Int                @map("funds_request_id")
+  orderId        Int                @map("order_id")
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  // Relations
+  fundsRequest   VendorFundsRequest @relation(fields: [fundsRequestId], references: [id], onDelete: Cascade)
+  order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([fundsRequestId, orderId], name: "unique_request_order")
+  @@map("vendor_funds_request_orders")
+  @@index([fundsRequestId], name: "idx_funds_request")
+  @@index([orderId], name: "idx_order")
+}
+
+/// Cache des gains vendeur pour optimiser les performances
+model VendorEarnings {
+  id                     Int      @id @default(autoincrement())
+  vendorId               Int      @unique @map("vendor_id")
+  totalEarnings          Float    @default(0) @map("total_earnings")
+  availableAmount        Float    @default(0) @map("available_amount")
+  pendingAmount          Float    @default(0) @map("pending_amount")
+  thisMonthEarnings      Float    @default(0) @map("this_month_earnings")
+  lastMonthEarnings      Float    @default(0) @map("last_month_earnings")
+  totalCommissionPaid    Float    @default(0) @map("total_commission_paid")
+  averageCommissionRate  Float    @default(0.10) @map("average_commission_rate")
+  lastCalculatedAt       DateTime @default(now()) @map("last_calculated_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  vendor                 User     @relation("VendorEarnings", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_earnings")
+  @@index([vendorId], name: "idx_vendor")
+}
+
+/// Enums pour le système d'appel de fonds
+enum PaymentMethodType {
+  WAVE
+  ORANGE_MONEY
+  BANK_TRANSFER
+}
+
+enum FundsRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
 }
