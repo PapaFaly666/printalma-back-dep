@@ -413,7 +413,55 @@ JOIN products p ON oi.product_id = p.id
 WHERE p.vendor_id = :vendorId
 ```
 
+## 🔐 Permissions et sécurité
 
+### Middleware d'authentification vendeur
+
+```javascript
+// Exemple de middleware Express.js
+const requireVendorAuth = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.id);
+    if (!user || user.role !== 'VENDEUR') {
+      return res.status(403).json({
+        success: false,
+        message: 'Accès réservé aux vendeurs'
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      message: 'Token invalide'
+    });
+  }
+};
+```
+
+### Vérification des permissions
+
+```javascript
+// Vérifier que le vendeur a accès à cette commande
+const checkOrderAccess = async (vendorId, orderId) => {
+  const order = await Order.findOne({
+    where: { id: orderId },
+    include: [{
+      model: OrderItem,
+      include: [{
+        model: Product,
+        where: { vendor_id: vendorId }
+      }]
+    }]
+  });
+
+  return order && order.OrderItems.length > 0;
+};
+```
 
 ### Validation des transitions de statut
 
@@ -509,7 +557,53 @@ INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
 (1, 1, 2, 17500);
 ```
 
+## 🚀 Déploiement et monitoring
 
+### Variables d'environnement requises
+
+```env
+# Base de données
+DATABASE_URL=postgresql://user:password@host:port/database
+
+# JWT
+JWT_SECRET=your-secret-key
+JWT_EXPIRES_IN=7d
+
+# WebSocket
+WEBSOCKET_PORT=3005
+
+# Email notifications (optionnel)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=noreply@printalma.com
+SMTP_PASS=password
+```
+
+### Métriques à monitorer
+
+1. **Performance**
+   - Temps de réponse des endpoints
+   - Nombre de requêtes par minute
+   - Utilisation mémoire/CPU
+
+2. **Business**
+   - Nombre de commandes créées/heure
+   - Taux de conversion par statut
+   - Revenus par vendeur
+
+3. **Erreurs**
+   - Taux d'erreur 4xx/5xx
+   - Échecs d'authentification
+   - Tentatives d'accès non autorisé
+
+## 📝 Notes d'implémentation
+
+### Optimisations recommandées
+
+1. **Cache Redis** pour les statistiques fréquemment consultées
+2. **Pagination** obligatoire sur tous les endpoints de liste
+3. **Rate limiting** pour éviter l'abus des APIs
+4. **Logs structurés** pour le debugging
 
 ### Compatibilité frontend
 

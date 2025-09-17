@@ -211,12 +211,21 @@ model Order {
   userId          Int
   status          OrderStatus @default(PENDING)
   totalAmount     Float
+  subtotal        Float?      // Sous-total sans frais
+  taxAmount       Float       @default(0) // Montant de la taxe
+  shippingAmount  Float       @default(0) // Frais de livraison
+  paymentMethod   String?     // Méthode de paiement
   phoneNumber     String
   notes           String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   validatedAt     DateTime?
   validatedBy     Int?
+
+  // Timestamps pour le workflow vendeur
+  confirmedAt     DateTime?   // Date de confirmation de commande
+  shippedAt       DateTime?   // Date d'expédition
+  deliveredAt     DateTime?   // Date de livraison
 
   shippingName         String?
   shippingStreet       String?

@@ -21,6 +21,7 @@ import { DesignModule } from './design/design.module';
 import { ThemeModule } from './theme/theme.module';
 import { CommissionModule } from './commission/commission.module';
 import { DesignCategoryModule } from './design-category/design-category.module';
+import { VendorOrdersModule } from './vendor-orders/vendor-orders.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DebugDesignMiddleware } from './core/middleware/debug-design.middleware';
 
@@ -46,7 +47,8 @@ import { DebugDesignMiddleware } from './core/middleware/debug-design.middleware
     DesignModule,
     ThemeModule,
     CommissionModule,
-    DesignCategoryModule
+    DesignCategoryModule,
+    VendorOrdersModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],
