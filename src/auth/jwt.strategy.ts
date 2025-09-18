@@ -79,12 +79,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
 
-    // ⭐ CORRECTION: Ne vérifier le statut que pour les VENDEUR
-    // Les ADMIN et SUPERADMIN peuvent être actifs même si status=false
-    if (user.role === 'VENDEUR' && !user.status) {
-      console.log(`❌ Vendeur ${payload.sub} (${user.email}) est inactif`);
-      throw new UnauthorizedException('Compte vendeur inactif');
-    }
+    // ⚠️ Ne pas bloquer l'authentification si le vendeur est inactif.
+    // Le blocage d'accès aux routes sensibles est géré par VendorGuard.
 
     // ⭐ CORRECTION: Ne plus restreindre par rôle ici
     // Laisser les guards spécifiques (VendorGuard, AdminGuard) gérer les autorisations

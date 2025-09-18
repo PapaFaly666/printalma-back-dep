@@ -42,6 +42,11 @@ import {
   VendorStatsResponseDto,
   VendorProductDetailResponseDto
 } from './dto/vendor-product-response.dto';
+import {
+  UpdateVendorAccountStatusDto,
+  VendorAccountStatusResponseDto,
+  VendorAccountInfoResponseDto
+} from './dto/vendor-account-status.dto';
 import { SaveDesignPositionDto } from './dto/save-design-position.dto';
 import { RolesGuard } from '../core/guards/roles.guard';
 import { Roles } from '../core/guards/roles.decorator';
@@ -506,12 +511,41 @@ export class VendorPublishController {
   @Get('stats')
   @ApiOperation({
     summary: 'Statistiques du vendeur (Architecture v2)',
-    description: 'Statistiques produits avec indicateur architecture v2'
+    description: `
+    Récupère les statistiques complètes du vendeur incluant :
+    - Statistiques produits (total, publié, brouillon, en attente)
+    - Statistiques designs (total, publié, brouillon, en attente, validé)
+    - Valeurs financières (total, prix moyen)
+    - Exclusion automatique des éléments soft-deleted (isDelete=true)
+    `
   })
   @ApiResponse({
     status: 200,
-    description: 'Statistiques vendeur',
+    description: 'Statistiques vendeur avec designs',
     type: VendorStatsResponseDto,
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            totalProducts: { type: 'number', example: 12 },
+            publishedProducts: { type: 'number', example: 3 },
+            draftProducts: { type: 'number', example: 3 },
+            pendingProducts: { type: 'number', example: 6 },
+            totalValue: { type: 'number', example: 84000 },
+            averagePrice: { type: 'number', example: 7000 },
+            totalDesigns: { type: 'number', example: 8 },
+            publishedDesigns: { type: 'number', example: 5 },
+            draftDesigns: { type: 'number', example: 2 },
+            pendingDesigns: { type: 'number', example: 1 },
+            validatedDesigns: { type: 'number', example: 6 },
+            architecture: { type: 'string', example: 'v2_preserved_admin' }
+          }
+        }
+      }
+    }
   })
   async getVendorStats(@Request() req: any) {
     const vendorId = req.user.sub;
@@ -807,7 +841,7 @@ export class VendorPublishController {
     summary: 'Publier un produit vendeur',
     description: `
     **PUBLICATION PRODUIT VENDEUR:**
-    
+
     - ✅ **Fonction**: Changer le statut d'un produit de DRAFT/PENDING vers PUBLISHED
     - ✅ **Sécurité**: Seul le propriétaire du produit peut le publier
     - ✅ **Validation**: Vérification que le produit peut être publié
@@ -856,7 +890,7 @@ export class VendorPublishController {
   ) {
     const vendorId = req.user.sub;
     this.logger.log(`🚀 Publication produit ${productId} par vendeur ${vendorId}`);
-    
+
     try {
       const result = await this.vendorPublishService.publishVendorProduct(productId, vendorId);
       return result;
@@ -865,6 +899,171 @@ export class VendorPublishController {
       throw error;
     }
   }
+
+  /**
+   * 🔄 GESTION DU STATUT DU COMPTE VENDEUR
+   */
+  @Patch('account/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Activer/Désactiver son compte vendeur',
+    description: `
+    **GESTION DU STATUT DU COMPTE :**
+
+    - ✅ **Désactivation** : Le vendeur peut désactiver son propre compte
+    - ✅ **Réactivation** : Le vendeur peut réactiver son compte à tout moment
+    - ✅ **Impact** : Quand désactivé, tous les produits et designs deviennent invisibles publiquement
+    - ✅ **Sécurité** : Seul le propriétaire du compte peut modifier son statut
+    - ✅ **Raison** : Possibilité d'ajouter une raison optionnelle
+
+    **Exemples d'utilisation :**
+    - Pause temporaire (vacances, congés)
+    - Maintenance de la boutique
+    - Réorganisation des produits
+    `
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Statut du compte modifié avec succès',
+    type: VendorAccountStatusResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Données invalides'
+  })
+  async updateAccountStatus(
+    @Body() statusDto: UpdateVendorAccountStatusDto,
+    @Request() req: any
+  ): Promise<VendorAccountStatusResponseDto> {
+    const vendorId = req.user.sub;
+    const action = statusDto.status ? 'RÉACTIVATION' : 'DÉSACTIVATION';
+
+    this.logger.log(`🔄 ${action} compte vendeur ${vendorId}`);
+
+    try {
+      const result = await this.vendorPublishService.updateVendorAccountStatus(
+        vendorId,
+        statusDto.status,
+        statusDto.reason
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(`❌ Erreur ${action.toLowerCase()} compte ${vendorId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 📋 INFORMATIONS DU COMPTE VENDEUR
+   */
+  @Get('account/info')
+  @UseGuards(JwtAuthGuard, VendorGuard)
+  @ApiOperation({
+    summary: 'Récupérer les informations du compte vendeur',
+    description: `
+    **INFORMATIONS COMPLÈTES DU COMPTE :**
+
+    - ✅ **Données personnelles** : Nom, email, téléphone, pays
+    - ✅ **Statut actuel** : Actif ou désactivé
+    - ✅ **Statistiques** : Nombre de produits, designs publiés
+    - ✅ **Dates importantes** : Création du compte, dernière connexion
+    - ✅ **Boutique** : Nom de la boutique si configuré
+
+    Utile pour afficher un tableau de bord vendeur complet.
+    `
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Informations du compte récupérées avec succès',
+    type: VendorAccountInfoResponseDto,
+  })
+  async getAccountInfo(@Request() req: any): Promise<VendorAccountInfoResponseDto> {
+    const vendorId = req.user.sub;
+
+    this.logger.log(`📋 Récupération informations compte vendeur ${vendorId}`);
+
+    try {
+      const result = await this.vendorPublishService.getVendorAccountInfo(vendorId);
+      return result;
+    } catch (error) {
+      this.logger.error(`❌ Erreur récupération informations compte ${vendorId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 🔍 VÉRIFIER L'ÉTAT DU COMPTE - Endpoint simple
+   */
+  @Get('account/status')
+  @UseGuards(JwtAuthGuard) // Seulement JWT, pas VendorGuard
+  @ApiOperation({
+    summary: 'Vérifier l\'état du compte vendeur',
+    description: `
+    **ENDPOINT SIMPLE POUR L'ÉTAT DU COMPTE :**
+
+    - ✅ **Usage** : Savoir si le compte est actif ou désactivé
+    - ✅ **Sécurité** : Nécessite seulement un token JWT valide
+    - ✅ **Réponse** : État simple (actif/inactif) avec détails de base
+    - ✅ **Utilisation** : Pour afficher le bon bouton (Activer/Désactiver)
+
+    **Cas d'utilisation typiques :**
+    - Afficher "Désactiver mon compte" si actif
+    - Afficher "Réactiver mon compte" si inactif
+    - Connaître l'état sans déclencher d'erreur
+    `
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'État du compte récupéré avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            isActive: { type: 'boolean', example: true },
+            userId: { type: 'number', example: 123 },
+            email: { type: 'string', example: 'vendor@example.com' },
+            firstName: { type: 'string', example: 'John' },
+            lastName: { type: 'string', example: 'Doe' },
+            role: { type: 'string', example: 'VENDEUR' },
+            lastStatusChange: { type: 'string', example: '2024-01-15T10:30:00.000Z' },
+            canToggleStatus: { type: 'boolean', example: true }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Token JWT invalide ou expiré'
+  })
+  async getAccountStatus(@Request() req: any) {
+    const user = req.user;
+
+    this.logger.log(`🔍 Vérification état compte utilisateur ${user?.id || 'UNKNOWN'}`);
+
+    if (!user) {
+      throw new UnauthorizedException('Token invalide ou expiré');
+    }
+
+    // Retourner l'état simple du compte
+    return {
+      success: true,
+      data: {
+        isActive: user.status === true,
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        lastStatusChange: user.updated_at?.toISOString() || null,
+        canToggleStatus: user.role === 'VENDEUR' // Seuls les vendeurs peuvent toggle
+      }
+    };
+  }
+
 } 
  
  

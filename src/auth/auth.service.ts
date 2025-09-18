@@ -32,10 +32,8 @@ export class AuthService {
             throw new UnauthorizedException('❌ Email ou mot de passe incorrect');
         }
 
-        // Vérifier si le compte est actif (SAUF pour les SUPERADMIN qui ne peuvent pas être désactivés)
-        if (!user.status && user.role !== Role.SUPERADMIN) {
-            throw new UnauthorizedException('🚫 Votre compte a été désactivé. Contactez l\'administrateur.');
-        }
+        // Ne pas bloquer la connexion si le compte est désactivé.
+        // L'utilisateur pourra accéder à la page compte pour réactiver.
 
         // Vérifier si le compte est verrouillé (SAUF pour les SUPERADMIN)
         if (user.locked_until && user.locked_until > new Date() && user.role !== Role.SUPERADMIN) {
@@ -1146,6 +1144,36 @@ export class AuthService {
         }
 
         return vendor;
+    }
+
+    /**
+     * Désactiver le compte vendeur (status=false)
+     */
+    async deactivateVendorAccount(userId: number) {
+        const updated = await this.prisma.user.update({
+            where: { id: userId },
+            data: { status: false, updated_at: new Date() }
+        });
+        return {
+            success: true,
+            message: 'Compte vendeur désactivé',
+            data: { id: updated.id, status: updated.status }
+        };
+    }
+
+    /**
+     * Réactiver le compte vendeur (status=true)
+     */
+    async reactivateVendorAccount(userId: number) {
+        const updated = await this.prisma.user.update({
+            where: { id: userId },
+            data: { status: true, updated_at: new Date() }
+        });
+        return {
+            success: true,
+            message: 'Compte vendeur réactivé',
+            data: { id: updated.id, status: updated.status }
+        };
     }
 
     /**

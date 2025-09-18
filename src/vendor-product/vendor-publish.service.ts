@@ -393,6 +393,12 @@ export class VendorPublishService {
             },
             baseProduct: {
               include: {
+                categories: true,
+                themeProducts: {
+                  include: {
+                    theme: true
+                  }
+                },
                 colorVariations: {
                   include: {
             images: {
@@ -500,6 +506,12 @@ export class VendorPublishService {
           name: product.adminProductName,
           description: product.adminProductDescription,
           price: product.adminProductPrice,
+          categories: (product.baseProduct as any).categories?.map((c: any) => ({ id: c.id, name: c.name })) || [],
+          themes: (product.baseProduct as any).themeProducts?.map((tp: any) => ({
+            id: tp.theme.id,
+            name: tp.theme.name,
+            category: tp.theme.category
+          })) || [],
           colorVariations: product.baseProduct.colorVariations.map(cv => ({
             id: cv.id,
             name: cv.name,
@@ -646,6 +658,12 @@ export class VendorPublishService {
           },
           baseProduct: {
             include: {
+              categories: true,
+              themeProducts: {
+                include: {
+                  theme: true
+                }
+              },
               colorVariations: {
                 include: {
                   images: {
@@ -711,6 +729,12 @@ export class VendorPublishService {
           name: product.adminProductName,
           description: product.adminProductDescription,
           price: product.adminProductPrice,
+          categories: (product.baseProduct as any).categories?.map((c: any) => ({ id: c.id, name: c.name })) || [],
+          themes: (product.baseProduct as any).themeProducts?.map((tp: any) => ({
+            id: tp.theme.id,
+            name: tp.theme.name,
+            category: tp.theme.category
+          })) || [],
           colorVariations: product.baseProduct.colorVariations.map(cv => ({
             id: cv.id,
             name: cv.name,
@@ -809,31 +833,80 @@ export class VendorPublishService {
    */
   async getVendorStats(vendorId: number) {
     try {
-      const [totalProducts, publishedProducts, draftProducts, totalValue] = await Promise.all([
+      const [
+        totalProducts,
+        publishedProducts,
+        draftProducts,
+        pendingProducts,
+        totalValue,
+        totalDesigns,
+        publishedDesigns,
+        draftDesigns,
+        pendingDesigns,
+        validatedDesigns,
+        vendorAccount
+      ] = await Promise.all([
+        // Produits vendeur (excluant soft-deleted)
         this.prisma.vendorProduct.count({
-          where: { vendorId }
+          where: { vendorId, isDelete: false }
         }),
         this.prisma.vendorProduct.count({
-          where: { vendorId, status: 'PUBLISHED' }
+          where: { vendorId, status: 'PUBLISHED', isDelete: false }
         }),
         this.prisma.vendorProduct.count({
-          where: { vendorId, status: 'DRAFT' }
+          where: { vendorId, status: 'DRAFT', isDelete: false }
+        }),
+        this.prisma.vendorProduct.count({
+          where: { vendorId, status: 'PENDING', isDelete: false }
         }),
         this.prisma.vendorProduct.aggregate({
-          where: { vendorId },
+          where: { vendorId, isDelete: false },
           _sum: { price: true }
+        }),
+        // Designs (excluant soft-deleted)
+        this.prisma.design.count({
+          where: { vendorId, isDelete: false }
+        }),
+        this.prisma.design.count({
+          where: { vendorId, isPublished: true, isDelete: false }
+        }),
+        this.prisma.design.count({
+          where: { vendorId, isDraft: true, isDelete: false }
+        }),
+        this.prisma.design.count({
+          where: { vendorId, isPending: true, isDelete: false }
+        }),
+        this.prisma.design.count({
+          where: { vendorId, isValidated: true, isDelete: false }
+        }),
+        // Compte vendeur pour "Membre depuis" et "Dernière connexion"
+        this.prisma.user.findUnique({
+          where: { id: vendorId },
+          select: { created_at: true, last_login_at: true }
         })
       ]);
 
     return {
         success: true,
         data: {
+          // Statistiques produits
           totalProducts,
           publishedProducts,
           draftProducts,
-          pendingProducts: totalProducts - publishedProducts - draftProducts,
+          pendingProducts,
           totalValue: totalValue._sum.price || 0,
           averagePrice: totalProducts > 0 ? (totalValue._sum.price || 0) / totalProducts : 0,
+          // Statistiques designs
+          totalDesigns,
+          publishedDesigns,
+          draftDesigns,
+          pendingDesigns,
+          validatedDesigns,
+          // Compte
+          memberSince: vendorAccount?.created_at || null,
+          lastLoginAt: vendorAccount?.last_login_at || null,
+          memberSinceFormatted: this.formatDate(vendorAccount?.created_at || null),
+          lastLoginAtFormatted: this.formatDate(vendorAccount?.last_login_at || null),
           architecture: 'v2_preserved_admin'
         }
       };
@@ -951,6 +1024,142 @@ export class VendorPublishService {
   private extractPublicIdFromUrl(url: string): string {
     const match = url.match(/\/([^\/]+)\.[^.]+$/);
     return match ? match[1] : '';
+  }
+
+  private formatDate(date: Date | string | null | undefined): string | null {
+    if (!date) return null;
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return null;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const mm = pad(d.getMonth() + 1);
+    const dd = pad(d.getDate());
+    const hh = pad(d.getHours());
+    const mi = pad(d.getMinutes());
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
+  /**
+   * ✅ GESTION DU STATUT DU COMPTE VENDEUR
+   */
+  async updateVendorAccountStatus(vendorId: number, status: boolean, reason?: string) {
+    this.logger.log(`🔄 Mise à jour statut compte vendeur ${vendorId}: ${status ? 'ACTIF' : 'DÉSACTIVÉ'}`);
+
+    try {
+      // Vérifier que le vendeur existe
+      const vendor = await this.prisma.user.findUnique({
+        where: { id: vendorId },
+        select: { id: true, firstName: true, lastName: true, email: true, status: true, shop_name: true }
+      });
+
+      if (!vendor) {
+        throw new BadRequestException('Vendeur non trouvé');
+      }
+
+      // Mettre à jour le statut
+      const updatedVendor = await this.prisma.user.update({
+        where: { id: vendorId },
+        data: {
+          status,
+          updated_at: new Date()
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          status: true,
+          shop_name: true,
+          updated_at: true
+        }
+      });
+
+      const action = status ? 'réactivé' : 'désactivé';
+      const message = `Compte ${action} avec succès`;
+
+      this.logger.log(`✅ Compte vendeur ${vendorId} ${action}`);
+
+      return {
+        success: true,
+        message,
+        data: {
+          ...updatedVendor,
+          statusChangedAt: updatedVendor.updated_at.toISOString(),
+          reason: reason || null
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur mise à jour statut vendeur ${vendorId}:`, error);
+      throw new BadRequestException('Erreur lors de la mise à jour du statut du compte');
+    }
+  }
+
+  /**
+   * ✅ RÉCUPÉRER LES INFORMATIONS DU COMPTE VENDEUR
+   */
+  async getVendorAccountInfo(vendorId: number) {
+    this.logger.log(`📋 Récupération informations compte vendeur ${vendorId}`);
+
+    try {
+      // Récupérer les informations du vendeur
+      const vendor = await this.prisma.user.findUnique({
+        where: { id: vendorId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          status: true,
+          shop_name: true,
+          phone: true,
+          country: true,
+          created_at: true,
+          last_login_at: true,
+          updated_at: true
+        }
+      });
+
+      if (!vendor) {
+        throw new BadRequestException('Vendeur non trouvé');
+      }
+
+      // Récupérer les statistiques rapides
+      const [totalProducts, publishedProducts, totalDesigns, publishedDesigns] = await Promise.all([
+        this.prisma.vendorProduct.count({
+          where: { vendorId, isDelete: false }
+        }),
+        this.prisma.vendorProduct.count({
+          where: { vendorId, status: 'PUBLISHED', isDelete: false }
+        }),
+        this.prisma.design.count({
+          where: { vendorId, isDelete: false }
+        }),
+        this.prisma.design.count({
+          where: { vendorId, isPublished: true, isDelete: false }
+        })
+      ]);
+
+      return {
+        success: true,
+        data: {
+          ...vendor,
+          created_at: vendor.created_at.toISOString(),
+          last_login_at: vendor.last_login_at?.toISOString() || null,
+          updated_at: vendor.updated_at.toISOString(),
+          statistics: {
+            totalProducts,
+            publishedProducts,
+            totalDesigns,
+            publishedDesigns
+          }
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur récupération informations vendeur ${vendorId}:`, error);
+      throw new BadRequestException('Erreur lors de la récupération des informations du compte');
+    }
   }
 
   // ✅ MÉTHODES DE COMPATIBILITÉ (retournent message architecture v2)
@@ -1763,7 +1972,8 @@ export class VendorPublishService {
 
     try {
       const whereClause: any = {
-        isDelete: false
+        isDelete: false,
+        vendor: { status: true } // Masquer les publications des vendeurs désactivés
       };
 
       // Filtres
@@ -1880,7 +2090,8 @@ export class VendorPublishService {
         where: {
           id: productId,
           isDelete: false,
-          status: 'PUBLISHED'
+          status: 'PUBLISHED',
+          vendor: { status: true }
         },
         include: {
           vendor: {
@@ -1942,6 +2153,7 @@ export class VendorPublishService {
       const whereClause: any = {
         isDelete: false,
         status: 'PUBLISHED',
+        vendor: { status: true },
         OR: [
           { name: { contains: options.query, mode: 'insensitive' } },
           { description: { contains: options.query, mode: 'insensitive' } },

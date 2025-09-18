@@ -8,7 +8,6 @@ import { PrismaService } from '../prisma.service';
 import { OrderStatus } from '@prisma/client';
 import {
   VendorOrderFiltersDto,
-  UpdateOrderStatusDto,
   VendorOrder,
   VendorOrdersListData,
   VendorStatistics,
@@ -19,18 +18,6 @@ import {
 export class VendorOrdersService {
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Transitions de statut autorisées pour les vendeurs
-   */
-  private readonly VENDOR_ALLOWED_TRANSITIONS = {
-    PENDING: ['CONFIRMED'],
-    CONFIRMED: ['PROCESSING'],
-    PROCESSING: ['SHIPPED'],
-    SHIPPED: [],
-    DELIVERED: [],
-    CANCELLED: [],
-    REJECTED: [],
-  };
 
   /**
    * Récupérer les commandes du vendeur avec filtres et pagination
@@ -234,60 +221,6 @@ export class VendorOrdersService {
     return this.formatOrder(order);
   }
 
-  /**
-   * Mettre à jour le statut d'une commande
-   */
-  async updateOrderStatus(
-    vendorId: number,
-    orderId: number,
-    updateData: UpdateOrderStatusDto,
-  ): Promise<VendorOrder> {
-    // Vérifier que la commande existe et que le vendeur y a accès
-    const existingOrder = await this.getOrderDetails(vendorId, orderId);
-
-    // Vérifier que la transition de statut est autorisée
-    const currentStatus = existingOrder.status;
-    const newStatus = updateData.status;
-
-    if (!this.canVendorUpdateStatus(currentStatus, newStatus)) {
-      throw new BadRequestException(
-        `Transition de statut non autorisée: ${currentStatus} → ${newStatus}`,
-      );
-    }
-
-    // Préparer les données de mise à jour
-    const updatePayload: any = {
-      status: newStatus,
-      updatedAt: new Date(),
-    };
-
-    // Ajouter les notes si présentes
-    if (updateData.notes) {
-      updatePayload.notes = updateData.notes;
-    }
-
-    // Mettre à jour les timestamps appropriés
-    const now = new Date();
-    if (newStatus === 'CONFIRMED') {
-      updatePayload.confirmedAt = now;
-    } else if (newStatus === 'SHIPPED') {
-      updatePayload.shippedAt = now;
-    } else if (newStatus === 'DELIVERED') {
-      updatePayload.deliveredAt = now;
-    }
-
-    // Effectuer la mise à jour
-    await this.prisma.order.update({
-      where: { id: orderId },
-      data: updatePayload,
-    });
-
-    // TODO: Envoyer notification WebSocket au client
-    // await this.notifyOrderStatusChange(orderId, newStatus);
-
-    // Retourner la commande mise à jour
-    return await this.getOrderDetails(vendorId, orderId);
-  }
 
   /**
    * Récupérer les statistiques du vendeur
@@ -506,14 +439,6 @@ export class VendorOrdersService {
     });
   }
 
-  /**
-   * Vérifier si le vendeur peut mettre à jour le statut
-   */
-  private canVendorUpdateStatus(currentStatus: string, newStatus: string): boolean {
-    return (
-      this.VENDOR_ALLOWED_TRANSITIONS[currentStatus]?.includes(newStatus) || false
-    );
-  }
 
   /**
    * Formatter une commande selon la structure attendue

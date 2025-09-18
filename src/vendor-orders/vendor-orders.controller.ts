@@ -20,7 +20,6 @@ import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
 import {
   VendorOrderFiltersDto,
-  UpdateOrderStatusDto,
   VendorOrderResponseDto,
   VendorOrdersListResponseDto,
   VendorStatisticsResponseDto,
@@ -93,37 +92,6 @@ export class VendorOrdersController {
     }
   }
 
-  /**
-   * 3. Mettre à jour le statut d'une commande
-   * PATCH /vendor/orders/:orderId/status
-   */
-  @Patch(':orderId/status')
-  async updateOrderStatus(
-    @Param('orderId', ParseIntPipe) orderId: number,
-    @Body() updateData: UpdateOrderStatusDto,
-    @Req() req: any,
-  ): Promise<VendorOrderResponseDto> {
-    try {
-      const vendorId = req.user.id;
-      const updatedOrder = await this.vendorOrdersService.updateOrderStatus(
-        vendorId,
-        orderId,
-        updateData,
-      );
-
-      return {
-        success: true,
-        message: 'Statut de commande mis à jour',
-        data: updatedOrder,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message || 'Erreur lors de la mise à jour du statut',
-        data: null,
-      };
-    }
-  }
 
   /**
    * 4. Statistiques vendeur

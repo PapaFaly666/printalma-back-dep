@@ -317,6 +317,7 @@ export class VendorProductImagesResponseDto {
 }
 
 export class VendorStatsDto {
+  // Statistiques produits
   @ApiProperty({ example: 15 })
   totalProducts: number;
 
@@ -326,17 +327,33 @@ export class VendorStatsDto {
   @ApiProperty({ example: 3 })
   draftProducts: number;
 
-  @ApiProperty({ example: 45 })
-  totalImages: number;
+  @ApiProperty({ example: 0 })
+  pendingProducts: number;
 
-  @ApiProperty({ example: 23500 })
-  totalRevenue: number;
+  @ApiProperty({ example: 84000 })
+  totalValue: number;
 
-  @ApiProperty({ example: 1566 })
+  @ApiProperty({ example: 7000 })
   averagePrice: number;
 
-  @ApiProperty({ example: 145 })
-  totalStock: number;
+  // Statistiques designs
+  @ApiProperty({ example: 8 })
+  totalDesigns: number;
+
+  @ApiProperty({ example: 5 })
+  publishedDesigns: number;
+
+  @ApiProperty({ example: 2 })
+  draftDesigns: number;
+
+  @ApiProperty({ example: 1 })
+  pendingDesigns: number;
+
+  @ApiProperty({ example: 6 })
+  validatedDesigns: number;
+
+  @ApiProperty({ example: 'v2_preserved_admin' })
+  architecture: string;
 }
 
 export class VendorStatsResponseDto {
@@ -344,10 +361,7 @@ export class VendorStatsResponseDto {
   success: boolean;
 
   @ApiProperty({ type: VendorStatsDto })
-  stats: VendorStatsDto;
-
-  @ApiProperty({ example: '2024-01-15T10:30:00Z' })
-  calculatedAt: string;
+  data: VendorStatsDto;
 }
 
 /**

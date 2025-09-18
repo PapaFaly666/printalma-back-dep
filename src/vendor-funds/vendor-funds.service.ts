@@ -148,6 +148,37 @@ export class VendorFundsService {
    * Récupérer les gains du vendeur
    */
   async getVendorEarnings(vendorId: number): Promise<VendorEarningsData> {
+    // D'abord essayer de récupérer depuis le cache
+    const cachedEarnings = await this.prisma.vendorEarnings.findUnique({
+      where: { vendorId }
+    });
+
+    if (cachedEarnings) {
+      // Calculer le montant en attente depuis les demandes
+      const pendingRequests = await this.prisma.vendorFundsRequest.findMany({
+        where: {
+          vendorId,
+          status: {
+            in: ['PENDING', 'APPROVED']
+          }
+        }
+      });
+
+      const pendingAmount = pendingRequests.reduce((sum, req) => sum + req.amount, 0);
+
+      return {
+        totalEarnings: cachedEarnings.totalEarnings,
+        availableAmount: Math.max(0, cachedEarnings.availableAmount - pendingAmount),
+        pendingAmount: pendingAmount,
+        thisMonthEarnings: cachedEarnings.thisMonthEarnings,
+        lastMonthEarnings: cachedEarnings.lastMonthEarnings,
+        commissionPaid: cachedEarnings.totalCommissionPaid,
+        totalCommission: cachedEarnings.totalEarnings + cachedEarnings.totalCommissionPaid,
+        averageCommissionRate: 0.1 // Taux par défaut
+      };
+    }
+
+    // Si pas de cache, calculer et créer le cache
     return await this.calculateVendorEarnings(vendorId);
   }
 
@@ -235,7 +266,7 @@ export class VendorFundsService {
     const { amount, description, paymentMethod, phoneNumber, orderIds } = createData;
 
     // Vérifier le solde disponible
-    const earnings = await this.calculateVendorEarnings(vendorId);
+    const earnings = await this.getVendorEarnings(vendorId);
 
     if (earnings.availableAmount < amount) {
       throw new BadRequestException(

@@ -344,6 +344,28 @@ export class AuthController {
 	}
 
 	/**
+	 * Vendeur: Désactiver son compte (status=false)
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Post('vendor/deactivate')
+	@ApiOperation({ summary: 'Désactiver le compte vendeur' })
+	@ApiResponse({ status: 200, description: 'Compte désactivé' })
+	async deactivateMyAccount(@Req() req: RequestWithUser) {
+		return this.authService.deactivateVendorAccount(req.user.sub);
+	}
+
+	/**
+	 * Vendeur: Réactiver son compte (status=true)
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Post('vendor/reactivate')
+	@ApiOperation({ summary: 'Réactiver le compte vendeur' })
+	@ApiResponse({ status: 200, description: 'Compte réactivé' })
+	async reactivateMyAccount(@Req() req: RequestWithUser) {
+		return this.authService.reactivateVendorAccount(req.user.sub);
+	}
+
+	/**
 	 * Vendeur: Mettre à jour son profil avec photo optionnelle
 	 */
 	@UseGuards(JwtAuthGuard)
