@@ -946,7 +946,18 @@ export class VendorPublishService {
             select: { id: true, name: true }
           },
           vendor: {
-            select: { id: true, firstName: true, lastName: true, shop_name: true }
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              shop_name: true,
+              profile_photo_url: true,
+              created_at: true,
+              last_login_at: true,
+              status: true,
+              country: true,
+              vendeur_type: true
+            }
           },
           images: {
             select: { colorName: true, colorCode: true, cloudinaryUrl: true }
@@ -1049,7 +1060,20 @@ export class VendorPublishService {
       // Vérifier que le vendeur existe
       const vendor = await this.prisma.user.findUnique({
         where: { id: vendorId },
-        select: { id: true, firstName: true, lastName: true, email: true, status: true, shop_name: true }
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          status: true,
+          shop_name: true,
+          created_at: true,
+          last_login_at: true,
+          country: true,
+          phone: true,
+          vendeur_type: true,
+          profile_photo_url: true
+        }
       });
 
       if (!vendor) {
@@ -2101,7 +2125,13 @@ export class VendorPublishService {
               lastName: true,
               shop_name: true,
               profile_photo_url: true,
-              email: true
+              email: true,
+              created_at: true,
+              last_login_at: true,
+              status: true,
+              country: true,
+              phone: true,
+              vendeur_type: true
             }
           },
           baseProduct: {
