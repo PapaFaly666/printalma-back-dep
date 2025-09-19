@@ -2474,6 +2474,249 @@ export class VendorPublishService {
   }
 
   /**
+   * 🎨 NOUVEAU: Créer un produit wizard SANS design
+   * Spécialement conçu pour les produits créés via le wizard frontend
+   */
+  async createWizardProduct(payload: any, vendorId: number): Promise<any> {
+    this.logger.log(`🎨 Création produit wizard pour vendeur ${vendorId}`);
+
+    try {
+      // Validation des données wizard
+      this.validateWizardProduct(payload);
+
+      const {
+        baseProductId,
+        vendorName,
+        vendorDescription,
+        vendorPrice,
+        vendorStock = 10,
+        selectedColors,
+        selectedSizes,
+        productImages,
+        productStructure,
+        forcedStatus = 'DRAFT'
+      } = payload;
+
+      // 1. Valider que le mockup existe
+      const mockup = await this.prisma.product.findFirst({
+        where: {
+          id: baseProductId,
+          isReadyProduct: false
+        }
+      });
+
+      if (!mockup) {
+        throw new BadRequestException('Mockup introuvable');
+      }
+
+      // 2. Valider marge minimum 10%
+      const minimumPrice = mockup.price * 1.1;
+      if (vendorPrice < minimumPrice) {
+        throw new BadRequestException(
+          `Prix trop bas. Minimum: ${minimumPrice} FCFA (marge 10%)`
+        );
+      }
+
+      // 3. Créer le produit vendeur SANS design
+      const vendorProduct = await this.prisma.vendorProduct.create({
+        data: {
+          vendorId: vendorId,
+          baseProductId: baseProductId,
+          name: vendorName,
+          description: vendorDescription,
+          price: vendorPrice,
+          stock: vendorStock,
+          status: forcedStatus as any,
+          colors: JSON.stringify(selectedColors),
+          sizes: JSON.stringify(selectedSizes),
+
+          // IMPORTANT: Pas de designId - c'est un produit simple
+          designId: null,
+
+          // Informations vendeur
+          vendorName: vendorName,
+          vendorDescription: vendorDescription,
+          vendorStock: vendorStock,
+          basePriceAdmin: mockup.price,
+
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      });
+
+      // 4. Traiter et sauvegarder les images produit (si présentes)
+      const savedImages = await this.processWizardImages(vendorProduct.id, productImages || null);
+
+      // 5. Retourner le produit créé
+      return {
+        success: true,
+        message: 'Produit wizard créé avec succès',
+        data: {
+          id: vendorProduct.id,
+          vendorId: vendorId,
+          name: vendorProduct.name,
+          description: vendorProduct.description,
+          price: vendorProduct.price,
+          status: vendorProduct.status,
+          baseProduct: {
+            id: mockup.id,
+            name: mockup.name,
+            price: mockup.price
+          },
+          calculations: {
+            basePrice: mockup.price,
+            vendorProfit: vendorPrice - mockup.price,
+            expectedRevenue: Math.round((vendorPrice - mockup.price) * 0.7),
+            platformCommission: Math.round((vendorPrice - mockup.price) * 0.3),
+            marginPercentage: ((vendorPrice - mockup.price) / mockup.price) * 100
+          },
+          images: savedImages,
+          wizard: {
+            createdViaWizard: true,
+            hasDesign: false,
+            imageCount: savedImages.length
+          },
+          createdAt: vendorProduct.createdAt,
+          updatedAt: vendorProduct.updatedAt
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur création produit wizard: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Traitement des images base64 pour produits wizard
+   */
+  private async processWizardImages(vendorProductId: number, productImages: any): Promise<any[]> {
+    const savedImages = [];
+
+    if (!productImages) {
+      return savedImages;
+    }
+
+    // Image principale
+    if (productImages.baseImage) {
+      try {
+        const baseImageResult = await this.saveBase64Image(
+          productImages.baseImage,
+          `wizard-product-${vendorProductId}-base`
+        );
+
+        const baseImageRecord = await this.prisma.vendorProductImage.create({
+          data: {
+            vendorProductId: vendorProductId,
+            imageType: 'base',
+            cloudinaryUrl: baseImageResult.url,
+            cloudinaryPublicId: baseImageResult.public_id,
+            createdAt: new Date(),
+            uploadedAt: new Date()
+          }
+        });
+
+        savedImages.push({
+          id: baseImageRecord.id,
+          url: baseImageResult.url,
+          type: 'base',
+          isMain: true
+        });
+      } catch (error) {
+        this.logger.error(`❌ Erreur upload image base: ${error.message}`);
+      }
+    }
+
+    // Images de détail
+    if (productImages.detailImages && productImages.detailImages.length > 0) {
+      for (let i = 0; i < productImages.detailImages.length; i++) {
+        try {
+          const detailImageResult = await this.saveBase64Image(
+            productImages.detailImages[i],
+            `wizard-product-${vendorProductId}-detail-${i + 1}`
+          );
+
+          const detailImageRecord = await this.prisma.vendorProductImage.create({
+            data: {
+              vendorProductId: vendorProductId,
+              imageType: 'detail',
+              cloudinaryUrl: detailImageResult.url,
+              cloudinaryPublicId: detailImageResult.public_id,
+              createdAt: new Date(),
+              uploadedAt: new Date()
+            }
+          });
+
+          savedImages.push({
+            id: detailImageRecord.id,
+            url: detailImageResult.url,
+            type: 'detail',
+            isMain: false,
+            orderIndex: i + 1
+          });
+        } catch (error) {
+          this.logger.error(`❌ Erreur upload image détail ${i + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    return savedImages;
+  }
+
+  /**
+   * Validation spécifique pour les produits wizard
+   */
+  private validateWizardProduct(payload: any): void {
+    const errors = [];
+
+    // Validations obligatoires
+    if (!payload.baseProductId) errors.push('baseProductId requis');
+    if (!payload.vendorName) errors.push('vendorName requis');
+    if (!payload.vendorPrice || payload.vendorPrice <= 0) errors.push('vendorPrice invalide');
+    if (!payload.selectedColors || payload.selectedColors.length === 0) errors.push('Au moins une couleur requise');
+    if (!payload.selectedSizes || payload.selectedSizes.length === 0) errors.push('Au moins une taille requise');
+
+    // 🎯 NOUVEAU: Images optionnelles pour certains types de wizard
+    // if (!payload.productImages || !payload.productImages.baseImage) errors.push('Image principale requise');
+
+    if (errors.length > 0) {
+      throw new BadRequestException(errors.join(', '));
+    }
+  }
+
+  /**
+   * Sauvegarder une image base64 sur Cloudinary
+   */
+  private async saveBase64Image(base64Data: string, filename: string): Promise<any> {
+    try {
+      // Supprimer le préfixe data:image/...;base64, si présent
+      const base64Clean = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
+
+      // Convertir en buffer
+      const buffer = Buffer.from(base64Clean, 'base64');
+
+      // Créer un objet file-like pour cloudinary
+      const fileObject = {
+        buffer: buffer,
+        originalname: `${filename}.png`,
+        mimetype: 'image/png',
+        size: buffer.length
+      } as Express.Multer.File;
+
+      // Upload vers Cloudinary
+      const result = await this.cloudinaryService.uploadImage(fileObject, 'wizard-products');
+
+      return {
+        url: result.secure_url,
+        public_id: result.public_id
+      };
+    } catch (error) {
+      this.logger.error(`❌ Erreur sauvegarde image base64: ${error.message}`);
+      throw new BadRequestException(`Erreur sauvegarde image: ${error.message}`);
+    }
+  }
+
+  /**
    * 🏷️ Convertir nom de catégorie en ID
    */
   private getCategoryId(categoryName: string): number {

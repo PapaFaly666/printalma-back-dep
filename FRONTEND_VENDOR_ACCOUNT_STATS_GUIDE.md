@@ -86,3 +86,4 @@ const derniereConnexion = formatIsoToFr(data.lastLoginAt) ?? '—';
 - Les champs sont disponibles depuis l'ajout de `memberSince*` et `lastLoginAt*` dans `/vendor/stats`.
 - Format backend actuel: `YYYY-MM-DD HH:mm`. D'autres formats peuvent etre ajoutes sur demande.
 
+

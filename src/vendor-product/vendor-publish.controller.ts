@@ -284,9 +284,44 @@ export class VendorPublishController {
   ): Promise<VendorPublishResponseDto> {
     const vendorId = req.user.sub;
     this.logger.log(`📦 Création produit vendeur (Architecture v2) par vendeur ${vendorId}`);
-    
+
+    // 🔍 DEBUG: Afficher le payload reçu
+    this.logger.log(`🔍 DEBUG - Payload reçu:`, JSON.stringify(productData, null, 2));
+    this.logger.log(`🔍 DEBUG - isWizardProduct value: ${(productData as any).isWizardProduct}`);
+    this.logger.log(`🔍 DEBUG - isWizardProduct type: ${typeof (productData as any).isWizardProduct}`);
+
     try {
-      // ✅ VALIDATION NOUVELLE ARCHITECTURE
+      // ✅ NOUVEAU: Détecter produit wizard (multiples conditions)
+      const hasWizardFlag = (productData as any).isWizardProduct === true ||
+                            (productData as any).isWizardProduct === 'true' ||
+                            (productData as any).isWizardProduct === 1;
+
+      const hasImagesNoDesign = (productData as any).productImages && !(productData as any).designId;
+
+      // 🎯 DÉTECTION SPÉCIALE: Produit sans designId = wizard
+      const isNoDesignProduct = !(productData as any).designId &&
+                                productData.productStructure?.adminProduct &&
+                                (productData as any).bypassValidation;
+
+      const isWizard = hasWizardFlag || hasImagesNoDesign || isNoDesignProduct;
+
+      this.logger.log(`🔍 DEBUG - Détection wizard:`, {
+        hasWizardFlag,
+        hasImagesNoDesign,
+        isNoDesignProduct,
+        hasProductImages: !!(productData as any).productImages,
+        hasDesignId: !!(productData as any).designId,
+        hasBypassValidation: !!(productData as any).bypassValidation,
+        finalDetection: isWizard
+      });
+
+      if (isWizard) {
+        this.logger.log(`🎨 Création produit WIZARD (sans design) par vendeur ${vendorId}`);
+        const result = await this.vendorPublishService.createWizardProduct(productData, vendorId);
+        return result;
+      }
+
+      // ✅ VALIDATION NOUVELLE ARCHITECTURE (produits normaux)
       if (!productData.productStructure?.adminProduct) {
         throw new BadRequestException({
           error: 'Structure admin requise',
@@ -302,10 +337,10 @@ export class VendorPublishController {
           architecture: 'v2_admin_preserved'
         });
       }
-      
-      // ✅ CRÉATION AVEC NOUVELLE LOGIQUE
+
+      // ✅ CRÉATION AVEC NOUVELLE LOGIQUE (produits normaux)
       const result = await this.vendorPublishService.publishProduct(productData, vendorId);
-      
+
       return result;
       
     } catch (error) {

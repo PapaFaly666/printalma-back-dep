@@ -1,0 +1,250 @@
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma.service';
+import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
+import { CreateWizardProductDto, WizardProductResponseDto } from './dto/wizard-product.dto';
+
+@Injectable()
+export class VendorWizardProductService {
+  private readonly logger = new Logger(VendorWizardProductService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {
+    // Vérification de l'injection des dépendances
+    if (!this.prisma) {
+      this.logger.error('❌ PrismaService is not injected properly');
+      throw new Error('PrismaService dependency injection failed');
+    }
+    if (!this.cloudinaryService) {
+      this.logger.error('❌ CloudinaryService is not injected properly');
+      throw new Error('CloudinaryService dependency injection failed');
+    }
+    this.logger.log('✅ VendorWizardProductService initialized successfully');
+  }
+
+  async createWizardProduct(
+    createWizardProductDto: CreateWizardProductDto,
+    vendorId: number,
+  ): Promise<WizardProductResponseDto> {
+    this.logger.log(`🎨 Début création produit WIZARD pour vendeur ${vendorId}`);
+    this.logger.log(`📥 Données reçues: ${JSON.stringify(createWizardProductDto)}`);
+
+    const {
+      baseProductId,
+      vendorName,
+      vendorDescription,
+      vendorPrice,
+      vendorStock = 10,
+      selectedColors,
+      selectedSizes,
+      productImages,
+      forcedStatus = 'DRAFT',
+    } = createWizardProductDto;
+
+    this.logger.log(`🔍 baseProductId extrait: ${baseProductId} (type: ${typeof baseProductId})`);
+    this.logger.log(`🔍 vendorName: ${vendorName}`);
+    this.logger.log(`🔍 vendorPrice: ${vendorPrice}`);
+
+    // Validation des paramètres critiques
+    if (!baseProductId || typeof baseProductId !== 'number') {
+      throw new BadRequestException(`baseProductId invalide: ${baseProductId}. Doit être un nombre.`);
+    }
+
+    try {
+      // 1. Vérifier que le mockup existe
+      const baseProduct = await this.prisma.product.findUnique({
+        where: { id: baseProductId },
+      });
+
+      if (!baseProduct) {
+        throw new NotFoundException('Produit de base introuvable');
+      }
+
+      this.logger.log(`✅ Mockup trouvé: ${baseProduct.name} - Prix: ${baseProduct.price} FCFA`);
+
+      // 2. Validation marge minimum 10%
+      const minimumPrice = Math.ceil(baseProduct.price * 1.1);
+      if (vendorPrice < minimumPrice) {
+        throw new BadRequestException(
+          `Prix trop bas. Minimum: ${minimumPrice} FCFA (marge 10%)`
+        );
+      }
+
+      this.logger.log(`✅ Prix validé: ${vendorPrice} FCFA (minimum: ${minimumPrice} FCFA)`);
+
+      // 3. Calculer les métadonnées financières
+      const vendorProfit = vendorPrice - baseProduct.price;
+      const expectedRevenue = Math.round(vendorProfit * 0.7);
+      const platformCommission = Math.round(vendorProfit * 0.3);
+      const marginPercentage = ((vendorProfit / baseProduct.price) * 100).toFixed(2);
+
+      this.logger.log(`💰 Calculs: Profit=${vendorProfit}, Revenue=${expectedRevenue}, Commission=${platformCommission}, Marge=${marginPercentage}%`);
+
+      // 4. Traiter les images
+      const savedImages = await this.processWizardImages(productImages);
+
+      // 5. Créer le produit wizard dans une transaction
+      const wizardProduct = await this.prisma.$transaction(async (tx) => {
+        // Créer le produit
+        const product = await tx.vendorProduct.create({
+          data: {
+            vendorId: vendorId,
+            baseProductId: baseProductId,
+            name: vendorName,
+            description: vendorDescription,
+            price: vendorPrice,
+            stock: vendorStock,
+            status: forcedStatus as any,
+            designId: null, // PAS de design pour wizard
+            selectedColors: JSON.stringify(selectedColors),
+            selectedSizes: JSON.stringify(selectedSizes),
+          },
+          include: {
+            product: true,
+          },
+        });
+
+        // Créer les images associées
+        for (const imageData of savedImages) {
+          await tx.vendorProductImage.create({
+            data: {
+              vendorProductId: product.id,
+              cloudinaryUrl: imageData.url,
+              cloudinaryPublicId: `wizard-${product.id}-${imageData.orderIndex}`,
+              imageType: imageData.type.toLowerCase(),
+              width: 800,
+              height: 800,
+            },
+          });
+        }
+
+        return product;
+      });
+
+      this.logger.log(`🎉 Produit wizard créé avec succès: ID=${wizardProduct.id}`);
+
+      // 6. Construire la réponse
+      return {
+        success: true,
+        message: 'Produit wizard créé avec succès',
+        data: {
+          id: wizardProduct.id,
+          vendorId: wizardProduct.vendorId,
+          name: wizardProduct.name,
+          description: wizardProduct.description,
+          price: wizardProduct.price,
+          status: wizardProduct.status,
+          productType: 'WIZARD',
+          baseProduct: {
+            id: baseProduct.id,
+            name: baseProduct.name,
+            price: baseProduct.price,
+          },
+          calculations: {
+            basePrice: baseProduct.price,
+            vendorProfit: vendorProfit,
+            expectedRevenue: expectedRevenue,
+            platformCommission: platformCommission,
+            marginPercentage: marginPercentage,
+          },
+          selectedColors: selectedColors,
+          selectedSizes: selectedSizes,
+          images: savedImages,
+          wizard: {
+            createdViaWizard: true,
+            hasDesign: false,
+            imageCount: savedImages.length,
+          },
+          createdAt: wizardProduct.createdAt,
+          updatedAt: wizardProduct.updatedAt,
+        },
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur création produit wizard: ${error.message}`);
+
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        error.message || 'Erreur lors de la création du produit wizard'
+      );
+    }
+  }
+
+  private async processWizardImages(productImages: {
+    baseImage: string;
+    detailImages?: string[];
+  }): Promise<Array<{
+    url: string;
+    type: 'BASE' | 'DETAIL';
+    isMain: boolean;
+    orderIndex: number;
+  }>> {
+    const savedImages = [];
+
+    try {
+      // Image principale (obligatoire)
+      if (productImages.baseImage) {
+        this.logger.log('📸 Upload image principale...');
+
+        const baseImageResult = await this.cloudinaryService.uploadBase64(
+          productImages.baseImage,
+          {
+            folder: 'wizard-products',
+            public_id: `wizard-base-${Date.now()}`,
+            quality: 90,
+          }
+        );
+
+        savedImages.push({
+          url: baseImageResult.secure_url,
+          type: 'BASE' as const,
+          isMain: true,
+          orderIndex: 0,
+        });
+
+        this.logger.log(`✅ Image principale uploadée: ${baseImageResult.secure_url}`);
+      }
+
+      // Images de détail (optionnelles)
+      if (productImages.detailImages && productImages.detailImages.length > 0) {
+        this.logger.log(`📸 Upload ${productImages.detailImages.length} images de détail...`);
+
+        for (let i = 0; i < productImages.detailImages.length; i++) {
+          const detailImageResult = await this.cloudinaryService.uploadBase64(
+            productImages.detailImages[i],
+            {
+              folder: 'wizard-products',
+              public_id: `wizard-detail-${Date.now()}-${i + 1}`,
+              quality: 90,
+            }
+          );
+
+          savedImages.push({
+            url: detailImageResult.secure_url,
+            type: 'DETAIL' as const,
+            isMain: false,
+            orderIndex: i + 1,
+          });
+
+          this.logger.log(`✅ Image détail ${i + 1} uploadée: ${detailImageResult.secure_url}`);
+        }
+      }
+
+      this.logger.log(`🎯 Total images traitées: ${savedImages.length}`);
+      return savedImages;
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur traitement images: ${error.message}`);
+      throw new BadRequestException('Échec sauvegarde images: ' + error.message);
+    }
+  }
+}

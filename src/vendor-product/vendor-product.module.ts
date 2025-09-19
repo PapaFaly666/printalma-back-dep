@@ -4,6 +4,10 @@ import { VendorPublishService } from './vendor-publish.service';
 import { VendorProductValidationController } from './vendor-product-validation.controller';
 import { VendorProductValidationService } from './vendor-product-validation.service';
 import { VendorDesignProductsController } from './vendor-design-products.controller';
+import { VendorWizardController } from './vendor-wizard.controller';
+import { VendorWizardService } from './vendor-wizard.service';
+import { VendorWizardProductController } from './vendor-wizard-product.controller';
+import { VendorWizardProductService } from './vendor-wizard-product.service';
 import { BestSellersController } from './best-sellers.controller';
 import { BestSellersService } from './best-sellers.service';
 import { PublicBestSellersController } from './public-best-sellers.controller';
@@ -24,6 +28,8 @@ import { MailService } from '../core/mail/mail.service';
     VendorPublishController,
     VendorProductValidationController,
     VendorDesignProductsController,
+    VendorWizardController,
+    VendorWizardProductController,
     BestSellersController,
     PublicBestSellersController,
     PublicNewArrivalsController,
@@ -35,6 +41,8 @@ import { MailService } from '../core/mail/mail.service';
   providers: [
     VendorPublishService,
     VendorProductValidationService,
+    VendorWizardService,
+    VendorWizardProductService,
     BestSellersService,
     RealBestSellersService,
     SalesStatsUpdaterService,
@@ -45,6 +53,7 @@ import { MailService } from '../core/mail/mail.service';
   ],
   exports: [
     VendorPublishService,
+    VendorWizardProductService,
     BestSellersService,
     RealBestSellersService,
     SalesStatsUpdaterService,

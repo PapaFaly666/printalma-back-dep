@@ -1,7 +1,7 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
   output        = "../node_modules/.prisma/client"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -10,112 +10,93 @@ datasource db {
 }
 
 model User {
-  id                   Int          @id @default(autoincrement())
-  firstName            String
-  lastName             String
-  email                String       @unique
-  password             String
-  role                 Role         @default(VENDEUR)
-  status               Boolean      @default(true)
-  photo_profil         String?
-  login_attempts       Int          @default(0)
-  locked_until         DateTime?
-  last_login_at        DateTime?
-  created_at           DateTime     @default(now())
-  updated_at           DateTime     @updatedAt
-  must_change_password Boolean      @default(false)
-  vendeur_type         VendeurType?
-  
-  // 🆕 CHAMPS POUR L'ACTIVATION PAR CODE EMAIL
-  activation_code         String?     // Code d'activation à 6 chiffres
-  activation_code_expires DateTime?   // Date d'expiration du code
-  
-  // 🆕 NOUVEAUX CHAMPS POUR PROFIL VENDEUR ÉTENDU
-  phone                String?      // Numéro de téléphone
-  country              String?      // Pays de résidence
-  address              String?      // Adresse complète
-  shop_name            String?      @unique // Nom de la boutique
-  profile_photo_url    String?      // URL de la photo de profil Cloudinary
-
-  passwordResets       PasswordReset[]
-  orders               Order[]
-  validatedOrders      Order[]      @relation("OrderValidator")
-  notifications        Notification[]
-  designs              Design[]
-  validatedDesigns     Design[]      @relation("DesignValidator")
-  validatedProducts    Product[]     @relation("ProductValidator")
-  validatedVendorProducts VendorProduct[] @relation("VendorProductValidator")
-  vendorProducts       VendorProduct[]
-  vendorDesignTransforms VendorDesignTransform[]
-  emailChangeRequests  EmailChangeRequest[]
-  
-  // Relations commission system
-  vendorCommission     VendorCommission? @relation("VendorCommissionToUser")
-  createdCommissions   VendorCommission[] @relation("CommissionCreatedByUser")
-  commissionAuditLogs  CommissionAuditLog[] @relation("CommissionAuditVendor")
-  commissionChanges    CommissionAuditLog[] @relation("CommissionAuditChanger")
-  createdDesignCategories DesignCategory[] @relation("DesignCategoryCreator")
-
-  // Relations pour le système d'appel de fonds
-  vendorFundsRequests  VendorFundsRequest[] @relation("VendorFundsRequests")
-  processedFundsRequests VendorFundsRequest[] @relation("ProcessedFundsRequests")
-  vendorEarnings       VendorEarnings?      @relation("VendorEarnings")
+  id                      Int                     @id @default(autoincrement())
+  firstName               String
+  lastName                String
+  email                   String                  @unique
+  password                String
+  role                    Role                    @default(VENDEUR)
+  status                  Boolean                 @default(true)
+  photo_profil            String?
+  login_attempts          Int                     @default(0)
+  locked_until            DateTime?
+  last_login_at           DateTime?
+  created_at              DateTime                @default(now())
+  updated_at              DateTime                @updatedAt
+  must_change_password    Boolean                 @default(false)
+  vendeur_type            VendeurType?
+  address                 String?
+  country                 String?
+  phone                   String?
+  profile_photo_url       String?
+  shop_name               String?                 @unique
+  activation_code         String?
+  activation_code_expires DateTime?
+  validatedDesigns        Design[]                @relation("DesignValidator")
+  designs                 Design[]
+  createdDesignCategories DesignCategory[]        @relation("DesignCategoryCreator")
+  emailChangeRequests     EmailChangeRequest[]
+  notifications           Notification[]
+  orders                  Order[]
+  validatedOrders         Order[]                 @relation("OrderValidator")
+  passwordResets          PasswordReset[]
+  validatedProducts       Product[]               @relation("ProductValidator")
+  vendorDesignTransforms  VendorDesignTransform[]
+  validatedVendorProducts VendorProduct[]         @relation("VendorProductValidator")
+  vendorProducts          VendorProduct[]
+  commissionChanges       CommissionAuditLog[]    @relation("CommissionAuditChanger")
+  commissionAuditLogs     CommissionAuditLog[]    @relation("CommissionAuditVendorUser")
+  createdCommissions      VendorCommission[]      @relation("CommissionCreatedByUser")
+  vendorCommission        VendorCommission?       @relation("VendorCommissionToUser")
+  vendorEarnings          VendorEarnings?         @relation("VendorEarnings")
+  processedFundsRequests  VendorFundsRequest[]    @relation("ProcessedFundsRequests")
+  vendorFundsRequests     VendorFundsRequest[]    @relation("VendorFundsRequests")
 
   @@index([country])
   @@index([shop_name])
 }
 
 model PasswordReset {
-  id         Int      @id @default(autoincrement())
-  token      String   @unique
-  userId     Int
-  expiresAt  DateTime
-  used       Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  usedAt     DateTime?
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        Int       @id @default(autoincrement())
+  token     String    @unique
+  userId    Int
+  expiresAt DateTime
+  used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([userId])
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  name        String
-  price       Float
-  suggestedPrice Float? @map("suggested_price")
-  stock       Int
-  status      PublicationStatus @default(DRAFT)
-  description String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Validation admin
-  isValidated         Boolean   @default(true)
-  validatedAt         DateTime?
-  validatedBy         Int?
-  rejectionReason     String?
+  id                       Int               @id @default(autoincrement())
+  name                     String
+  description              String
+  price                    Float
+  stock                    Int
+  status                   PublicationStatus @default(DRAFT)
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  designsMetadata          Json?             @default("{\"lastUpdated\": null, \"totalDesigns\": 0}")
+  genre                    ProductGenre      @default(UNISEXE)
+  hasCustomDesigns         Boolean           @default(false)
+  isDelete                 Boolean           @default(false)
+  isReadyProduct           Boolean           @default(false)
+  isValidated              Boolean           @default(true)
+  rejectionReason          String?
   submittedForValidationAt DateTime?
-  isDelete            Boolean   @default(false) // Soft delete : true = supprimé, false = actif
-  
-  // Produits prêts de l'admin (sans délimitations)
-  isReadyProduct      Boolean   @default(false)
-  
-  // Genre du produit (public cible)
-  genre              ProductGenre @default(UNISEXE)
-
-  validator       User? @relation("ProductValidator", fields: [validatedBy], references: [id])
-  
-  // Champs pour la gestion des designs personnalisés
-  hasCustomDesigns Boolean @default(false)
-  designsMetadata  Json?   @default("{\"totalDesigns\": 0, \"lastUpdated\": null}")
-
-  categories      Category[]        @relation("CategoryToProduct")
-  sizes           ProductSize[]
-  colorVariations ColorVariation[]
-  orderItems      OrderItem[]
-  vendorProducts  VendorProduct[]
-  themeProducts   ThemeProduct[]
+  validatedAt              DateTime?
+  validatedBy              Int?
+  suggestedPrice           Float?            @map("suggested_price")
+  colorVariations          ColorVariation[]
+  orderItems               OrderItem[]
+  validator                User?             @relation("ProductValidator", fields: [validatedBy], references: [id])
+  sizes                    ProductSize[]
+  themeProducts            ThemeProduct[]
+  vendorProducts           VendorProduct[]
+  categories               Category[]        @relation("CategoryToProduct")
 
   @@index([isValidated])
   @@index([submittedForValidationAt])
@@ -139,111 +120,95 @@ model Category {
 }
 
 model ColorVariation {
-  id        Int      @id @default(autoincrement())
-  name      String
-  colorCode String
-  productId Int
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  images    ProductImage[]
-  orderItems OrderItem[]
+  id                  Int                  @id @default(autoincrement())
+  name                String
+  colorCode           String
+  productId           Int
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems          OrderItem[]
+  images              ProductImage[]
   vendorProductImages VendorProductImage[]
 }
 
 model ProductImage {
-  id               Int      @id @default(autoincrement())
-  view             String   // e.g., 'Front', 'Back'
-  url              String
-  publicId         String
-  naturalWidth     Int?     // Largeur originale de l'image
-  naturalHeight    Int?     // Hauteur originale de l'image
-  
-  // Champs étendus pour la gestion des designs personnalisés
-  designUrl        String?  // URL du design appliqué sur cette image
-  designPublicId   String?  // Public ID Cloudinary du design
-  designFileName   String?  // Nom original du fichier design
-  designUploadDate DateTime? // Date d'upload du design
-  designSize       Int?     // Taille du fichier design en bytes
-  designOriginalName String? // Nom original fourni par l'utilisateur
-  designDescription String? // Description optionnelle du design
-  isDesignActive   Boolean  @default(true) // Design actif ou non
-  
-  colorVariationId Int
-  colorVariation   ColorVariation @relation(fields: [colorVariationId], references: [id], onDelete: Cascade)
-  delimitations    Delimitation[]
-  
+  id                 Int            @id @default(autoincrement())
+  view               String
+  url                String
+  publicId           String
+  naturalWidth       Int?
+  naturalHeight      Int?
+  designUrl          String?
+  designPublicId     String?
+  designFileName     String?
+  designUploadDate   DateTime?
+  designSize         Int?
+  designOriginalName String?
+  designDescription  String?
+  isDesignActive     Boolean        @default(true)
+  colorVariationId   Int
+  delimitations      Delimitation[]
+  colorVariation     ColorVariation @relation(fields: [colorVariationId], references: [id], onDelete: Cascade)
+
   @@index([colorVariationId])
   @@index([designUrl])
   @@index([isDesignActive])
 }
 
 model Delimitation {
-  id             Int     @id @default(autoincrement())
-  
-  // Coordonnées principales (en pourcentages pour les nouvelles, absolues pour migration)
-  x              Float   // Position X (0-100% ou pixels absolus)
-  y              Float   // Position Y (0-100% ou pixels absolus)  
-  width          Float   // Largeur (0-100% ou pixels absolus)
-  height         Float   // Hauteur (0-100% ou pixels absolus)
-  rotation       Float   @default(0) // Rotation en degrés
-  
-  // Métadonnées
-  name           String? // Nom de la zone (ex: "Zone Poitrine")
-  coordinateType CoordinateType @default(ABSOLUTE) // Par défaut ABSOLUTE pour les existantes
-  
-  // Données historiques pour migration depuis coordonnées absolues
-  absoluteX      Float?  // Ancienne coord X absolue
-  absoluteY      Float?  // Ancienne coord Y absolue
-  absoluteWidth  Float?  // Ancienne largeur absolue
-  absoluteHeight Float?  // Ancienne hauteur absolue
-  originalImageWidth  Int? // Largeur image originale utilisée pour conversion
-  originalImageHeight Int? // Hauteur image originale utilisée pour conversion
-  
-  // Relations et timestamps
-  productImageId Int
-  productImage   ProductImage @relation(fields: [productImageId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
-  
-  referenceWidth    Int     @default(0)
-  referenceHeight   Int     @default(0)
-  
+  id                  Int            @id @default(autoincrement())
+  x                   Float
+  y                   Float
+  width               Float
+  height              Float
+  rotation            Float          @default(0)
+  name                String?
+  coordinateType      CoordinateType @default(ABSOLUTE)
+  absoluteX           Float?
+  absoluteY           Float?
+  absoluteWidth       Float?
+  absoluteHeight      Float?
+  originalImageWidth  Int?
+  originalImageHeight Int?
+  productImageId      Int
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @default(now()) @updatedAt
+  referenceWidth      Int            @default(0)
+  referenceHeight     Int            @default(0)
+  productImage        ProductImage   @relation(fields: [productImageId], references: [id], onDelete: Cascade)
+
   @@index([productImageId])
 }
 
 model Order {
-  id              Int         @id @default(autoincrement())
-  orderNumber     String      @unique
-  userId          Int
-  status          OrderStatus @default(PENDING)
-  totalAmount     Float
-  subtotal        Float?      // Sous-total sans frais
-  taxAmount       Float       @default(0) // Montant de la taxe
-  shippingAmount  Float       @default(0) // Frais de livraison
-  paymentMethod   String?     // Méthode de paiement
-  phoneNumber     String
-  notes           String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  validatedAt     DateTime?
-  validatedBy     Int?
-
-  // Timestamps pour le workflow vendeur
-  confirmedAt     DateTime?   // Date de confirmation de commande
-  shippedAt       DateTime?   // Date d'expédition
-  deliveredAt     DateTime?   // Date de livraison
-
-  shippingName         String?
-  shippingStreet       String?
-  shippingCity         String?
-  shippingRegion       String?
-  shippingPostalCode   String?
-  shippingCountry      String?
-  shippingAddressFull  String?
-
-  user            User        @relation(fields: [userId], references: [id])
-  validator       User?       @relation("OrderValidator", fields: [validatedBy], references: [id])
-  orderItems      OrderItem[]
-  fundsRequestLinks VendorFundsRequestOrder[]
+  id                  Int                       @id @default(autoincrement())
+  orderNumber         String                    @unique
+  userId              Int
+  status              OrderStatus               @default(PENDING)
+  totalAmount         Float
+  phoneNumber         String
+  notes               String?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  validatedAt         DateTime?
+  validatedBy         Int?
+  shippingName        String?
+  shippingStreet      String?
+  shippingCity        String?
+  shippingRegion      String?
+  shippingPostalCode  String?
+  shippingCountry     String?
+  shippingAddressFull String?
+  confirmedAt         DateTime?
+  deliveredAt         DateTime?
+  paymentMethod       String?
+  shippedAt           DateTime?
+  shippingAmount      Float                     @default(0)
+  subtotal            Float?
+  taxAmount           Float                     @default(0)
+  user                User                      @relation(fields: [userId], references: [id])
+  validator           User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
+  orderItems          OrderItem[]
+  fundsRequestLinks   VendorFundsRequestOrder[]
 
   @@index([userId])
   @@index([status])
@@ -251,37 +216,415 @@ model Order {
 }
 
 model OrderItem {
-  id        Int     @id @default(autoincrement())
-  orderId   Int
-  productId Int
-  quantity  Int
-  unitPrice Float
-  size      String?
-  color     String?
-  colorId   Int?
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product @relation(fields: [productId], references: [id])
+  id             Int             @id @default(autoincrement())
+  orderId        Int
+  productId      Int
+  quantity       Int
+  unitPrice      Float
+  size           String?
+  color          String?
+  colorId        Int?
   colorVariation ColorVariation? @relation(fields: [colorId], references: [id])
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id])
 
   @@index([orderId])
   @@index([productId])
   @@index([colorId])
 }
 
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  expiresAt DateTime?
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+/// Catégories de design dynamiques créées par l'admin
+model DesignCategory {
+  id                 Int      @id @default(autoincrement())
+  name               String   @unique
+  description        String?
+  slug               String   @unique
+  isActive           Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdBy          Int
+  coverImagePublicId String?
+  coverImageUrl      String?
+  designs            Design[] @relation("DesignToCategory")
+  creator            User     @relation("DesignCategoryCreator", fields: [createdBy], references: [id])
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@index([slug])
+}
+
+model Design {
+  id                       Int                     @id @default(autoincrement())
+  vendorId                 Int
+  name                     String
+  description              String?
+  price                    Float
+  imageUrl                 String
+  thumbnailUrl             String?
+  cloudinaryPublicId       String
+  thumbnailPublicId        String?
+  fileSize                 Int
+  originalFileName         String
+  dimensions               Json
+  format                   String
+  tags                     String[]                @default([])
+  contentHash              String?                 @unique
+  isDraft                  Boolean                 @default(true)
+  isPublished              Boolean                 @default(false)
+  isPending                Boolean                 @default(false)
+  isDelete                 Boolean                 @default(false)
+  isValidated              Boolean                 @default(false)
+  validatedAt              DateTime?
+  validatedBy              Int?
+  rejectionReason          String?
+  submittedForValidationAt DateTime?
+  views                    Int                     @default(0)
+  likes                    Int                     @default(0)
+  earnings                 Float                   @default(0)
+  usageCount               Int                     @default(0)
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  publishedAt              DateTime?
+  categoryId               Int?
+  category                 DesignCategory?         @relation("DesignToCategory", fields: [categoryId], references: [id])
+  validator                User?                   @relation("DesignValidator", fields: [validatedBy], references: [id])
+  vendor                   User                    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  designProductLinks       DesignProductLink[]
+  productPositions         ProductDesignPosition[] @relation("DesignToDesignPosition")
+  vendorProducts           VendorProduct[]
+
+  @@index([vendorId])
+  @@index([categoryId])
+  @@index([isPublished])
+  @@index([isPending])
+  @@index([isValidated])
+  @@index([submittedForValidationAt])
+  @@index([createdAt])
+  @@index([contentHash])
+}
+
+/// VendorProduct représente un produit mis en vente par un vendeur à partir d'un produit de base (admin).
+/// Il stocke les variantes sélectionnées (tailles, couleurs) sous forme de tableau JSON pour simplifier le schéma.
+model VendorProduct {
+  id                       Int                     @id @default(autoincrement())
+  baseProductId            Int                     @map("base_product_id")
+  vendorId                 Int                     @map("vendor_id")
+  name                     String
+  description              String?
+  price                    Int
+  stock                    Int                     @default(0)
+  status                   VendorProductStatus     @default(PENDING)
+  isDelete                 Boolean                 @default(false)
+  postValidationAction     PostValidationAction    @default(AUTO_PUBLISH) @map("post_validation_action")
+  adminProductName         String?                 @map("admin_product_name")
+  adminProductDescription  String?                 @map("admin_product_description")
+  adminProductPrice        Int?                    @map("admin_product_price")
+  designBase64             String?                 @map("design_base64")
+  designCloudinaryUrl      String?                 @map("design_cloudinary_url")
+  designCloudinaryPublicId String?                 @map("design_cloudinary_public_id")
+  designPositioning        String?                 @default("CENTER") @map("design_positioning")
+  designScale              Float?                  @default(0.6) @map("design_scale")
+  designApplicationMode    String?                 @default("PRESERVED") @map("design_application_mode")
+  designId                 Int?                    @map("design_id")
+  salesCount               Int                     @default(0) @map("sales_count")
+  totalRevenue             Float                   @default(0) @map("total_revenue")
+  averageRating            Float?                  @map("average_rating")
+  lastSaleDate             DateTime?               @map("last_sale_date")
+  isBestSeller             Boolean                 @default(false) @map("is_best_seller")
+  bestSellerRank           Int?                    @map("best_seller_rank")
+  bestSellerCategory       String?                 @map("best_seller_category")
+  viewsCount               Int                     @default(0) @map("views_count")
+  designWidth              Int?                    @map("design_width")
+  designHeight             Int?                    @map("design_height")
+  designFormat             String?                 @map("design_format")
+  designFileSize           Int?                    @map("design_file_size")
+  sizes                    Json
+  colors                   Json
+  vendorName               String?
+  vendorDescription        String?
+  vendorStock              Int                     @default(0)
+  basePriceAdmin           Float                   @default(0)
+  isValidated              Boolean                 @default(false)
+  validatedAt              DateTime?
+  validatedBy              Int?
+  rejectionReason          String?
+  submittedForValidationAt DateTime?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  designProductLinks       DesignProductLink[]
+  designPositions          ProductDesignPosition[] @relation("VendorProductToDesignPosition")
+  designTransforms         VendorDesignTransform[]
+  baseProduct              Product                 @relation(fields: [baseProductId], references: [id])
+  design                   Design?                 @relation(fields: [designId], references: [id])
+  validator                User?                   @relation("VendorProductValidator", fields: [validatedBy], references: [id])
+  vendor                   User                    @relation(fields: [vendorId], references: [id])
+  images                   VendorProductImage[]
+
+  @@index([vendorId])
+  @@index([baseProductId])
+  @@index([designId])
+  @@index([isValidated])
+  @@index([submittedForValidationAt])
+  @@index([postValidationAction])
+  @@index([isBestSeller])
+  @@index([bestSellerRank])
+  @@index([salesCount])
+  @@index([totalRevenue])
+  @@index([lastSaleDate])
+}
+
+/// VendorProductImage stocke les images générées pour chaque produit vendeur avec métadonnées Cloudinary
+/// ⚠️ DEPRECATED: Cette table sera progressivement remplacée par VendorProductMockup
+model VendorProductImage {
+  id                 Int             @id @default(autoincrement())
+  vendorProductId    Int
+  colorId            Int?
+  colorName          String?
+  colorCode          String?
+  imageType          String          @default("color")
+  cloudinaryUrl      String
+  cloudinaryPublicId String
+  originalImageKey   String?
+  width              Int?
+  height             Int?
+  fileSize           Int?
+  format             String?
+  createdAt          DateTime        @default(now())
+  uploadedAt         DateTime        @default(now())
+  colorVariation     ColorVariation? @relation(fields: [colorId], references: [id])
+  vendorProduct      VendorProduct   @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
+
+  @@index([vendorProductId])
+  @@index([colorId])
+  @@index([imageType])
+}
+
+model VendorDesignTransform {
+  id              Int           @id @default(autoincrement())
+  vendorId        Int
+  vendorProductId Int
+  designUrl       String        @db.VarChar(500)
+  transforms      Json
+  lastModified    DateTime      @default(now()) @updatedAt
+  createdAt       DateTime      @default(now())
+  vendor          User          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendorProduct   VendorProduct @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, vendorProductId, designUrl], name: "unique_vendor_product_design")
+  @@index([vendorId, vendorProductId], map: "idx_vendor_product")
+  @@index([designUrl], map: "idx_design_url")
+}
+
+/// 🆕 Table de liaison robuste entre designs et produits vendeur
+/// Cette table permet de créer une relation many-to-many entre designs et produits
+/// et facilite les cascades de validation
+model DesignProductLink {
+  id              Int           @id @default(autoincrement())
+  designId        Int           @map("design_id")
+  vendorProductId Int           @map("vendor_product_id")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  design          Design        @relation(fields: [designId], references: [id], onDelete: Cascade)
+  vendorProduct   VendorProduct @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
+
+  @@unique([designId, vendorProductId], name: "unique_design_product")
+  @@index([designId], map: "idx_design_links")
+  @@index([vendorProductId], map: "idx_product_links")
+}
+
+/// 🆕 Position de design spécifique au couple (VendorProduct, Design)
+model ProductDesignPosition {
+  vendorProductId Int           @map("vendor_product_id")
+  designId        Int           @map("design_id")
+  position        Json          @default("{}")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  design          Design        @relation("DesignToDesignPosition", fields: [designId], references: [id], onDelete: Cascade)
+  vendorProduct   VendorProduct @relation("VendorProductToDesignPosition", fields: [vendorProductId], references: [id], onDelete: Cascade)
+
+  @@id([vendorProductId, designId])
+  @@index([vendorProductId])
+  @@index([designId])
+}
+
+model EmailChangeRequest {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  newEmail  String
+  token     String    @unique
+  expiresAt DateTime
+  used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model Theme {
+  id                 Int            @id @default(autoincrement())
+  name               String
+  description        String
+  coverImageUrl      String?
+  coverImagePublicId String?
+  category           String
+  status             ThemeStatus    @default(ACTIVE)
+  featured           Boolean        @default(false)
+  productCount       Int            @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  themeProducts      ThemeProduct[]
+
+  @@index([status])
+  @@index([category])
+  @@index([featured])
+}
+
+model ThemeProduct {
+  id        Int      @id @default(autoincrement())
+  themeId   Int
+  productId Int
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  theme     Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([themeId, productId])
+  @@index([themeId])
+  @@index([productId])
+}
+
+/// Système de commission vendeur - Table principale
+model VendorCommission {
+  id                  Int                  @id @default(autoincrement()) @map("id")
+  vendorId            Int                  @unique @map("vendor_id")
+  commissionRate      Float                @default(40.00) @map("commission_rate")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  createdBy           Int?                 @map("created_by")
+  commissionAuditLogs CommissionAuditLog[] @relation("CommissionAuditVendor")
+  createdByUser       User?                @relation("CommissionCreatedByUser", fields: [createdBy], references: [id])
+  vendor              User                 @relation("VendorCommissionToUser", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@index([commissionRate])
+  @@map("vendor_commissions")
+}
+
+/// Logs d'audit pour traçabilité des changements de commission
+model CommissionAuditLog {
+  id            Int              @id @default(autoincrement()) @map("id")
+  vendorId      Int              @map("vendor_id")
+  oldRate       Float?           @map("old_rate")
+  newRate       Float            @map("new_rate")
+  changedBy     Int              @map("changed_by")
+  changedAt     DateTime         @default(now()) @map("changed_at")
+  ipAddress     String?          @map("ip_address")
+  userAgent     String?          @map("user_agent")
+  changedByUser     User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
+  vendorCommission  VendorCommission @relation("CommissionAuditVendor", fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_vendor_commission_fkey")
+  vendorUser        User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
+
+  @@index([vendorId])
+  @@index([changedBy])
+  @@index([changedAt])
+  @@map("commission_audit_log")
+}
+
+/// Table principale pour les demandes d'appel de fonds
+model VendorFundsRequest {
+  id               Int                       @id @default(autoincrement())
+  vendorId         Int                       @map("vendor_id")
+  amount           Float
+  requestedAmount  Float                     @map("requested_amount")
+  description      String
+  paymentMethod    PaymentMethodType         @map("payment_method")
+  phoneNumber      String                    @map("phone_number") @db.VarChar(20)
+  status           FundsRequestStatus        @default(PENDING)
+  rejectReason     String?                   @map("reject_reason")
+  adminNote        String?                   @map("admin_note")
+  processedBy      Int?                      @map("processed_by")
+  processedAt      DateTime?                 @map("processed_at")
+  availableBalance Float                     @map("available_balance")
+  commissionRate   Float                     @default(0.10) @map("commission_rate")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  orderLinks       VendorFundsRequestOrder[]
+  processedByUser  User?                     @relation("ProcessedFundsRequests", fields: [processedBy], references: [id])
+  vendor           User                      @relation("VendorFundsRequests", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId, status], map: "idx_vendor_status")
+  @@index([status, createdAt], map: "idx_status_date")
+  @@index([processedAt], map: "idx_processed_date")
+  @@map("vendor_funds_requests")
+}
+
+/// Table de liaison entre demandes de fonds et commandes
+model VendorFundsRequestOrder {
+  id             Int                @id @default(autoincrement())
+  fundsRequestId Int                @map("funds_request_id")
+  orderId        Int                @map("order_id")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  fundsRequest   VendorFundsRequest @relation(fields: [fundsRequestId], references: [id], onDelete: Cascade)
+  order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([fundsRequestId, orderId], name: "unique_request_order")
+  @@index([fundsRequestId], map: "idx_funds_request")
+  @@index([orderId], map: "idx_order")
+  @@map("vendor_funds_request_orders")
+}
+
+/// Cache des gains vendeur pour optimiser les performances
+model VendorEarnings {
+  id                    Int      @id @default(autoincrement())
+  vendorId              Int      @unique @map("vendor_id")
+  totalEarnings         Float    @default(0) @map("total_earnings")
+  availableAmount       Float    @default(0) @map("available_amount")
+  pendingAmount         Float    @default(0) @map("pending_amount")
+  thisMonthEarnings     Float    @default(0) @map("this_month_earnings")
+  lastMonthEarnings     Float    @default(0) @map("last_month_earnings")
+  totalCommissionPaid   Float    @default(0) @map("total_commission_paid")
+  averageCommissionRate Float    @default(0.10) @map("average_commission_rate")
+  lastCalculatedAt      DateTime @default(now()) @map("last_calculated_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  vendor                User     @relation("VendorEarnings", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId], map: "idx_vendor")
+  @@map("vendor_earnings")
+}
+
 enum PublicationStatus {
   PUBLISHED
   DRAFT
-  PENDING // En attente de validation
-}
-
-// ✅ NOUVEAU: Enum pour les statuts produits vendeur
-enum VendorProductStatus {
-  PUBLISHED
-  DRAFT 
   PENDING
 }
 
-// ✅ NOUVEAU: Enum pour le genre des produits
+enum VendorProductStatus {
+  PUBLISHED
+  DRAFT
+  PENDING
+}
+
 enum ProductGenre {
   HOMME
   FEMME
@@ -290,8 +633,8 @@ enum ProductGenre {
 }
 
 enum PostValidationAction {
-  AUTO_PUBLISH    // Publier automatiquement après validation admin
-  TO_DRAFT        // Mettre en brouillon après validation admin
+  AUTO_PUBLISH
+  TO_DRAFT
 }
 
 enum ViewType {
@@ -337,25 +680,6 @@ enum OrderStatus {
   REJECTED
 }
 
-model Notification {
-  id        Int                @id @default(autoincrement())
-  userId    Int
-  type      NotificationType
-  title     String
-  message   String
-  isRead    Boolean            @default(false)
-  metadata  Json?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  expiresAt DateTime?
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
-  @@index([expiresAt])
-}
-
 enum NotificationType {
   ORDER_NEW
   ORDER_UPDATED
@@ -370,438 +694,9 @@ enum CoordinateType {
   ABSOLUTE
 }
 
-// ✅ ANCIEN ENUM SUPPRIMÉ - Remplacé par un modèle dynamique
-// enum DesignCategory {
-//   LOGO
-//   PATTERN
-//   ILLUSTRATION
-//   TYPOGRAPHY
-//   ABSTRACT
-// }
-
-/// Catégories de design dynamiques créées par l'admin
-model DesignCategory {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique // Nom de la catégorie (ex: "Logo", "Illustration")
-  description String?  // Description optionnelle
-  slug        String   @unique // Slug pour URL (ex: "logo", "illustration")
-  coverImageUrl String? // URL de l'image de couverture uploadée
-  coverImagePublicId String? // Public ID Cloudinary pour l'image de couverture
-  isActive    Boolean  @default(true) // Catégorie active ou désactivée
-  sortOrder   Int      @default(0) // Ordre d'affichage
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdBy   Int      // ID de l'admin qui a créé la catégorie
-  
-  // Relations
-  creator     User     @relation("DesignCategoryCreator", fields: [createdBy], references: [id])
-  designs     Design[] @relation("DesignToCategory")
-  
-  @@index([isActive])
-  @@index([sortOrder])
-  @@index([slug])
-}
-
-model Design {
-  id                  Int              @id @default(autoincrement())
-  vendorId            Int
-  name                String
-  description         String?
-  price               Float
-  categoryId          Int?             // ID de la catégorie sélectionnée (nullable pour compatibilité)
-  category            DesignCategory?  @relation("DesignToCategory", fields: [categoryId], references: [id])
-  imageUrl            String
-  thumbnailUrl        String?
-  cloudinaryPublicId  String
-  thumbnailPublicId   String?
-  fileSize            Int
-  originalFileName    String
-  dimensions          Json             // {width: number, height: number}
-  format              String
-  tags                String[]         @default([])
-  
-  // 🆕 HASH DU CONTENU POUR ÉVITER LES DOUBLONS
-  contentHash         String?          @unique // Hash SHA256 du contenu base64
-  
-  // Status flags
-  isDraft             Boolean          @default(true)
-  isPublished         Boolean          @default(false)
-  isPending           Boolean          @default(false)
-  isDelete            Boolean          @default(false) // Soft delete : true = supprimé, false = actif
-  
-  // Validation admin
-  isValidated         Boolean          @default(false)
-  validatedAt         DateTime?
-  validatedBy         Int?
-  rejectionReason     String?
-  submittedForValidationAt DateTime?
-  
-  // Metrics
-  views               Int              @default(0)
-  likes               Int              @default(0)
-  earnings            Float            @default(0)
-  usageCount          Int              @default(0)
-  
-  // Timestamps
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
-  publishedAt         DateTime?
-  
-  vendor              User             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  validator           User?            @relation("DesignValidator", fields: [validatedBy], references: [id])
-  vendorProducts      VendorProduct[]
-  designProductLinks  DesignProductLink[]
-  productPositions    ProductDesignPosition[] @relation("DesignToDesignPosition")
-  
-  @@index([vendorId])
-  @@index([categoryId])
-  @@index([isPublished])
-  @@index([isPending])
-  @@index([isValidated])
-  @@index([submittedForValidationAt])
-  @@index([createdAt])
-  @@index([contentHash])
-}
-
-/// VendorProduct représente un produit mis en vente par un vendeur à partir d'un produit de base (admin).
-/// Il stocke les variantes sélectionnées (tailles, couleurs) sous forme de tableau JSON pour simplifier le schéma.
-model VendorProduct {
-  id             Int      @id @default(autoincrement())
-  baseProductId  Int      @map("base_product_id")
-  vendorId       Int      @map("vendor_id")
-  name           String
-  description    String?  @db.Text
-  price          Int
-  stock          Int      @default(0)
-  status         VendorProductStatus @default(PENDING)
-  isDelete       Boolean           @default(false) // Soft delete : true = supprimé, false = actif
-  
-  // ✅ CHOIX DU VENDEUR APRÈS VALIDATION ADMIN
-  postValidationAction PostValidationAction @default(AUTO_PUBLISH) @map("post_validation_action")
-  
-  // ✅ NOUVELLE ARCHITECTURE - Conservation structure admin
-  adminProductName        String?   @map("admin_product_name")         // Nom original admin
-  adminProductDescription String?   @db.Text @map("admin_product_description") // Description originale admin
-  adminProductPrice       Int?      @map("admin_product_price")        // Prix original admin
-  
-  // ✅ NOUVELLE ARCHITECTURE - Application design centrée
-  designBase64           String?   @db.Text @map("design_base64")      // ⚠️ DEPRECATED: Remplacé par designCloudinaryUrl
-  designCloudinaryUrl    String?   @map("design_cloudinary_url")       // URL Cloudinary du design
-  designCloudinaryPublicId String? @map("design_cloudinary_public_id") // Public ID Cloudinary du design
-  designPositioning      String?   @default("CENTER") @map("design_positioning") // Toujours CENTER
-  designScale            Float?    @default(0.6) @map("design_scale")  // Échelle d'application
-  designApplicationMode  String?   @default("PRESERVED") @map("design_application_mode") // Mode conservation
-
-  // 🆕 LIAISON DIRECTE AVEC DESIGN
-  designId               Int?      @map("design_id")                   // ID du design utilisé (nouvelle liaison)
-
-  // 🏆 NOUVELLES MÉTADONNÉES POUR MEILLEURS VENDEURS
-  salesCount             Int       @default(0) @map("sales_count")     // Nombre total de ventes
-  totalRevenue           Float     @default(0) @map("total_revenue")   // Chiffre d'affaires total
-  averageRating          Float?    @map("average_rating")              // Note moyenne (si système d'avis)
-  lastSaleDate           DateTime? @map("last_sale_date")              // Date de dernière vente
-  isBestSeller           Boolean   @default(false) @map("is_best_seller") // Marqué comme best-seller
-  bestSellerRank         Int?      @map("best_seller_rank")            // Rang dans les best-sellers (1 = meilleur)
-  bestSellerCategory     String?   @map("best_seller_category")        // Catégorie de best-seller
-  viewsCount             Int       @default(0) @map("views_count")     // Nombre de vues du produit
-  
-  // 🎨 MÉTADONNÉES DESIGN COMPLÈTES
-  designWidth            Int?      @map("design_width")                // Largeur du design en pixels
-  designHeight           Int?      @map("design_height")               // Hauteur du design en pixels
-  designFormat           String?   @map("design_format")               // Format du design (PNG, JPG, SVG)
-  designFileSize         Int?      @map("design_file_size")            // Taille du fichier design en bytes
-
-  // Listes d'IDs de variantes sélectionnées (stockées en JSON pour éviter les tables pivot dans cette première version)
-  sizes         Json
-  colors        Json
-
-  // Métadonnées de publication
-  vendorName        String?
-  vendorDescription String?
-  vendorStock      Int              @default(0)
-  basePriceAdmin   Float            @default(0)
-
-  // Validation admin
-  isValidated         Boolean          @default(false)
-  validatedAt         DateTime?
-  validatedBy         Int?
-  rejectionReason     String?
-  submittedForValidationAt DateTime?
-
-  validator     User?              @relation("VendorProductValidator", fields: [validatedBy], references: [id])
-
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-
-  vendor        User               @relation(fields: [vendorId], references: [id])
-  baseProduct   Product            @relation(fields: [baseProductId], references: [id])
-  design        Design?            @relation(fields: [designId], references: [id])
-  images        VendorProductImage[]
-  designTransforms VendorDesignTransform[]
-  designProductLinks DesignProductLink[]
-  designPositions ProductDesignPosition[] @relation("VendorProductToDesignPosition")
-
-  @@index([vendorId])
-  @@index([baseProductId])
-  @@index([designId])
-  @@index([isValidated])
-  @@index([submittedForValidationAt])
-  @@index([postValidationAction])
-  @@index([isBestSeller])
-  @@index([bestSellerRank])
-  @@index([salesCount])
-  @@index([totalRevenue])
-  @@index([lastSaleDate])
-}
-
-/// VendorProductImage stocke les images générées pour chaque produit vendeur avec métadonnées Cloudinary
-/// ⚠️ DEPRECATED: Cette table sera progressivement remplacée par VendorProductMockup
-model VendorProductImage {
-  id                Int            @id @default(autoincrement())
-  vendorProductId   Int
-  colorId           Int?           // Référence à la couleur
-  colorName         String?        // Nom de la couleur (ex: "Rouge")
-  colorCode         String?        // Code hex de la couleur (ex: "#ff0000")
-  imageType         String         @default("color") // "color" ou "default"
-  
-  // Métadonnées Cloudinary
-  cloudinaryUrl     String         // URL sécurisée Cloudinary
-  cloudinaryPublicId String        // Public ID pour manipulations futures
-  originalImageKey  String?        // Clé originale du frontend
-  
-  // Métadonnées techniques
-  width             Int?           // Largeur de l'image
-  height            Int?           // Hauteur de l'image
-  fileSize          Int?           // Taille en bytes
-  format            String?        // Format (jpg, png, webp, etc.)
-  
-  createdAt         DateTime       @default(now())
-  uploadedAt        DateTime       @default(now())
-  
-  vendorProduct     VendorProduct  @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
-  colorVariation    ColorVariation? @relation(fields: [colorId], references: [id])
-
-  @@index([vendorProductId])
-  @@index([colorId])
-  @@index([imageType])
-}
-
-model VendorDesignTransform {
-  id              Int      @id @default(autoincrement())
-  vendorId        Int
-  vendorProductId Int
-  designUrl       String   @db.VarChar(500)
-  transforms      Json
-  lastModified    DateTime @default(now()) @updatedAt
-  createdAt       DateTime @default(now())
-
-  vendor          User          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  vendorProduct   VendorProduct @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
-
-  @@index([vendorId, vendorProductId], name: "idx_vendor_product")
-  @@index([designUrl], name: "idx_design_url")
-  @@unique([vendorId, vendorProductId, designUrl], name: "unique_vendor_product_design")
-}
-
-/// 🆕 Table de liaison robuste entre designs et produits vendeur
-/// Cette table permet de créer une relation many-to-many entre designs et produits
-/// et facilite les cascades de validation
-model DesignProductLink {
-  id              Int      @id @default(autoincrement())
-  designId        Int      @map("design_id")
-  vendorProductId Int      @map("vendor_product_id")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  design          Design        @relation(fields: [designId], references: [id], onDelete: Cascade)
-  vendorProduct   VendorProduct @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
-
-  @@unique([designId, vendorProductId], name: "unique_design_product")
-  @@index([designId], name: "idx_design_links")
-  @@index([vendorProductId], name: "idx_product_links")
-}
-/// 🆕 Position de design spécifique au couple (VendorProduct, Design)
-model ProductDesignPosition {
-  vendorProductId Int  @map("vendor_product_id")
-  designId        Int  @map("design_id")
-
-  // Position enregistrée {x, y, scale, rotation, constraints?}
-  position        Json  @default("{}")
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  vendorProduct   VendorProduct @relation("VendorProductToDesignPosition", fields: [vendorProductId], references: [id], onDelete: Cascade)
-  design          Design        @relation("DesignToDesignPosition", fields: [designId], references: [id], onDelete: Cascade)
-
-  @@id([vendorProductId, designId])
-  @@index([vendorProductId])
-  @@index([designId])
-}
-
-model EmailChangeRequest {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  newEmail  String
-  token     String   @unique
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  usedAt    DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([token])
-  @@index([userId])
-}
-
-model Theme {
-  id                   Int      @id @default(autoincrement())
-  name                 String
-  description          String
-  coverImageUrl        String?
-  coverImagePublicId   String?
-  category             String
-  status               ThemeStatus @default(ACTIVE)
-  featured             Boolean  @default(false)
-  productCount         Int      @default(0)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-
-  // Relations
-  themeProducts        ThemeProduct[]
-
-  @@index([status])
-  @@index([category])
-  @@index([featured])
-}
-
-model ThemeProduct {
-  id        Int      @id @default(autoincrement())
-  themeId   Int
-  productId Int
-  createdAt DateTime @default(now())
-
-  // Relations
-  theme     Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([themeId, productId])
-  @@index([themeId])
-  @@index([productId])
-}
-
 enum ThemeStatus {
   ACTIVE
   INACTIVE
-}
-
-/// Système de commission vendeur - Table principale
-model VendorCommission {
-  id            Int      @id @default(autoincrement()) @map("id")
-  vendorId      Int      @unique @map("vendor_id")
-  commissionRate Float   @default(40.00) @map("commission_rate") // Taux entre 0 et 100
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  createdBy     Int?     @map("created_by")
-
-  // Relations
-  vendor        User     @relation("VendorCommissionToUser", fields: [vendorId], references: [id], onDelete: Cascade)
-  createdByUser User?    @relation("CommissionCreatedByUser", fields: [createdBy], references: [id], onDelete: SetNull)
-  auditLogs     CommissionAuditLog[]
-
-  @@map("vendor_commissions")
-  @@index([vendorId])
-  @@index([commissionRate])
-}
-
-/// Logs d'audit pour traçabilité des changements de commission
-model CommissionAuditLog {
-  id             Int      @id @default(autoincrement()) @map("id")
-  vendorId       Int      @map("vendor_id")
-  oldRate        Float?   @map("old_rate")
-  newRate        Float    @map("new_rate")
-  changedBy      Int      @map("changed_by")
-  changedAt      DateTime @default(now()) @map("changed_at")
-  ipAddress      String?  @map("ip_address")
-  userAgent      String?  @map("user_agent")
-
-  // Relations
-  vendor         User             @relation("CommissionAuditVendor", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_fkey")
-  changedByUser  User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
-  vendorCommission VendorCommission @relation(fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_commission_fkey")
-
-  @@map("commission_audit_log")
-  @@index([vendorId])
-  @@index([changedBy])
-  @@index([changedAt])
-}
-
-/// Table principale pour les demandes d'appel de fonds
-model VendorFundsRequest {
-  id                Int                      @id @default(autoincrement())
-  vendorId          Int                      @map("vendor_id")
-  amount            Float                    // Montant demandé en FCFA
-  requestedAmount   Float                    @map("requested_amount") // Montant original
-  description       String                   @db.Text
-  paymentMethod     PaymentMethodType        @map("payment_method")
-  phoneNumber       String                   @map("phone_number") @db.VarChar(20)
-  status            FundsRequestStatus       @default(PENDING)
-  rejectReason      String?                  @map("reject_reason") @db.Text
-  adminNote         String?                  @map("admin_note") @db.Text
-  processedBy       Int?                     @map("processed_by")
-  processedAt       DateTime?                @map("processed_at")
-  availableBalance  Float                    @map("available_balance") // Solde au moment de la demande
-  commissionRate    Float                    @default(0.10) @map("commission_rate") // Taux de commission
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @updatedAt @map("updated_at")
-
-  // Relations
-  vendor            User                     @relation("VendorFundsRequests", fields: [vendorId], references: [id], onDelete: Cascade)
-  processedByUser   User?                    @relation("ProcessedFundsRequests", fields: [processedBy], references: [id], onDelete: SetNull)
-  orderLinks        VendorFundsRequestOrder[]
-
-  @@map("vendor_funds_requests")
-  @@index([vendorId, status], name: "idx_vendor_status")
-  @@index([status, createdAt], name: "idx_status_date")
-  @@index([processedAt], name: "idx_processed_date")
-}
-
-/// Table de liaison entre demandes de fonds et commandes
-model VendorFundsRequestOrder {
-  id             Int                @id @default(autoincrement())
-  fundsRequestId Int                @map("funds_request_id")
-  orderId        Int                @map("order_id")
-  createdAt      DateTime           @default(now()) @map("created_at")
-
-  // Relations
-  fundsRequest   VendorFundsRequest @relation(fields: [fundsRequestId], references: [id], onDelete: Cascade)
-  order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@unique([fundsRequestId, orderId], name: "unique_request_order")
-  @@map("vendor_funds_request_orders")
-  @@index([fundsRequestId], name: "idx_funds_request")
-  @@index([orderId], name: "idx_order")
-}
-
-/// Cache des gains vendeur pour optimiser les performances
-model VendorEarnings {
-  id                     Int      @id @default(autoincrement())
-  vendorId               Int      @unique @map("vendor_id")
-  totalEarnings          Float    @default(0) @map("total_earnings")
-  availableAmount        Float    @default(0) @map("available_amount")
-  pendingAmount          Float    @default(0) @map("pending_amount")
-  thisMonthEarnings      Float    @default(0) @map("this_month_earnings")
-  lastMonthEarnings      Float    @default(0) @map("last_month_earnings")
-  totalCommissionPaid    Float    @default(0) @map("total_commission_paid")
-  averageCommissionRate  Float    @default(0.10) @map("average_commission_rate")
-  lastCalculatedAt       DateTime @default(now()) @map("last_calculated_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  vendor                 User     @relation("VendorEarnings", fields: [vendorId], references: [id], onDelete: Cascade)
-
-  @@map("vendor_earnings")
-  @@index([vendorId], name: "idx_vendor")
 }
 
 /// Enums pour le système d'appel de fonds
