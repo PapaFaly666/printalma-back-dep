@@ -1921,7 +1921,8 @@ export class VendorPublishService {
       const whereClause: any = {
         isDelete: false,
         status: 'PUBLISHED',
-        isBestSeller: true
+        isBestSeller: true,
+        vendor: { status: true } // Masquer les produits des vendeurs désactivés côté client
       };
 
       if (vendorId) {
@@ -1996,8 +1997,8 @@ export class VendorPublishService {
 
     try {
       const whereClause: any = {
-        isDelete: false
-        // Commenté: vendor: { status: true } - Afficher les produits même si vendeur désactivé
+        isDelete: false,
+        vendor: { status: true } // Masquer les produits des vendeurs désactivés côté client
       };
 
       // Filtres
@@ -2114,8 +2115,8 @@ export class VendorPublishService {
         where: {
           id: productId,
           isDelete: false,
-          status: 'PUBLISHED'
-          // Commenté: vendor: { status: true } - Afficher les produits même si vendeur désactivé
+          status: 'PUBLISHED',
+          vendor: { status: true } // Masquer les produits des vendeurs désactivés côté client
         },
         include: {
           vendor: {

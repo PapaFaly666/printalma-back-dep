@@ -17,6 +17,8 @@ import {
   UploadedFile,
   Req,
   Patch,
+  Put,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -1064,9 +1066,87 @@ export class VendorPublishController {
     };
   }
 
-} 
- 
- 
+  /**
+   * 🔄 Toggle du statut vendeur par lui-même
+   */
+  @Put('vendor/toggle-status')
+  @UseGuards(JwtAuthGuard, VendorGuard)
+  @ApiOperation({
+    summary: 'Toggle du statut vendeur (auto-désactivation/réactivation)',
+    description: `
+    **VENDEUR SEULEMENT** - Permet au vendeur de désactiver/réactiver son propre compte.
+
+    ✅ **Quand ACTIF:** Vendeur peut gérer ses produits + produits VISIBLES côté client
+    ❌ **Quand DÉSACTIVÉ:** Vendeur peut toujours gérer ses produits MAIS produits INVISIBLES côté client
+
+    **Cas d'usage:**
+    - Pause temporaire d'activité
+    - Maintenance de boutique
+    - Congés/vacances
+    `
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Statut modifié avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Votre compte a été désactivé. Vos produits ne sont plus visibles par les clients.' },
+        data: {
+          type: 'object',
+          properties: {
+            newStatus: { type: 'boolean', example: false },
+            changedAt: { type: 'string', example: '2024-01-15T14:30:00Z' },
+            impact: { type: 'string', example: 'Vos produits sont maintenant invisibles côté client' }
+          }
+        }
+      }
+    }
+  })
+  async toggleVendorStatus(@Request() req: any) {
+    const vendorId = req.user.id;
+    const currentStatus = req.user.status;
+    const newStatus = !currentStatus;
+
+    this.logger.log(`🔄 Vendeur ${vendorId} toggle statut: ${currentStatus} → ${newStatus}`);
+
+    try {
+      // Utiliser le service existant mais avec une logique spéciale pour auto-toggle
+      const result = await this.vendorPublishService.updateVendorAccountStatus(
+        vendorId,
+        newStatus,
+        newStatus ? 'Réactivation par le vendeur' : 'Désactivation par le vendeur'
+      );
+
+      const impact = newStatus
+        ? 'Vos produits sont maintenant visibles par les clients'
+        : 'Vos produits ne sont plus visibles par les clients';
+
+      const message = newStatus
+        ? '✅ Votre compte a été réactivé. Vos produits sont maintenant visibles par les clients.'
+        : '❌ Votre compte a été désactivé. Vous gardez accès à votre tableau de bord mais vos produits ne sont plus visibles par les clients.';
+
+      return {
+        success: true,
+        message,
+        data: {
+          newStatus,
+          changedAt: new Date().toISOString(),
+          impact,
+          canStillAccess: 'Vous gardez accès à tous vos outils vendeur'
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur toggle statut vendeur ${vendorId}:`, error);
+      throw new BadRequestException('Erreur lors de la modification du statut');
+    }
+  }
+
+}
+
+
  
  
  

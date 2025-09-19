@@ -28,24 +28,9 @@ export class VendorGuard implements CanActivate {
       });
     }
 
-    // ✅ Autoriser l'accès aux endpoints de statut de compte même si le compte est désactivé
-    const isAccountStatusRoute = (
-      (method === 'PATCH' && path.includes('/vendor/account/status')) ||
-      (method === 'GET' && path.includes('/vendor/account/status'))
-    );
-
-    if (!user.status && !isAccountStatusRoute) {
-      throw new ForbiddenException({
-        error: 'ACCOUNT_DISABLED',
-        message: 'Votre compte vendeur est désactivé. Vous pouvez le réactiver à tout moment.',
-        action: 'REACTIVATE_ACCOUNT',
-        details: {
-          userId: user.id,
-          email: user.email,
-          canReactivate: true
-        }
-      });
-    }
+    // ✅ ACCÈS COMPLET POUR VENDEURS DÉSACTIVÉS
+    // Les vendeurs désactivés gardent l'accès total à leur panel d'administration
+    // Seule la visibilité publique de leurs produits est affectée
 
     return true;
   }
