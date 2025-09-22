@@ -96,17 +96,29 @@ export class VendorWizardProductService {
           data: {
             vendorId: vendorId,
             baseProductId: baseProductId,
-            name: vendorName,
+            name: vendorName, // Nom personnalisé du vendeur
             description: vendorDescription,
             price: vendorPrice,
             stock: vendorStock,
             status: forcedStatus as any,
             designId: null, // PAS de design pour wizard
-            selectedColors: JSON.stringify(selectedColors),
-            selectedSizes: JSON.stringify(selectedSizes),
+            // Stocker les variantes dans les champs JSON requis par le schéma
+            sizes: selectedSizes as unknown as any,
+            colors: selectedColors as unknown as any,
+            // 🔧 Mémoriser quelques infos admin du produit de base
+            adminProductName: baseProduct.name || `Produit base ${baseProductId}`,
+            adminProductPrice: Math.round(baseProduct.price),
+            // Champs mémo optionnels
+            vendorName: vendorName,
+            vendorDescription: vendorDescription,
+            vendorStock: vendorStock,
           },
           include: {
-            product: true,
+            baseProduct: true,
+            design: true,
+            validator: true,
+            vendor: true,
+            images: true,
           },
         });
 
@@ -124,12 +136,25 @@ export class VendorWizardProductService {
           });
         }
 
-        return product;
+        // Recharger le produit avec ses images et relations nécessaires
+        const productWithImages = await tx.vendorProduct.findUnique({
+          where: { id: product.id },
+          include: {
+            baseProduct: true,
+            images: true,
+            vendor: true,
+            design: true,
+            validator: true,
+          },
+        });
+
+        return productWithImages!;
       });
 
       this.logger.log(`🎉 Produit wizard créé avec succès: ID=${wizardProduct.id}`);
 
       // 6. Construire la réponse
+      const baseImage = wizardProduct.images?.find((img) => (img.imageType || '').toUpperCase() === 'BASE');
       return {
         success: true,
         message: 'Produit wizard créé avec succès',
@@ -146,6 +171,24 @@ export class VendorWizardProductService {
             name: baseProduct.name,
             price: baseProduct.price,
           },
+          baseImage: baseImage
+            ? {
+                id: baseImage.id,
+                url: baseImage.cloudinaryUrl,
+                isMain: true,
+                orderIndex: 0,
+              }
+            : null,
+          images: wizardProduct.images
+            ? wizardProduct.images
+                .sort((a, b) => (a.id ?? 0) - (b.id ?? 0))
+                .map((img) => ({
+                  id: img.id,
+                  url: img.cloudinaryUrl,
+                  isMain: (img.imageType || '').toUpperCase() === 'BASE',
+                  orderIndex: (img.imageType || '').toUpperCase() === 'BASE' ? 0 : undefined,
+                }))
+            : [],
           calculations: {
             basePrice: baseProduct.price,
             vendorProfit: vendorProfit,
@@ -155,7 +198,6 @@ export class VendorWizardProductService {
           },
           selectedColors: selectedColors,
           selectedSizes: selectedSizes,
-          images: savedImages,
           wizard: {
             createdViaWizard: true,
             hasDesign: false,

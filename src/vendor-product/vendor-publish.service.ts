@@ -581,16 +581,11 @@ export class VendorPublishService {
           profile_photo_url: product.vendor.profile_photo_url
           },
           
-        // ✅ IMAGES ADMIN CONSERVÉES
+        // ✅ IMAGES: Distinguer produits wizard vs traditionnel
           images: {
-          adminReferences: product.images.map(img => ({
-            colorName: img.colorName,
-            colorCode: img.colorCode,
-            adminImageUrl: img.cloudinaryUrl,
-            imageType: img.imageType
-          })),
+          adminReferences: this.formatProductImages(product),
             total: product.images.length,
-          primaryImageUrl: product.images[0]?.cloudinaryUrl || null,
+          primaryImageUrl: this.getPrimaryImageUrl(product),
             validation: {
             isHealthy: true, // Nouvelle architecture = toujours sain
             totalIssuesDetected: 0
@@ -2743,6 +2738,61 @@ export class VendorPublishService {
 
     this.logger.log(`🏷️ Conversion catégorie: "${categoryName}" → ID ${categoryId}`);
     return categoryId;
+  }
+
+  /**
+   * 🆕 HELPER: Formater les images selon le type de produit (wizard vs traditionnel)
+   */
+  private formatProductImages(product: any) {
+    // Si le produit a des images propres (wizard product), les utiliser
+    if (product.images && product.images.length > 0) {
+      return product.images.map(img => ({
+        colorName: img.colorName || null,
+        colorCode: img.colorCode || null,
+        adminImageUrl: img.cloudinaryUrl,
+        imageType: img.imageType || 'base'
+      }));
+    }
+
+    // Sinon, utiliser les images du mockup (produit traditionnel)
+    if (product.baseProduct?.colorVariations) {
+      const adminReferences = [];
+
+      for (const colorVariation of product.baseProduct.colorVariations) {
+        for (const image of colorVariation.images || []) {
+          adminReferences.push({
+            colorName: colorVariation.name,
+            colorCode: colorVariation.colorCode,
+            adminImageUrl: image.url,
+            imageType: 'admin_reference'
+          });
+        }
+      }
+
+      return adminReferences;
+    }
+
+    return [];
+  }
+
+  /**
+   * 🆕 HELPER: Obtenir l'image principale selon le type de produit
+   */
+  private getPrimaryImageUrl(product: any) {
+    // Pour les produits wizard, utiliser l'image de type 'base' ou la première
+    if (product.images && product.images.length > 0) {
+      const baseImage = product.images.find(img =>
+        (img.imageType || '').toLowerCase() === 'base'
+      );
+      return baseImage?.cloudinaryUrl || product.images[0]?.cloudinaryUrl || null;
+    }
+
+    // Pour les produits traditionnels, utiliser la première image du mockup
+    if (product.baseProduct?.colorVariations?.[0]?.images?.[0]) {
+      return product.baseProduct.colorVariations[0].images[0].url;
+    }
+
+    return null;
   }
 }
  

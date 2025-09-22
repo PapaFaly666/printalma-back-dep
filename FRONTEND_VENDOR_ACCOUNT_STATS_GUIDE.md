@@ -87,3 +87,4 @@ const derniereConnexion = formatIsoToFr(data.lastLoginAt) ?? '—';
 - Format backend actuel: `YYYY-MM-DD HH:mm`. D'autres formats peuvent etre ajoutes sur demande.
 
 
+

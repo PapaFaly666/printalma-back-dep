@@ -1,84 +1,326 @@
-# Déprécation du statut REJECTED pour les demandes d'appel de fonds
+POST http://localhost:3004/vendor/wizard-products 400 (Bad Request)
+uploadProduct @ useWizardProductUpload.ts:364
+await in uploadProduct
+handleSubmit @ ProductCreationWizard.tsx:425
+onClick @ ProductCreationWizard.tsx:1342
+executeDispatch @ react-dom-client.development.js:16368
+runWithFiberInDEV @ react-dom-client.development.js:1519
+processDispatchQueue @ react-dom-client.development.js:16418
+(anonymous) @ react-dom-client.development.js:17016
+batchedUpdates$1 @ react-dom-client.development.js:3262
+dispatchEventForPluginEventSystem @ react-dom-client.development.js:16572
+dispatchEvent @ react-dom-client.development.js:20658
+dispatchDiscreteEvent @ react-dom-client.development.js:20626
+useWizardProductUpload.ts:372 Upload wizard product: {productName: 'C63 ', productPrice: 12000, basePrice: 10000, profit: 2000, revenue: 1400, …}
+useWizardProductUpload.ts:410  ❌ Erreur wizard endpoint: 
+[31mInvalid [1m`tx.vendorProduct.create()`[22m invocation in[39m
+[4m/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/vendor-product/vendor-wizard-product.service.ts:95:48[24m
 
-Objectif: simplifier le workflow d'appel de fonds côté vendeur et admin. Le statut `REJECTED` est retiré: les demandes passent de `PENDING` → `APPROVED` → `PAID`. Les validations ou corrections se font avant la création de la demande côté vendeur.
+  [2m[90m92[39m [90m// 5. Créer le produit wizard dans une transaction[39m[22m
+  [2m[90m93[39m [36mconst[39m wizardProduct = [36mawait[39m [36mthis[39m[34m.[39mprisma[34m.[39m[36m$transaction[39m[34m([39m[36masync[39m [34m([39mtx[34m)[39m => [34m{[39m[22m
+  [2m[90m94[39m   [90m// Créer le produit[39m[22m
+[1m[31m→[39m[22m [2m[90m95[39m   [36mconst[39m product = [36mawait[39m tx[34m.[39mvendorProduct[34m.[39m[36mcreate[39m[34m([39m[22m{
+         data: {
+           vendorId: 7,
+           baseProductId: 33,
+           name: "C63",
+           description: "fezfz e fezf",
+           price: 12000,
+           stock: 10,
+           status: "PUBLISHED",
+           designId: null,
+           sizes: [
+             {
+               id: 155,
+               sizeName: "350ml"
+             },
+             {
+               id: 154,
+               sizeName: "300ml"
+             }
+           ],
+           colors: [
+             {
+               id: 32,
+               name: "Noir",
+               colorCode: "#000000"
+             },
+             {
+               id: 33,
+               name: "Rouge",
+               colorCode: "#ec0909"
+             }
+           ],
+           [31moriginalAdminName[39m: "Mugs",
+           [31m~~~~~~~~~~~~~~~~~[39m
+           vendorName: "C63",
+           vendorDescription: "fezfz e fezf",
+           vendorStock: 10,
+       [32m?[39m   [32mid[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32misDelete[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mpostValidationAction[39m[32m?[39m[32m: [39m[32mPostValidationAction[39m,
+       [32m?[39m   [32madminProductName[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32madminProductDescription[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32madminProductPrice[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignBase64[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignCloudinaryUrl[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignCloudinaryPublicId[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignPositioning[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignScale[39m[32m?[39m[32m: [39m[32mFloat | Null[39m,
+       [32m?[39m   [32mdesignApplicationMode[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32msalesCount[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32mtotalRevenue[39m[32m?[39m[32m: [39m[32mFloat[39m,
+       [32m?[39m   [32maverageRating[39m[32m?[39m[32m: [39m[32mFloat | Null[39m,
+       [32m?[39m   [32mlastSaleDate[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32misBestSeller[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mbestSellerRank[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mbestSellerCategory[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mviewsCount[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32mdesignWidth[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignHeight[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignFormat[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignFileSize[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mbasePriceAdmin[39m[32m?[39m[32m: [39m[32mFloat[39m,
+       [32m?[39m   [32misValidated[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mvalidatedAt[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32mvalidatedBy[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mrejectionReason[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32msubmittedForValidationAt[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32mcreatedAt[39m[32m?[39m[32m: [39m[32mDateTime[39m,
+       [32m?[39m   [32mupdatedAt[39m[32m?[39m[32m: [39m[32mDateTime[39m,
+       [32m?[39m   [32mdesignProductLinks[39m[32m?[39m[32m: [39m[32mDesignProductLinkUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mdesignPositions[39m[32m?[39m[32m: [39m[32mProductDesignPositionUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mdesignTransforms[39m[32m?[39m[32m: [39m[32mVendorDesignTransformUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mimages[39m[32m?[39m[32m: [39m[32mVendorProductImageUncheckedCreateNestedManyWithoutVendorProductInput[39m
+         },
+         include: {
+           baseProduct: true,
+           design: true,
+           validator: true,
+           vendor: true,
+           images: true
+         }
+       }[2m)[22m
 
-## Changement fonctionnel
-- Statuts conservés: `PENDING`, `APPROVED`, `PAID`
-- Statut supprimé: `REJECTED`
-- Champs supprimés: `rejectReason` (texte), `approvedDate` reste optionnel
+Unknown argument `[31moriginalAdminName[39m`. Available options are listed in [32mgreen[39m.
+uploadProduct @ useWizardProductUpload.ts:410
+await in uploadProduct
+handleSubmit @ ProductCreationWizard.tsx:425
+onClick @ ProductCreationWizard.tsx:1342
+executeDispatch @ react-dom-client.development.js:16368
+runWithFiberInDEV @ react-dom-client.development.js:1519
+processDispatchQueue @ react-dom-client.development.js:16418
+(anonymous) @ react-dom-client.development.js:17016
+batchedUpdates$1 @ react-dom-client.development.js:3262
+dispatchEventForPluginEventSystem @ react-dom-client.development.js:16572
+dispatchEvent @ react-dom-client.development.js:20658
+dispatchDiscreteEvent @ react-dom-client.development.js:20626
+useWizardProductUpload.ts:423  Error uploading wizard product: Error: 
+[31mInvalid [1m`tx.vendorProduct.create()`[22m invocation in[39m
+[4m/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/vendor-product/vendor-wizard-product.service.ts:95:48[24m
 
-## Modifs Backend à réaliser
-1) Types/DTO
-- FundsRequest.status: retirer `REJECTED`
-- Supprimer `rejectReason?: string` des DTO (request/response)
+  [2m[90m92[39m [90m// 5. Créer le produit wizard dans une transaction[39m[22m
+  [2m[90m93[39m [36mconst[39m wizardProduct = [36mawait[39m [36mthis[39m[34m.[39mprisma[34m.[39m[36m$transaction[39m[34m([39m[36masync[39m [34m([39mtx[34m)[39m => [34m{[39m[22m
+  [2m[90m94[39m   [90m// Créer le produit[39m[22m
+[1m[31m→[39m[22m [2m[90m95[39m   [36mconst[39m product = [36mawait[39m tx[34m.[39mvendorProduct[34m.[39m[36mcreate[39m[34m([39m[22m{
+         data: {
+           vendorId: 7,
+           baseProductId: 33,
+           name: "C63",
+           description: "fezfz e fezf",
+           price: 12000,
+           stock: 10,
+           status: "PUBLISHED",
+           designId: null,
+           sizes: [
+             {
+               id: 155,
+               sizeName: "350ml"
+             },
+             {
+               id: 154,
+               sizeName: "300ml"
+             }
+           ],
+           colors: [
+             {
+               id: 32,
+               name: "Noir",
+               colorCode: "#000000"
+             },
+             {
+               id: 33,
+               name: "Rouge",
+               colorCode: "#ec0909"
+             }
+           ],
+           [31moriginalAdminName[39m: "Mugs",
+           [31m~~~~~~~~~~~~~~~~~[39m
+           vendorName: "C63",
+           vendorDescription: "fezfz e fezf",
+           vendorStock: 10,
+       [32m?[39m   [32mid[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32misDelete[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mpostValidationAction[39m[32m?[39m[32m: [39m[32mPostValidationAction[39m,
+       [32m?[39m   [32madminProductName[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32madminProductDescription[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32madminProductPrice[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignBase64[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignCloudinaryUrl[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignCloudinaryPublicId[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignPositioning[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignScale[39m[32m?[39m[32m: [39m[32mFloat | Null[39m,
+       [32m?[39m   [32mdesignApplicationMode[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32msalesCount[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32mtotalRevenue[39m[32m?[39m[32m: [39m[32mFloat[39m,
+       [32m?[39m   [32maverageRating[39m[32m?[39m[32m: [39m[32mFloat | Null[39m,
+       [32m?[39m   [32mlastSaleDate[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32misBestSeller[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mbestSellerRank[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mbestSellerCategory[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mviewsCount[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32mdesignWidth[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignHeight[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignFormat[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignFileSize[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mbasePriceAdmin[39m[32m?[39m[32m: [39m[32mFloat[39m,
+       [32m?[39m   [32misValidated[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mvalidatedAt[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32mvalidatedBy[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mrejectionReason[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32msubmittedForValidationAt[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32mcreatedAt[39m[32m?[39m[32m: [39m[32mDateTime[39m,
+       [32m?[39m   [32mupdatedAt[39m[32m?[39m[32m: [39m[32mDateTime[39m,
+       [32m?[39m   [32mdesignProductLinks[39m[32m?[39m[32m: [39m[32mDesignProductLinkUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mdesignPositions[39m[32m?[39m[32m: [39m[32mProductDesignPositionUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mdesignTransforms[39m[32m?[39m[32m: [39m[32mVendorDesignTransformUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mimages[39m[32m?[39m[32m: [39m[32mVendorProductImageUncheckedCreateNestedManyWithoutVendorProductInput[39m
+         },
+         include: {
+           baseProduct: true,
+           design: true,
+           validator: true,
+           vendor: true,
+           images: true
+         }
+       }[2m)[22m
 
-2) Endpoints Admin
-- `PATCH /admin/funds-requests/:id/process`:
-  - Supprimer la branche `status === 'REJECTED'`
-  - Contrat d'entrée: `status` ∈ { `APPROVED`, `PAID` } uniquement
-  - Si `status === 'APPROVED'`: définir `approvedDate = now()`, `processedDate = now()`, `processedBy = adminId`, persister `adminNote` si fournie
-  - Si `status === 'PAID'`: idempotence + sécurité (ne payer que si `APPROVED`), enregistrer `processedDate = now()` et journaliser l'opération de paiement
+Unknown argument `[31moriginalAdminName[39m`. Available options are listed in [32mgreen[39m.
+    at uploadProduct (useWizardProductUpload.ts:412:15)
+    at async handleSubmit (ProductCreationWizard.tsx:425:22)
+uploadProduct @ useWizardProductUpload.ts:423
+await in uploadProduct
+handleSubmit @ ProductCreationWizard.tsx:425
+onClick @ ProductCreationWizard.tsx:1342
+executeDispatch @ react-dom-client.development.js:16368
+runWithFiberInDEV @ react-dom-client.development.js:1519
+processDispatchQueue @ react-dom-client.development.js:16418
+(anonymous) @ react-dom-client.development.js:17016
+batchedUpdates$1 @ react-dom-client.development.js:3262
+dispatchEventForPluginEventSystem @ react-dom-client.development.js:16572
+dispatchEvent @ react-dom-client.development.js:20658
+dispatchDiscreteEvent @ react-dom-client.development.js:20626
+ProductCreationWizard.tsx:438  Erreur création produit wizard: Error: 
+[31mInvalid [1m`tx.vendorProduct.create()`[22m invocation in[39m
+[4m/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/vendor-product/vendor-wizard-product.service.ts:95:48[24m
 
-3) Filtres/Liste
-- `GET /admin/funds-requests` et `GET /vendor/funds-requests`: si un filtre `status=REJECTED` est reçu, renvoyer 400 (ou l’ignorer/graceful fallback). Mettre à jour la doc d’API.
+  [2m[90m92[39m [90m// 5. Créer le produit wizard dans une transaction[39m[22m
+  [2m[90m93[39m [36mconst[39m wizardProduct = [36mawait[39m [36mthis[39m[34m.[39mprisma[34m.[39m[36m$transaction[39m[34m([39m[36masync[39m [34m([39mtx[34m)[39m => [34m{[39m[22m
+  [2m[90m94[39m   [90m// Créer le produit[39m[22m
+[1m[31m→[39m[22m [2m[90m95[39m   [36mconst[39m product = [36mawait[39m tx[34m.[39mvendorProduct[34m.[39m[36mcreate[39m[34m([39m[22m{
+         data: {
+           vendorId: 7,
+           baseProductId: 33,
+           name: "C63",
+           description: "fezfz e fezf",
+           price: 12000,
+           stock: 10,
+           status: "PUBLISHED",
+           designId: null,
+           sizes: [
+             {
+               id: 155,
+               sizeName: "350ml"
+             },
+             {
+               id: 154,
+               sizeName: "300ml"
+             }
+           ],
+           colors: [
+             {
+               id: 32,
+               name: "Noir",
+               colorCode: "#000000"
+             },
+             {
+               id: 33,
+               name: "Rouge",
+               colorCode: "#ec0909"
+             }
+           ],
+           [31moriginalAdminName[39m: "Mugs",
+           [31m~~~~~~~~~~~~~~~~~[39m
+           vendorName: "C63",
+           vendorDescription: "fezfz e fezf",
+           vendorStock: 10,
+       [32m?[39m   [32mid[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32misDelete[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mpostValidationAction[39m[32m?[39m[32m: [39m[32mPostValidationAction[39m,
+       [32m?[39m   [32madminProductName[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32madminProductDescription[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32madminProductPrice[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignBase64[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignCloudinaryUrl[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignCloudinaryPublicId[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignPositioning[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignScale[39m[32m?[39m[32m: [39m[32mFloat | Null[39m,
+       [32m?[39m   [32mdesignApplicationMode[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32msalesCount[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32mtotalRevenue[39m[32m?[39m[32m: [39m[32mFloat[39m,
+       [32m?[39m   [32maverageRating[39m[32m?[39m[32m: [39m[32mFloat | Null[39m,
+       [32m?[39m   [32mlastSaleDate[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32misBestSeller[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mbestSellerRank[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mbestSellerCategory[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mviewsCount[39m[32m?[39m[32m: [39m[32mInt[39m,
+       [32m?[39m   [32mdesignWidth[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignHeight[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mdesignFormat[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32mdesignFileSize[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mbasePriceAdmin[39m[32m?[39m[32m: [39m[32mFloat[39m,
+       [32m?[39m   [32misValidated[39m[32m?[39m[32m: [39m[32mBoolean[39m,
+       [32m?[39m   [32mvalidatedAt[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32mvalidatedBy[39m[32m?[39m[32m: [39m[32mInt | Null[39m,
+       [32m?[39m   [32mrejectionReason[39m[32m?[39m[32m: [39m[32mString | Null[39m,
+       [32m?[39m   [32msubmittedForValidationAt[39m[32m?[39m[32m: [39m[32mDateTime | Null[39m,
+       [32m?[39m   [32mcreatedAt[39m[32m?[39m[32m: [39m[32mDateTime[39m,
+       [32m?[39m   [32mupdatedAt[39m[32m?[39m[32m: [39m[32mDateTime[39m,
+       [32m?[39m   [32mdesignProductLinks[39m[32m?[39m[32m: [39m[32mDesignProductLinkUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mdesignPositions[39m[32m?[39m[32m: [39m[32mProductDesignPositionUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mdesignTransforms[39m[32m?[39m[32m: [39m[32mVendorDesignTransformUncheckedCreateNestedManyWithoutVendorProductInput[39m,
+       [32m?[39m   [32mimages[39m[32m?[39m[32m: [39m[32mVendorProductImageUncheckedCreateNestedManyWithoutVendorProductInput[39m
+         },
+         include: {
+           baseProduct: true,
+           design: true,
+           validator: true,
+           vendor: true,
+           images: true
+         }
+       }[2m)[22m
 
-4) Migration de données
-- Mettre à jour toutes les lignes `status = 'REJECTED'` vers `status = 'PENDING'` (ou `APPROVED` selon la politique choisie). Recommandation: migrer vers `PENDING` et notifier les admins.
-- Supprimer la colonne `reject_reason` si créée séparément. Option: la conserver un temps en lecture seule si historique nécessaire.
-
-5) Règles métier
-- La validation des informations (numéro téléphone, méthode de paiement) doit être faite avant la création (`POST /vendor/funds-requests`) avec des erreurs 4xx explicites. Ainsi, le rejet manuel n’est plus requis.
-
-## Contrats finaux (proposés)
-FundsRequest (réponse):
-```json
-{
-  "id": 123,
-  "vendorId": 2000,
-  "amount": 45000,
-  "requestedAmount": 45000,
-  "description": "Demande de retrait de 45 000 F",
-  "paymentMethod": "WAVE",
-  "phoneNumber": "+221770001234",
-  "status": "PENDING" | "APPROVED" | "PAID",
-  "requestDate": "2025-01-17T09:15:00Z",
-  "approvedDate": "2025-01-17T10:30:00Z",
-  "processedDate": "2025-01-17T10:30:00Z",
-  "processedBy": 1,
-  "adminNote": "Demande approuvée",
-  "orderIds": [1,2],
-  "availableBalance": 45000,
-  "commissionRate": 0.1,
-  "createdAt": "2025-01-17T09:15:00Z",
-  "updatedAt": "2025-01-17T10:30:00Z"
-}
-```
-
-ProcessFundsRequest (entrée admin):
-```json
-{
-  "status": "APPROVED" | "PAID",
-  "adminNote": "string (optionnel)"
-}
-```
-
-## Validation côté serveur (exemples)
-- POST /vendor/funds-requests: vérifier `amount >= min`, `amount <= availableBalance`, format `phoneNumber`, `paymentMethod` ∈ {WAVE, ORANGE_MONEY, BANK_TRANSFER}.
-- PATCH /admin/funds-requests/:id/process:
-  - APPROVED: autorisé si status actuel = PENDING
-  - PAID: autorisé si status actuel = APPROVED
-
-## Journalisation & Audit
-- Conserver un journal (table events) pour anciennes transitions `REJECTED` si historique nécessaire. Le champ `reject_reason` peut être migré vers la table d’événements avant suppression.
-
-## Synchronisation Frontend
-- Les écrans `/vendeur/appel-de-fonds` et `/admin/payment-requests` n’affichent plus le rejet.
-- Les filtres d’UI et les actions rapides ne proposent plus `REJECTED`.
-
-## Plan de déploiement
-1. Déployer backend avec nouveaux contrats (supporter transitoirement l’ancien filtre REJECTED → 400 ou ignoré)
-2. Déployer frontend aligné (déjà prêt)
-3. Lancer migration de données `REJECTED → PENDING`
-4. Nettoyage colonnes/champs obsolètes après période de grâce
-
-
+Unknown argument `[31moriginalAdminName[39m`. Available options are listed in [32mgreen[39m.
+    at uploadProduct (useWizardProductUpload.ts:412:15)
+    at async handleSubmit (ProductCreationWizard.tsx:425:22)
+handleSubmit @ ProductCreationWizard.tsx:438
+await in handleSubmit
+onClick @ ProductCreationWizard.tsx:1342
+executeDispatch @ react-dom-client.development.js:16368
+runWithFiberInDEV @ react-dom-client.development.js:1519
+processDispatchQueue @ react-dom-client.development.js:16418
+(anonymous) @ react-dom-client.development.js:17016
+batchedUpdates$1 @ react-dom-client.development.js:3262
+dispatchEventForPluginEventSystem @ react-dom-client.development.js:16572
+dispatchEvent @ react-dom-client.development.js:20658
+dispatchDiscreteEvent @ react-dom-client.development.js:20626
