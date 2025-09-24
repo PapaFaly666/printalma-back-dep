@@ -42,7 +42,13 @@ export class VendorWizardService {
       // 2. Upload des images
       const uploadedImages = await this.uploadImages(vendorId, files);
 
-      // 3. Création en base de données avec transaction
+      // 3. Charger le thème sélectionné (pour stocker id + nom)
+      const selectedThemeId = parseInt(productData.selectedTheme as any);
+      const selectedTheme = isNaN(selectedThemeId)
+        ? null
+        : await this.prisma.designCategory.findUnique({ where: { id: selectedThemeId } });
+
+      // 4. Création en base de données avec transaction
       const result = await this.prisma.$transaction(async (prisma) => {
         // Créer le produit vendeur
         const vendorProduct = await prisma.vendorProduct.create({
@@ -68,6 +74,10 @@ export class VendorWizardService {
             vendorDescription: productData.productDescription,
             vendorStock: 100,
             basePriceAdmin: productData.basePrice,
+
+            // 🆕 Thème sélectionné par le vendeur
+            vendorSelectedThemeId: selectedTheme?.id ?? null,
+            vendorSelectedThemeName: selectedTheme?.name ?? null,
 
             createdAt: new Date(),
             updatedAt: new Date()

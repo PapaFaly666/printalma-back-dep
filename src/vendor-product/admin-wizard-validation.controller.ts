@@ -23,6 +23,8 @@ import {
   ApiBody,
   ApiQuery,
 } from '@nestjs/swagger';
+import { IsBoolean, IsOptional, IsString, IsArray, IsNumber } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../core/guards/roles.guard';
 import { Roles } from '../core/guards/roles.decorator';
@@ -31,13 +33,36 @@ import { PrismaService } from '../prisma.service';
 
 // DTOs spécifiques pour la validation WIZARD
 class ValidateProductDto {
+  @IsBoolean({ message: 'Le champ "approved" doit être un booléen (true ou false)' })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value === 'true';
+    }
+    return value;
+  })
   approved: boolean;
+
+  @IsOptional()
+  @IsString({ message: 'La raison de rejet doit être une chaîne de caractères' })
   rejectionReason?: string;
 }
 
 class ValidateProductsBatchDto {
+  @IsArray({ message: 'productIds doit être un tableau' })
+  @IsNumber({}, { each: true, message: 'Chaque ID de produit doit être un nombre' })
   productIds: number[];
+
+  @IsBoolean({ message: 'Le champ "approved" doit être un booléen (true ou false)' })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value === 'true';
+    }
+    return value;
+  })
   approved: boolean;
+
+  @IsOptional()
+  @IsString({ message: 'La raison de rejet doit être une chaîne de caractères' })
   rejectionReason?: string;
 }
 
@@ -183,24 +208,87 @@ export class AdminWizardValidationController {
 
       const result = await this.validationService.getPendingProducts(adminId, options);
 
-      // 🔧 Récupération enrichie des produits avec images pour WIZARD
+      // 🔧 Récupération enrichie des produits avec tous les détails complets
       const productsWithImages = await Promise.all(
         result.products.map(async (product) => {
           const isWizardProduct = !product.designId || product.designId === null;
 
           let vendorImages = [];
+          let adminProductDetails = null;
+          let selectedColors = [];
+          let selectedSizes = [];
+
           if (isWizardProduct) {
             // Récupérer les images du produit WIZARD
             vendorImages = await this.getVendorImages(product.id);
+
+            // Récupérer les détails complets du produit admin
+            if (product.baseProductId) {
+              adminProductDetails = await this.getAdminProductDetails(product.baseProductId);
+            }
+
+            // Debug: Loguer les données JSON des couleurs et tailles
+            console.log(`🔍 Debug produit ${product.id}:`);
+            console.log(`- colors (type: ${typeof product.colors}):`, product.colors);
+            console.log(`- sizes (type: ${typeof product.sizes}):`, product.sizes);
+            console.log(`- baseProductId: ${product.baseProductId}`);
+
+            // Récupérer les couleurs et tailles sélectionnées par le vendeur
+            selectedColors = await this.getVendorSelectedColors(product);
+            selectedSizes = await this.getVendorSelectedSizes(product);
+
+            console.log(`🎨 Couleurs récupérées: ${selectedColors.length}, Tailles récupérées: ${selectedSizes.length}`);
+          } else {
+            // Pour les produits traditionnels, récupérer le design
+            if (product.designId) {
+              const design = await this.prisma.design.findUnique({
+                where: { id: product.designId },
+                select: {
+                  id: true,
+                  imageUrl: true,
+                  isValidated: true,
+                  categoryId: true
+                }
+              });
+
+              // Pour produits traditionnels, on s'appuie sur baseProductId du produit
+              if (product.baseProductId) {
+                adminProductDetails = await this.getAdminProductDetails(product.baseProductId);
+              }
+            }
           }
 
           return {
             ...product,
+            // Informations de base enrichies
             isWizardProduct,
             productType: isWizardProduct ? 'WIZARD' : 'TRADITIONAL',
             hasDesign: !isWizardProduct,
             adminProductName: product.adminProductName || product.baseProduct?.name || 'Produit de base',
-            vendorImages: vendorImages
+
+            // Prix vendeur explicite
+            vendorPrice: product.vendorPrice || product.price, // Fallback vers price si vendorPrice n'existe pas
+
+            // Nouvelles données enrichies
+            vendorImages: vendorImages,
+            adminProductDetails: adminProductDetails,
+            selectedColors: selectedColors,
+            selectedSizes: selectedSizes,
+
+            // Base product enrichi pour affichage direct (inclut images mockup)
+            baseProduct: adminProductDetails ? {
+              id: adminProductDetails.id,
+              name: adminProductDetails.name,
+              mockupImages: adminProductDetails.mockupImages,
+              colorVariations: adminProductDetails.colorVariations,
+              sizes: adminProductDetails.sizes
+            } : (product as any).baseProduct,
+
+            // 🆕 Thème sélectionné par le vendeur (stocké côté produit vendeur)
+            vendorSelectedTheme: {
+              id: (product as any).vendorSelectedThemeId || null,
+              name: (product as any).vendorSelectedThemeName || null
+            }
           };
         })
       );
@@ -338,11 +426,7 @@ export class AdminWizardValidationController {
     try {
       const adminId = req.user.id || req.user.sub;
 
-      // Validation des données
-      if (typeof dto.approved !== 'boolean') {
-        throw new BadRequestException('Le champ "approved" est requis et doit être un booléen');
-      }
-
+      // Validation des données - vérifiée par les décorateurs class-validator
       if (!dto.approved && !dto.rejectionReason) {
         throw new BadRequestException('Une raison de rejet est obligatoire pour rejeter un produit');
       }
@@ -474,15 +558,7 @@ export class AdminWizardValidationController {
     try {
       const adminId = req.user.id || req.user.sub;
 
-      // Validation des données
-      if (!Array.isArray(dto.productIds) || dto.productIds.length === 0) {
-        throw new BadRequestException('productIds doit être un tableau non vide');
-      }
-
-      if (typeof dto.approved !== 'boolean') {
-        throw new BadRequestException('Le champ "approved" est requis et doit être un booléen');
-      }
-
+      // Validation des données - vérifiées par les décorateurs class-validator
       if (!dto.approved && !dto.rejectionReason) {
         throw new BadRequestException('Une raison de rejet est obligatoire pour rejeter des produits');
       }
@@ -558,6 +634,192 @@ export class AdminWizardValidationController {
         message: error.message || 'Erreur lors de la validation en lot',
         data: null
       };
+    }
+  }
+
+  /**
+   * 🏷️ Méthode privée pour récupérer tous les détails d'un produit de base
+   */
+  private async getAdminProductDetails(baseProductId: number) {
+    console.log(`🏷️ getAdminProductDetails - baseProductId: ${baseProductId}`);
+
+    if (!baseProductId) {
+      console.log(`⚠️ baseProductId est null/undefined`);
+      return null;
+    }
+
+    try {
+      console.log(`🔍 Recherche du produit de base avec ID: ${baseProductId}`);
+
+      // Le modèle correct est "Product" (pas AdminProduct)
+      const baseProduct = await this.prisma.product.findUnique({
+        where: { id: baseProductId },
+        include: {
+          categories: {
+            select: { id: true, name: true }
+          },
+          colorVariations: {
+            include: {
+              images: {
+                select: {
+                  id: true,
+                  url: true,
+                  view: true,
+                  delimitations: true
+                }
+              }
+            }
+          },
+          sizes: {
+            select: { id: true, sizeName: true }
+          }
+        }
+      });
+
+      if (!baseProduct) {
+        console.log(`❌ Produit de base ${baseProductId} non trouvé`);
+        return null;
+      }
+
+      console.log(`✅ Produit de base trouvé: ${baseProduct.name} (ID: ${baseProduct.id})`);
+
+      return {
+        id: baseProduct.id,
+        name: baseProduct.name,
+        description: baseProduct.description || null,
+        price: Math.round(baseProduct.price * 100), // Convertir en centimes si nécessaire
+        categories: baseProduct.categories || [],
+        colorVariations: baseProduct.colorVariations?.map(color => ({
+          id: color.id,
+          name: color.name,
+          colorCode: color.colorCode,
+          images: color.images?.map(image => ({
+            id: image.id,
+            url: image.url,
+            viewType: image.view,
+            delimitations: image.delimitations
+          })) || []
+        })) || [],
+        sizes: baseProduct.sizes || [],
+        totalColors: baseProduct.colorVariations?.length || 0,
+        totalSizes: baseProduct.sizes?.length || 0,
+        mockupImages: baseProduct.colorVariations?.flatMap(color =>
+          color.images?.map(image => ({
+            id: image.id,
+            url: image.url,
+            viewType: image.view,
+            colorName: color.name,
+            colorCode: color.colorCode
+          })) || []
+        ) || []
+      };
+
+    } catch (error) {
+      this.logger.error(`Erreur récupération détails produit de base ${baseProductId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 🎨 Méthode privée pour récupérer les couleurs sélectionnées par le vendeur
+   */
+  private async getVendorSelectedColors(vendorProduct: any) {
+    try {
+      console.log(`🎨 getVendorSelectedColors - Produit ${vendorProduct.id}:`);
+      console.log(`- colors: ${JSON.stringify(vendorProduct.colors)}`);
+      console.log(`- type: ${typeof vendorProduct.colors}`);
+
+      // Vérification si colors existe
+      if (!vendorProduct.colors) {
+        console.log(`⚠️ Pas de champ colors pour le produit ${vendorProduct.id}`);
+        return [];
+      }
+
+      // Si colors est une chaîne, essayer de la parser
+      let colors = vendorProduct.colors;
+      if (typeof colors === 'string') {
+        try {
+          colors = JSON.parse(colors);
+        } catch (e) {
+          console.log(`❌ Impossible de parser colors comme JSON:`, vendorProduct.colors);
+          return [];
+        }
+      }
+
+      if (!Array.isArray(colors)) {
+        console.log(`❌ colors n'est pas un tableau:`, colors);
+        return [];
+      }
+
+      if (colors.length === 0) {
+        console.log(`⚠️ Tableau colors vide pour le produit ${vendorProduct.id}`);
+        return [];
+      }
+
+      console.log(`✅ Colors complets déjà stockés:`, colors.length);
+
+      // Les données sont déjà complètes (WizardColorDto[])
+      // Structure: { id, name, colorCode }
+      return colors.map(color => ({
+        id: color.id,
+        name: color.name,
+        colorCode: color.colorCode
+      }));
+
+    } catch (error) {
+      console.log(`❌ Erreur récupération couleurs sélectionnées:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 📏 Méthode privée pour récupérer les tailles sélectionnées par le vendeur
+   */
+  private async getVendorSelectedSizes(vendorProduct: any) {
+    try {
+      console.log(`📏 getVendorSelectedSizes - Produit ${vendorProduct.id}:`);
+      console.log(`- sizes: ${JSON.stringify(vendorProduct.sizes)}`);
+      console.log(`- type: ${typeof vendorProduct.sizes}`);
+
+      // Vérification si sizes existe
+      if (!vendorProduct.sizes) {
+        console.log(`⚠️ Pas de champ sizes pour le produit ${vendorProduct.id}`);
+        return [];
+      }
+
+      // Si sizes est une chaîne, essayer de la parser
+      let sizes = vendorProduct.sizes;
+      if (typeof sizes === 'string') {
+        try {
+          sizes = JSON.parse(sizes);
+        } catch (e) {
+          console.log(`❌ Impossible de parser sizes comme JSON:`, vendorProduct.sizes);
+          return [];
+        }
+      }
+
+      if (!Array.isArray(sizes)) {
+        console.log(`❌ sizes n'est pas un tableau:`, sizes);
+        return [];
+      }
+
+      if (sizes.length === 0) {
+        console.log(`⚠️ Tableau sizes vide pour le produit ${vendorProduct.id}`);
+        return [];
+      }
+
+      console.log(`✅ Sizes complets déjà stockés:`, sizes.length);
+
+      // Les données sont déjà complètes (WizardSizeDto[])
+      // Structure: { id, sizeName }
+      return sizes.map(size => ({
+        id: size.id,
+        sizeName: size.sizeName
+      }));
+
+    } catch (error) {
+      console.log(`❌ Erreur récupération tailles sélectionnées:`, error.message);
+      return [];
     }
   }
 

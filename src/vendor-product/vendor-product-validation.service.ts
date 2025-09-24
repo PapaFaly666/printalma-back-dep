@@ -172,7 +172,7 @@ export class VendorProductValidationService {
     status: string;
     isValidated: boolean;
     canPublish: boolean;
-    designValidationStatus: 'validated' | 'pending' | 'not_found';
+    designValidationStatus: 'validated' | 'pending' | 'not_found' | 'wizard';
   }> {
     try {
       // Récupérer le produit avec son design
@@ -199,10 +199,10 @@ export class VendorProductValidationService {
       let designValidationStatus: 'validated' | 'pending' | 'not_found' | 'wizard' = 'not_found';
 
       if (isWizardProduct) {
-        // Les produits WIZARD n'ont pas de design à valider
-        designValidated = true; // Considéré comme "validé" car pas de design
+        // Les produits WIZARD nécessitent une validation admin spécifique
+        designValidated = product.adminValidated === true;
         designValidationStatus = 'wizard';
-        this.logger.log(`🎨 Produit WIZARD détecté (ID: ${productId}) - Pas de design à valider`);
+        this.logger.log(`🎨 Produit WIZARD détecté (ID: ${productId}) - Validation admin: ${product.adminValidated === true ? 'validée' : 'requise'}`);
       } else if (product.design) {
         designValidated = product.design.isValidated;
         designValidationStatus = product.design.isValidated ? 'validated' : 'pending';
@@ -287,7 +287,7 @@ export class VendorProductValidationService {
     message: string;
     status: string;
     isValidated: boolean;
-    designValidationStatus: 'validated' | 'pending' | 'not_found';
+    designValidationStatus: 'validated' | 'pending' | 'not_found' | 'wizard';
   }> {
     return this.setProductDraftOrPublish(productId, vendorId, false);
   }
@@ -321,10 +321,21 @@ export class VendorProductValidationService {
       const { page = 1, limit = 20, vendorId, designUrl } = options;
       const skip = (page - 1) * limit;
 
-      // Filtres
+      // Filtres - inclure les produits WIZARD en attente de validation admin
       const where: any = {
-        status: 'PENDING',
-        isValidated: false,
+        OR: [
+          // Produits traditionnels en attente
+          {
+            status: 'PENDING',
+            isValidated: false,
+            designId: { not: null }
+          },
+          // Produits WIZARD - inclure tous les statuts pour validation admin
+          {
+            designId: null,
+            // Inclure produits WIZARD même s'ils sont publiés/draft pour validation admin
+          }
+        ],
         isDelete: false
       };
 
@@ -343,7 +354,42 @@ export class VendorProductValidationService {
           skip,
           take: limit,
           orderBy: { createdAt: 'desc' },
-          include: {
+          select: {
+            // Champs de base
+            id: true,
+            baseProductId: true,
+            vendorId: true,
+            name: true,
+            description: true,
+            price: true,
+            stock: true,
+            status: true,
+            isDelete: true,
+            postValidationAction: true,
+            adminProductName: true,
+            adminProductDescription: true,
+            adminProductPrice: true,
+            designId: true,
+            designCloudinaryUrl: true,
+            designCloudinaryPublicId: true,
+            designPositioning: true,
+            designScale: true,
+            designApplicationMode: true,
+            isValidated: true,
+            validatedAt: true,
+            validatedBy: true,
+            rejectionReason: true,
+            createdAt: true,
+            updatedAt: true,
+            // Champs JSON spéciaux
+            colors: true,
+            sizes: true,
+            // Sélection du thème vendeur
+            vendorSelectedThemeId: true,
+            vendorSelectedThemeName: true,
+            // Champs calculés WIZARD
+            adminValidated: true,
+            // Relations
             vendor: {
               select: {
                 id: true,
@@ -448,16 +494,23 @@ export class VendorProductValidationService {
         ? (product.postValidationAction === 'AUTO_PUBLISH' ? 'PUBLISHED' : 'DRAFT')
         : 'PENDING'; // Reste en attente si rejeté
 
+      const updateData: any = {
+        status: newStatus,
+        isValidated: approved,
+        validatedAt: approved ? new Date() : null,
+        validatedBy: approved ? adminId : null,
+        rejectionReason: approved ? null : rejectionReason,
+        updatedAt: new Date()
+      };
+
+      // Pour les produits WIZARD, mettre à jour aussi adminValidated
+      if (isWizardProduct) {
+        updateData.adminValidated = approved;
+      }
+
       const updatedProduct = await this.prisma.vendorProduct.update({
         where: { id: productId },
-        data: {
-          status: newStatus,
-          isValidated: approved,
-          validatedAt: approved ? new Date() : null,
-          validatedBy: approved ? adminId : null,
-          rejectionReason: approved ? null : rejectionReason,
-          updatedAt: new Date()
-        },
+        data: updateData,
         include: {
           vendor: {
             select: {
@@ -604,10 +657,16 @@ export class VendorProductValidationService {
 
     return {
       id: product.id,
-      vendorName: product.vendorName,
-      vendorDescription: product.vendorDescription,
-      vendorPrice: product.vendorPrice,
-      vendorStock: product.vendorStock,
+      vendorName: product.name, // Le nom du vendeur est dans 'name'
+      vendorDescription: product.description, // La description du vendeur est dans 'description'
+      vendorPrice: product.price, // Le prix du vendeur est dans 'price'
+      vendorStock: product.stock, // Le stock du vendeur est dans 'stock'
+      // Champs nécessaires pour enrichissement admin
+      baseProductId: product.baseProductId,
+      colors: product.colors,
+      sizes: product.sizes,
+      vendorSelectedThemeId: product.vendorSelectedThemeId,
+      vendorSelectedThemeName: product.vendorSelectedThemeName,
       status: product.status,
       isValidated: product.isValidated,
       validatedAt: product.validatedAt ? product.validatedAt.toISOString() : null,

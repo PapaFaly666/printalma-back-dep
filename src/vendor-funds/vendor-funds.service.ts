@@ -284,8 +284,7 @@ export class VendorFundsService {
         paymentMethod,
         phoneNumber: paymentMethod === 'BANK_TRANSFER' ? null : phoneNumber,
         // Stocker l'IBAN pour virement bancaire si fourni (adapter le schéma si besoin)
-        // @ts-expect-error: si la colonne n'existe pas, ajouter au schéma Prisma (ex: bankIban String?)
-        bankIban: paymentMethod === 'BANK_TRANSFER' ? iban : null,
+        // bankIban: paymentMethod === 'BANK_TRANSFER' ? iban : null, // TODO: Add to schema
         availableBalance: earnings.availableAmount,
         commissionRate: earnings.averageCommissionRate,
         // Auto-approbation immédiate (pas de rejet/motif)

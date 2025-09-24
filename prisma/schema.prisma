@@ -364,7 +364,11 @@ model VendorProduct {
   vendorDescription        String?
   vendorStock              Int                     @default(0)
   basePriceAdmin           Float                   @default(0)
+  // 🆕 Sélection du thème par le vendeur (pour wizard)
+  vendorSelectedThemeId    Int?                    @map("vendor_selected_theme_id")
+  vendorSelectedThemeName  String?                 @map("vendor_selected_theme_name")
   isValidated              Boolean                 @default(false)
+  adminValidated           Boolean?                @map("admin_validated") // null = pas concerné (traditionnel), false = en attente (WIZARD), true = validé (WIZARD)
   validatedAt              DateTime?
   validatedBy              Int?
   rejectionReason          String?

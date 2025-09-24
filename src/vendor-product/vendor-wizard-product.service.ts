@@ -102,6 +102,8 @@ export class VendorWizardProductService {
             stock: vendorStock,
             status: forcedStatus as any,
             designId: null, // PAS de design pour wizard
+            // 🆕 VALIDATION ADMIN REQUISE pour produits WIZARD
+            adminValidated: false, // En attente de validation admin obligatoire
             // Stocker les variantes dans les champs JSON requis par le schéma
             sizes: selectedSizes as unknown as any,
             colors: selectedColors as unknown as any,

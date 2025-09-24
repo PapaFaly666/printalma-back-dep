@@ -1,19 +1,162 @@
-pfdev@PC:/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep$ npm run start
+Curl
 
-> printalma-back@0.0.1 start
-> cross-env TS_NODE_TRANSPILE_ONLY=true node --max-old-space-size=512 -r ts-node/register src/main.ts
-
-/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/vendor-product/admin-wizard-validation.controller.ts:332
-  async validateIndividualProduct(
-        ^
-ReferenceError: Post is not defined
-    at Object.<anonymous> (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/src/vendor-product/admin-wizard-validation.controller.ts:332:9)
-    at Module._compile (node:internal/modules/cjs/loader:1546:14)
-    at Module.m._compile (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/ts-node/src/index.ts:1618:23)
-    at Module._extensions..js (node:internal/modules/cjs/loader:1691:10)
-    at Object.require.extensions.<computed> [as .ts] (/mnt/c/Users/HP/Desktop/printalma-perso/printalma-back-dep/node_modules/ts-node/src/index.ts:1621:12)
-    at Module.load (node:internal/modules/cjs/loader:1317:32)
-    at Function.Module._load (node:internal/modules/cjs/loader:1127:12)
-    at TracingChannel.traceSync (node:diagnostics_channel:315:14)
-    at wrapModuleLoad (node:internal/modules/cjs/loader:217:24)
-    at Module.require (node:internal/modules/cjs/loader:1339:12)
+curl -X 'GET' \
+  'http://localhost:3004/admin/products/validation' \
+  -H 'accept: application/json'
+Request URL
+http://localhost:3004/admin/products/validation
+Server response
+Code	Details
+200	
+Response body
+Download
+{
+  "success": true,
+  "message": "Produits en attente récupérés avec succès",
+  "data": {
+    "products": [
+      {
+        "id": 173,
+        "vendorName": "carre",
+        "vendorDescription": "dddddd",
+        "vendorPrice": 12000,
+        "vendorStock": 10,
+        "status": "DRAFT",
+        "isValidated": false,
+        "validatedAt": null,
+        "validatedBy": null,
+        "postValidationAction": "AUTO_PUBLISH",
+        "designCloudinaryUrl": null,
+        "rejectionReason": null,
+        "isWizardProduct": true,
+        "productType": "WIZARD",
+        "hasDesign": false,
+        "adminProductName": "Mugs",
+        "baseProduct": {
+          "id": 33,
+          "name": "Mugs"
+        },
+        "createdAt": "2025-09-24T15:08:12.257Z",
+        "updatedAt": "2025-09-24T15:08:12.257Z",
+        "vendor": {
+          "id": 7,
+          "firstName": "Papa ",
+          "lastName": "Diagne",
+          "email": "pf.d@zig.univ.sn",
+          "shop_name": "C'est carré"
+        },
+        "vendorImages": [
+          {
+            "id": 483,
+            "imageType": "base",
+            "cloudinaryUrl": "https://res.cloudinary.com/dsxab4qnu/image/upload/v1758726488/wizard-products/wizard-base-1758726487537.jpg",
+            "colorName": null,
+            "colorCode": null,
+            "width": 800,
+            "height": 800
+          },
+          {
+            "id": 484,
+            "imageType": "detail",
+            "cloudinaryUrl": "https://res.cloudinary.com/dsxab4qnu/image/upload/v1758726489/wizard-products/wizard-detail-1758726489203-1.jpg",
+            "colorName": null,
+            "colorCode": null,
+            "width": 800,
+            "height": 800
+          },
+          {
+            "id": 485,
+            "imageType": "detail",
+            "cloudinaryUrl": "https://res.cloudinary.com/dsxab4qnu/image/upload/v1758726491/wizard-products/wizard-detail-1758726490911-2.jpg",
+            "colorName": null,
+            "colorCode": null,
+            "width": 800,
+            "height": 800
+          }
+        ],
+        "adminProductDetails": null,
+        "selectedColors": [],
+        "selectedSizes": []
+      },
+      {
+        "id": 172,
+        "vendorName": "carre",
+        "vendorDescription": "gergreg gegre",
+        "vendorPrice": 10000,
+        "vendorStock": 10,
+        "status": "PUBLISHED",
+        "isValidated": false,
+        "validatedAt": null,
+        "validatedBy": null,
+        "postValidationAction": "AUTO_PUBLISH",
+        "designCloudinaryUrl": null,
+        "rejectionReason": null,
+        "isWizardProduct": true,
+        "productType": "WIZARD",
+        "hasDesign": false,
+        "adminProductName": "Polo",
+        "baseProduct": {
+          "id": 34,
+          "name": "Polo"
+        },
+        "createdAt": "2025-09-24T14:53:18.220Z",
+        "updatedAt": "2025-09-24T14:53:18.220Z",
+        "vendor": {
+          "id": 7,
+          "firstName": "Papa ",
+          "lastName": "Diagne",
+          "email": "pf.d@zig.univ.sn",
+          "shop_name": "C'est carré"
+        },
+        "vendorImages": [
+          {
+            "id": 480,
+            "imageType": "base",
+            "cloudinaryUrl": "https://res.cloudinary.com/dsxab4qnu/image/upload/v1758725595/wizard-products/wizard-base-1758725594043.jpg",
+            "colorName": null,
+            "colorCode": null,
+            "width": 800,
+            "height": 800
+          },
+          {
+            "id": 481,
+            "imageType": "detail",
+            "cloudinaryUrl": "https://res.cloudinary.com/dsxab4qnu/image/upload/v1758725596/wizard-products/wizard-detail-1758725595845-1.jpg",
+            "colorName": null,
+            "colorCode": null,
+            "width": 800,
+            "height": 800
+          },
+          {
+            "id": 482,
+            "imageType": "detail",
+            "cloudinaryUrl": "https://res.cloudinary.com/dsxab4qnu/image/upload/v1758725597/wizard-products/wizard-detail-1758725596903-2.jpg",
+            "colorName": null,
+            "colorCode": null,
+            "width": 800,
+            "height": 800
+          }
+        ],
+        "adminProductDetails": null,
+        "selectedColors": [],
+        "selectedSizes": []
+      }
+    ],
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 1,
+      "totalItems": 2,
+      "itemsPerPage": 20,
+      "hasNext": false,
+      "hasPrevious": false
+    },
+    "stats": {
+      "pending": 0,
+      "validated": 0,
+      "rejected": 0,
+      "total": 0,
+      "wizardProducts": 2,
+      "traditionalProducts": 0
+    }
+  }
+}

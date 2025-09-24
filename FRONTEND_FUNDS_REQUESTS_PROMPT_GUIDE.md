@@ -79,3 +79,4 @@ await fetch(`${API_URL}/vendor/funds-requests`, {
 - Modèle: `VendorFundsRequest` inclut `phoneNumber?` et `bankIban?`.
 - Service: stocke `bankIban` pour BANK_TRANSFER, sinon `phoneNumber`. Auto-approve si solde suffisant.
 
+

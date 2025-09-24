@@ -160,3 +160,4 @@ async function listFundsRequests(params: { page?: number; limit?: number; status
 
 Pour toute divergence, vérifier le code backend dans `src/vendor-funds/` et le schéma Prisma `prisma/schema.prisma` (modèle `VendorFundsRequest`).
 
+

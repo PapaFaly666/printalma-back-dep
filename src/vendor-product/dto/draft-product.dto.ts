@@ -32,7 +32,7 @@ export class DraftProductResponseDto {
   @ApiProperty({
     description: 'Statut de validation du design',
     example: 'pending',
-    enum: ['validated', 'pending', 'not_found']
+    enum: ['validated', 'pending', 'not_found', 'wizard']
   })
-  designValidationStatus: 'validated' | 'pending' | 'not_found';
+  designValidationStatus: 'validated' | 'pending' | 'not_found' | 'wizard';
 }

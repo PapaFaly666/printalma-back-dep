@@ -492,6 +492,15 @@ export class VendorPublishService {
           createdAt: product.createdAt,
           updatedAt: product.updatedAt,
           isDelete: product.isDelete,
+
+        // 🆕 VALIDATION ADMIN POUR PRODUITS WIZARD
+        adminValidated: (product as any).adminValidated, // null = traditionnel, false = en attente, true = validé
+        isWizardProduct: !product.designId, // Identification produit WIZARD
+        validationStatus: !product.designId
+          ? ((product as any).adminValidated === true ? 'admin_validated' : 'pending_admin_validation')
+          : (product.design?.isValidated ? 'design_validated' : 'pending_design_validation'),
+        // Raison de rejet (exposée pour les produits WIZARD uniquement)
+        rejectionReason: !product.designId ? product.rejectionReason || null : null,
           
         // 🆕 MEILLEURES VENTES (simulation avec des valeurs par défaut)
         bestSeller: {
@@ -717,6 +726,13 @@ export class VendorPublishService {
         vendorPrice: product.price,
         vendorStock: product.stock,
         status: product.status,
+
+        // 🆕 VALIDATION ADMIN POUR PRODUITS WIZARD
+        adminValidated: (product as any).adminValidated, // null = traditionnel, false = en attente, true = validé
+        isWizardProduct: !product.designId, // Identification produit WIZARD
+        validationStatus: !product.designId
+          ? ((product as any).adminValidated === true ? 'admin_validated' : 'pending_admin_validation')
+          : (product.design?.isValidated ? 'design_validated' : 'pending_design_validation'),
 
         // ✅ STRUCTURE ADMIN CONSERVÉE
         adminProduct: {
