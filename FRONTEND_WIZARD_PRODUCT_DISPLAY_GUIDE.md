@@ -184,3 +184,4 @@ useEffect(() => {
 Pour toute divergence de structure, se référer à:
 - `FRONTEND_WIZARD_PRODUCT_FIX.md` (payload/contrat)
 - `BACKEND_PRODUCT_GET_RESPONSE_DOCUMENTATION.md` (données produits/mockups)
+

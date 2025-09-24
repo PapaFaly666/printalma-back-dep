@@ -191,11 +191,19 @@ export class VendorProductValidationService {
         throw new NotFoundException('Produit non trouvé ou non autorisé');
       }
 
+      // 🔧 Détecter les produits WIZARD (sans design)
+      const isWizardProduct = !product.designId || product.designId === null;
+
       // Vérifier le statut de validation du design
       let designValidated = false;
-      let designValidationStatus: 'validated' | 'pending' | 'not_found' = 'not_found';
+      let designValidationStatus: 'validated' | 'pending' | 'not_found' | 'wizard' = 'not_found';
 
-      if (product.design) {
+      if (isWizardProduct) {
+        // Les produits WIZARD n'ont pas de design à valider
+        designValidated = true; // Considéré comme "validé" car pas de design
+        designValidationStatus = 'wizard';
+        this.logger.log(`🎨 Produit WIZARD détecté (ID: ${productId}) - Pas de design à valider`);
+      } else if (product.design) {
         designValidated = product.design.isValidated;
         designValidationStatus = product.design.isValidated ? 'validated' : 'pending';
       } else if (product.designId) {
@@ -217,7 +225,11 @@ export class VendorProductValidationService {
         // Vendeur veut mettre en brouillon
         if (designValidated) {
           newStatus = 'DRAFT';
-          message = 'Produit mis en brouillon (design validé - prêt à publier)';
+          if (isWizardProduct) {
+            message = 'Produit WIZARD mis en brouillon (prêt à publier)';
+          } else {
+            message = 'Produit mis en brouillon (design validé - prêt à publier)';
+          }
         } else {
           newStatus = 'PENDING';
           message = 'Produit en attente (design non validé par l\'admin)';
@@ -226,7 +238,11 @@ export class VendorProductValidationService {
         // Vendeur veut publier directement
         if (designValidated) {
           newStatus = 'PUBLISHED';
-          message = 'Produit publié (design validé)';
+          if (isWizardProduct) {
+            message = 'Produit WIZARD publié (validation admin requise pour les images)';
+          } else {
+            message = 'Produit publié (design validé)';
+          }
         } else {
           newStatus = 'PENDING';
           message = 'Produit en attente de validation du design par l\'admin';
@@ -399,6 +415,13 @@ export class VendorProductValidationService {
               lastName: true,
               email: true
             }
+          },
+          design: true,
+          baseProduct: {
+            select: {
+              id: true,
+              name: true
+            }
           }
         }
       });
@@ -411,10 +434,15 @@ export class VendorProductValidationService {
         throw new BadRequestException('Ce produit a déjà été validé');
       }
 
+      // 🔧 Détecter les produits WIZARD (sans design)
+      const isWizardProduct = !product.designId || product.designId === null;
+
       // Validation
       if (!approved && !rejectionReason) {
         throw new BadRequestException('Une raison de rejet est obligatoire');
       }
+
+      this.logger.log(`🎯 Validation admin produit ${productId} - Type: ${isWizardProduct ? 'WIZARD' : 'TRADITIONNEL'} - Approuvé: ${approved}`);
 
       const newStatus = approved 
         ? (product.postValidationAction === 'AUTO_PUBLISH' ? 'PUBLISHED' : 'DRAFT')
@@ -442,7 +470,8 @@ export class VendorProductValidationService {
         }
       });
 
-      this.logger.log(`${approved ? '✅' : '❌'} Produit ${productId} ${approved ? 'validé' : 'rejeté'}`);
+      const productType = isWizardProduct ? 'WIZARD' : 'TRADITIONNEL';
+      this.logger.log(`${approved ? '✅' : '❌'} Produit ${productType} ${productId} ${approved ? 'validé' : 'rejeté'}`);
 
       // Notifications
       try {
@@ -570,6 +599,9 @@ export class VendorProductValidationService {
    * 📋 Formatage de la réponse produit
    */
   private formatProductResponse(product: any) {
+    // 🔧 Détecter les produits WIZARD (sans design)
+    const isWizardProduct = !product.designId || product.designId === null;
+
     return {
       id: product.id,
       vendorName: product.vendorName,
@@ -583,6 +615,15 @@ export class VendorProductValidationService {
       postValidationAction: product.postValidationAction,
       designCloudinaryUrl: product.designCloudinaryUrl,
       rejectionReason: product.rejectionReason,
+      // 🔧 Nouvelles informations pour distinguer les types de produits
+      isWizardProduct: isWizardProduct,
+      productType: isWizardProduct ? 'WIZARD' : 'TRADITIONAL',
+      hasDesign: !isWizardProduct,
+      adminProductName: product.adminProductName, // Nom du produit de base pour WIZARD
+      baseProduct: product.baseProduct ? {
+        id: product.baseProduct.id,
+        name: product.baseProduct.name
+      } : undefined,
       createdAt: product.createdAt.toISOString(),
       updatedAt: product.updatedAt.toISOString(),
       vendor: product.vendor ? {

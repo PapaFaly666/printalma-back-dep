@@ -263,7 +263,7 @@ export class VendorFundsService {
     vendorId: number,
     createData: CreateFundsRequestDto,
   ): Promise<FundsRequestData> {
-    const { amount, description, paymentMethod, phoneNumber, orderIds } = createData;
+    const { amount, description, paymentMethod, phoneNumber, iban, orderIds } = createData;
 
     // Vérifier le solde disponible
     const earnings = await this.getVendorEarnings(vendorId);
@@ -282,9 +282,14 @@ export class VendorFundsService {
         requestedAmount: amount,
         description,
         paymentMethod,
-        phoneNumber,
+        phoneNumber: paymentMethod === 'BANK_TRANSFER' ? null : phoneNumber,
+        // Stocker l'IBAN pour virement bancaire si fourni (adapter le schéma si besoin)
+        // @ts-expect-error: si la colonne n'existe pas, ajouter au schéma Prisma (ex: bankIban String?)
+        bankIban: paymentMethod === 'BANK_TRANSFER' ? iban : null,
         availableBalance: earnings.availableAmount,
         commissionRate: earnings.averageCommissionRate,
+        // Auto-approbation immédiate (pas de rejet/motif)
+        status: 'APPROVED',
       },
       include: {
         vendor: {
@@ -597,8 +602,9 @@ export class VendorFundsService {
       throw new BadRequestException('Cette demande ne peut plus être modifiée');
     }
 
-    if (status === 'REJECTED' && !rejectReason) {
-      throw new BadRequestException('La raison du rejet est requise');
+    // Rejet désactivé: empêcher tout passage à REJECTED
+    if (status === 'REJECTED') {
+      throw new BadRequestException('Le rejet de demandes est désactivé.');
     }
 
     // Mettre à jour la demande
@@ -607,9 +613,12 @@ export class VendorFundsService {
       data: {
         status,
         adminNote,
-        rejectReason: status === 'REJECTED' ? rejectReason : null,
+        // Rejet désactivé
+        rejectReason: null,
         processedBy: adminId,
         processedAt: new Date(),
+        // 🔧 Ajouter la date de validation quand l'admin traite la demande
+        validatedAt: new Date(),
       },
       include: {
         vendor: {
@@ -698,6 +707,9 @@ export class VendorFundsService {
       processedBy: request.processedBy,
       processedByUser: request.processedByUser,
       processedAt: request.processedAt?.toISOString(),
+      // 🔧 Ajout des nouvelles dates pour l'affichage
+      requestedAt: request.requestedAt?.toISOString(),
+      validatedAt: request.validatedAt?.toISOString(),
       availableBalance: request.availableBalance,
       commissionRate: request.commissionRate,
       requestDate: request.createdAt.toISOString(),

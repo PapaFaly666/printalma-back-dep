@@ -12,6 +12,8 @@ import {
   IsArray,
   IsPhoneNumber,
   MaxLength,
+  Matches,
+  ValidateIf,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { PaymentMethodType, FundsRequestStatus } from '@prisma/client';
@@ -76,10 +78,22 @@ export class CreateFundsRequestDto {
   @IsEnum(PaymentMethodType)
   paymentMethod: PaymentMethodType;
 
+  // Téléphone requis sauf pour virement bancaire
+  @ValidateIf((o) => o.paymentMethod !== 'BANK_TRANSFER')
   @IsNotEmpty()
   @IsString()
   @IsPhoneNumber('SN') // Numéro sénégalais
-  phoneNumber: string;
+  phoneNumber?: string;
+
+  // IBAN requis uniquement pour virement bancaire
+  @ValidateIf((o) => o.paymentMethod === 'BANK_TRANSFER')
+  @IsNotEmpty()
+  @IsString()
+  @Matches(/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/i, {
+    message: 'IBAN invalide'
+  })
+  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\s+/g, '').toUpperCase() : value))
+  iban?: string;
 
   @IsOptional()
   @IsArray()
@@ -186,6 +200,9 @@ export interface FundsRequestData {
     lastName: string;
   };
   processedAt?: string;
+  // 🔧 Nouvelles dates pour l'affichage
+  requestedAt?: string; // Date de demande par le vendeur
+  validatedAt?: string; // Date de validation par l'admin
   availableBalance: number;
   commissionRate: number;
   requestDate: string;

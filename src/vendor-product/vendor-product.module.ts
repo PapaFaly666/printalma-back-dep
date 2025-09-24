@@ -3,6 +3,7 @@ import { VendorPublishController } from './vendor-publish.controller';
 import { VendorPublishService } from './vendor-publish.service';
 import { VendorProductValidationController } from './vendor-product-validation.controller';
 import { VendorProductValidationService } from './vendor-product-validation.service';
+import { AdminWizardValidationController } from './admin-wizard-validation.controller';
 import { VendorDesignProductsController } from './vendor-design-products.controller';
 import { VendorWizardController } from './vendor-wizard.controller';
 import { VendorWizardService } from './vendor-wizard.service';
@@ -27,6 +28,7 @@ import { MailService } from '../core/mail/mail.service';
   controllers: [
     VendorPublishController,
     VendorProductValidationController,
+    AdminWizardValidationController,
     VendorDesignProductsController,
     VendorWizardController,
     VendorWizardProductController,

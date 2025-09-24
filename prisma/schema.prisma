@@ -559,12 +559,16 @@ model VendorFundsRequest {
   requestedAmount  Float                     @map("requested_amount")
   description      String
   paymentMethod    PaymentMethodType         @map("payment_method")
-  phoneNumber      String                    @map("phone_number") @db.VarChar(20)
+  phoneNumber      String?                   @map("phone_number") @db.VarChar(20)
+  bankIban         String?                   @map("bank_iban") @db.VarChar(64)
   status           FundsRequestStatus        @default(PENDING)
   rejectReason     String?                   @map("reject_reason")
   adminNote        String?                   @map("admin_note")
   processedBy      Int?                      @map("processed_by")
   processedAt      DateTime?                 @map("processed_at")
+  // 🔧 Nouvelles dates explicites pour l'affichage
+  requestedAt      DateTime                  @default(now()) @map("requested_at") // Date de demande par le vendeur
+  validatedAt      DateTime?                 @map("validated_at") // Date de validation par l'admin
   availableBalance Float                     @map("available_balance")
   commissionRate   Float                     @default(0.10) @map("commission_rate")
   createdAt        DateTime                  @default(now()) @map("created_at")

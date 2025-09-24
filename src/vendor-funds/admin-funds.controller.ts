@@ -153,7 +153,6 @@ export class AdminFundsController {
 
       const statusMessage = {
         APPROVED: 'approuvée',
-        REJECTED: 'rejetée',
         PAID: 'marquée comme payée',
       }[processData.status];
 
@@ -190,7 +189,6 @@ export class AdminFundsController {
 
       const statusMessage = {
         APPROVED: 'approuvées',
-        REJECTED: 'rejetées',
         PAID: 'marquées comme payées',
       }[batchData.status];
 
