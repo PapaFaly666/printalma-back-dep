@@ -23,9 +23,10 @@ import { PrismaService } from '../prisma.service';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { DesignPositionService } from './services/design-position.service';
 import { MailService } from '../core/mail/mail.service';
-import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
+import { VendorFundsModule } from '../vendor-funds/vendor-funds.module';
 
 @Module({
+  imports: [VendorFundsModule],
   controllers: [
     VendorPublishController,
     VendorProductValidationController,
@@ -53,7 +54,6 @@ import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
     CloudinaryService,
     DesignPositionService,
     MailService,
-    VendorFundsService,
   ],
   exports: [
     VendorPublishService,
