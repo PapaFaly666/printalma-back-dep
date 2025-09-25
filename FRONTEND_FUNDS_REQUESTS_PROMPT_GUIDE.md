@@ -80,3 +80,6 @@ await fetch(`${API_URL}/vendor/funds-requests`, {
 - Service: stocke `bankIban` pour BANK_TRANSFER, sinon `phoneNumber`. Auto-approve si solde suffisant.
 
 
+
+
+

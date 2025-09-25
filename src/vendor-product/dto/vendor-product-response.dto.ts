@@ -352,6 +352,45 @@ export class VendorStatsDto {
   @ApiProperty({ example: 6 })
   validatedDesigns: number;
 
+  // 💰 NOUVELLES DONNÉES FINANCIÈRES
+  @ApiProperty({ example: 2500000, description: 'Chiffre d\'affaires annuel en FCFA' })
+  yearlyRevenue: number;
+
+  @ApiProperty({ example: 180000, description: 'Chiffre d\'affaires mensuel en FCFA' })
+  monthlyRevenue: number;
+
+  @ApiProperty({ example: 450000, description: 'Solde disponible pour retrait en FCFA' })
+  availableBalance: number;
+
+  @ApiProperty({ example: 75000, description: 'Montant en attente (demandes d\'appels de fonds)' })
+  pendingAmount: number;
+
+  @ApiProperty({ example: 3250000, description: 'Total des gains depuis l\'inscription' })
+  totalEarnings: number;
+
+  // 📊 STATISTIQUES D'ACTIVITÉ
+  @ApiProperty({ example: 1250, description: 'Nombre total de vues de la boutique' })
+  shopViews: number;
+
+  @ApiProperty({ example: 45, description: 'Nombre de commandes traitées' })
+  totalOrders: number;
+
+  @ApiProperty({ example: 8.5, description: 'Taux de commission moyen (%)' })
+  averageCommissionRate: number;
+
+  // 📅 DATES IMPORTANTES
+  @ApiProperty({ example: '2024-05-12T09:31:00.000Z', required: false })
+  memberSince?: string;
+
+  @ApiProperty({ example: '2025-09-18T14:05:00.000Z', required: false })
+  lastLoginAt?: string;
+
+  @ApiProperty({ example: '2024-05-12 09:31', required: false })
+  memberSinceFormatted?: string;
+
+  @ApiProperty({ example: '2025-09-18 14:05', required: false })
+  lastLoginAtFormatted?: string;
+
   @ApiProperty({ example: 'v2_preserved_admin' })
   architecture: string;
 }

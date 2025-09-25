@@ -107,7 +107,7 @@ export class AdminWizardValidationController {
   @ApiQuery({ name: 'limit', required: false, type: 'number', description: 'Limite (défaut: 20)' })
   @ApiQuery({ name: 'productType', required: false, enum: ['WIZARD', 'TRADITIONAL', 'ALL'], description: 'Filtrer par type de produit' })
   @ApiQuery({ name: 'vendor', required: false, type: 'string', description: 'Filtrer par nom vendeur' })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'APPROVED', 'REJECTED'], description: 'Filtrer par statut' })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'APPROVED', 'REJECTED', 'VALIDATED'], description: 'Filtrer par statut - PENDING: en attente, APPROVED/VALIDATED: validés, REJECTED: rejetés' })
   @ApiResponse({
     status: 200,
     description: 'Produits en attente récupérés avec succès',
@@ -203,7 +203,7 @@ export class AdminWizardValidationController {
         limit: limit || 20,
         vendorId: undefined, // On utilisera le filtre vendor plus tard
         designUrl: undefined,
-        status: status || 'PENDING'
+        status: status || 'ALL' // Par défaut récupérer TOUS les produits
       };
 
       const result = await this.validationService.getPendingProducts(adminId, options);
@@ -268,6 +268,26 @@ export class AdminWizardValidationController {
 
             // Prix vendeur explicite
             vendorPrice: product.vendorPrice || product.price, // Fallback vers price si vendorPrice n'existe pas
+
+            // 🆕 CHAMP ADMINVALIDATED pour les produits WIZARD
+            adminValidated: isWizardProduct ? (product.adminValidated === true) : null,
+
+            // 🆕 CHAMPS DE DÉTECTION DU REJET ET STATUT
+            isRejected: !!(product.rejectionReason && product.rejectionReason.trim() !== '') || product.status === 'REJECTED',
+            rejectionReason: product.rejectionReason || null,
+            rejectedAt: product.rejectionReason ? (product.updatedAt || null) : null,
+
+            // 🆕 STATUT FINAL CALCULÉ
+            finalStatus: (() => {
+              if (product.status === 'REJECTED' || (product.rejectionReason && product.rejectionReason.trim() !== '')) {
+                return 'REJECTED';
+              }
+              if (isWizardProduct) {
+                return product.adminValidated ? 'APPROVED' : 'PENDING';
+              } else {
+                return product.isValidated ? 'APPROVED' : 'PENDING';
+              }
+            })(),
 
             // Nouvelles données enrichies
             vendorImages: vendorImages,

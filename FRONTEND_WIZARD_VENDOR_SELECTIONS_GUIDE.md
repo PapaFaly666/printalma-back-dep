@@ -151,3 +151,6 @@ Exemple extrait:
   - `baseProduct` enrichi: tailles, variations couleurs, mockupImages
 
 
+
+
+

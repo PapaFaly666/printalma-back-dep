@@ -364,17 +364,16 @@ model VendorProduct {
   vendorDescription        String?
   vendorStock              Int                     @default(0)
   basePriceAdmin           Float                   @default(0)
-  // 🆕 Sélection du thème par le vendeur (pour wizard)
-  vendorSelectedThemeId    Int?                    @map("vendor_selected_theme_id")
-  vendorSelectedThemeName  String?                 @map("vendor_selected_theme_name")
   isValidated              Boolean                 @default(false)
-  adminValidated           Boolean?                @map("admin_validated") // null = pas concerné (traditionnel), false = en attente (WIZARD), true = validé (WIZARD)
   validatedAt              DateTime?
   validatedBy              Int?
   rejectionReason          String?
   submittedForValidationAt DateTime?
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
+  adminValidated           Boolean?                @map("admin_validated")
+  vendorSelectedThemeId    Int?                    @map("vendor_selected_theme_id")
+  vendorSelectedThemeName  String?                 @map("vendor_selected_theme_name")
   designProductLinks       DesignProductLink[]
   designPositions          ProductDesignPosition[] @relation("VendorProductToDesignPosition")
   designTransforms         VendorDesignTransform[]
@@ -526,7 +525,7 @@ model VendorCommission {
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   createdBy           Int?                 @map("created_by")
-  commissionAuditLogs CommissionAuditLog[] @relation("CommissionAuditVendor")
+  commissionAuditLogs CommissionAuditLog[] @relation("CommissionAuditVendorUser")
   createdByUser       User?                @relation("CommissionCreatedByUser", fields: [createdBy], references: [id])
   vendor              User                 @relation("VendorCommissionToUser", fields: [vendorId], references: [id], onDelete: Cascade)
 
@@ -545,9 +544,9 @@ model CommissionAuditLog {
   changedAt     DateTime         @default(now()) @map("changed_at")
   ipAddress     String?          @map("ip_address")
   userAgent     String?          @map("user_agent")
-  changedByUser     User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
-  vendorCommission  VendorCommission @relation("CommissionAuditVendor", fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_vendor_commission_fkey")
-  vendorUser        User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
+  changedByUser User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
+  vendorCommission VendorCommission @relation("CommissionAuditVendorUser", fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_vendor_commission_fkey")
+  vendorUser    User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
 
   @@index([vendorId])
   @@index([changedBy])
@@ -564,19 +563,18 @@ model VendorFundsRequest {
   description      String
   paymentMethod    PaymentMethodType         @map("payment_method")
   phoneNumber      String?                   @map("phone_number") @db.VarChar(20)
-  bankIban         String?                   @map("bank_iban") @db.VarChar(64)
   status           FundsRequestStatus        @default(PENDING)
   rejectReason     String?                   @map("reject_reason")
   adminNote        String?                   @map("admin_note")
   processedBy      Int?                      @map("processed_by")
   processedAt      DateTime?                 @map("processed_at")
-  // 🔧 Nouvelles dates explicites pour l'affichage
-  requestedAt      DateTime                  @default(now()) @map("requested_at") // Date de demande par le vendeur
-  validatedAt      DateTime?                 @map("validated_at") // Date de validation par l'admin
   availableBalance Float                     @map("available_balance")
   commissionRate   Float                     @default(0.10) @map("commission_rate")
   createdAt        DateTime                  @default(now()) @map("created_at")
   updatedAt        DateTime                  @updatedAt @map("updated_at")
+  bankIban         String?                   @map("bank_iban") @db.VarChar(64)
+  requestedAt      DateTime                  @default(now()) @map("requested_at")
+  validatedAt      DateTime?                 @map("validated_at")
   orderLinks       VendorFundsRequestOrder[]
   processedByUser  User?                     @relation("ProcessedFundsRequests", fields: [processedBy], references: [id])
   vendor           User                      @relation("VendorFundsRequests", fields: [vendorId], references: [id], onDelete: Cascade)
@@ -631,6 +629,7 @@ enum VendorProductStatus {
   PUBLISHED
   DRAFT
   PENDING
+  REJECTED
 }
 
 enum ProductGenre {

@@ -302,6 +302,7 @@ export class VendorProductValidationService {
       limit?: number;
       vendorId?: number;
       designUrl?: string;
+      status?: string;
     } = {}
   ): Promise<{
     products: any[];
@@ -318,26 +319,78 @@ export class VendorProductValidationService {
         throw new ForbiddenException('Seuls les administrateurs peuvent voir les produits en attente');
       }
 
-      const { page = 1, limit = 20, vendorId, designUrl } = options;
+      const { page = 1, limit = 20, vendorId, designUrl, status } = options;
       const skip = (page - 1) * limit;
 
-      // Filtres - inclure les produits WIZARD en attente de validation admin
-      const where: any = {
-        OR: [
+      // Filtres - logique différente selon le statut demandé
+      let where: any = {
+        isDelete: false
+      };
+
+      if (status === 'PENDING') {
+        // Produits en attente: traditionnels non validés OU WIZARD non validés par admin
+        where.OR = [
           // Produits traditionnels en attente
           {
             status: 'PENDING',
             isValidated: false,
             designId: { not: null }
           },
-          // Produits WIZARD - inclure tous les statuts pour validation admin
+          // Produits WIZARD en attente de validation admin
           {
             designId: null,
-            // Inclure produits WIZARD même s'ils sont publiés/draft pour validation admin
+            adminValidated: false
           }
-        ],
-        isDelete: false
-      };
+        ];
+      } else if (status === 'APPROVED' || status === 'VALIDATED') {
+        // Produits validés: traditionnels validés OU WIZARD validés par admin
+        where.OR = [
+          // Produits traditionnels validés
+          {
+            isValidated: true,
+            designId: { not: null }
+          },
+          // Produits WIZARD validés par admin
+          {
+            designId: null,
+            adminValidated: true
+          }
+        ];
+      } else if (status === 'REJECTED') {
+        // Produits rejetés: ceux avec rejectionReason ET/OU status REJECTED
+        where.OR = [
+          // Produits avec rejectionReason (ancienne logique)
+          {
+            rejectionReason: { not: null }
+          },
+          // Produits avec status REJECTED (nouvelle logique)
+          {
+            status: 'REJECTED'
+          }
+        ];
+      } else if (status === 'ALL' || !status) {
+        // Tous les produits: récupérer TOUS les statuts (PENDING, PUBLISHED, DRAFT, REJECTED)
+        where.OR = [
+          // Produits traditionnels (tous statuts)
+          {
+            designId: { not: null }
+          },
+          // Produits WIZARD (tous statuts)
+          {
+            designId: null
+          }
+        ];
+      } else {
+        // Cas par défaut si status non reconnu
+        where.OR = [
+          {
+            designId: { not: null }
+          },
+          {
+            designId: null
+          }
+        ];
+      }
 
       if (vendorId) {
         where.vendorId = vendorId;
@@ -490,9 +543,9 @@ export class VendorProductValidationService {
 
       this.logger.log(`🎯 Validation admin produit ${productId} - Type: ${isWizardProduct ? 'WIZARD' : 'TRADITIONNEL'} - Approuvé: ${approved}`);
 
-      const newStatus = approved 
+      const newStatus = approved
         ? (product.postValidationAction === 'AUTO_PUBLISH' ? 'PUBLISHED' : 'DRAFT')
-        : 'PENDING'; // Reste en attente si rejeté
+        : 'PENDING'; // Reste PENDING si rejeté, le rejectionReason indique le rejet
 
       const updateData: any = {
         status: newStatus,
@@ -679,6 +732,7 @@ export class VendorProductValidationService {
       productType: isWizardProduct ? 'WIZARD' : 'TRADITIONAL',
       hasDesign: !isWizardProduct,
       adminProductName: product.adminProductName, // Nom du produit de base pour WIZARD
+      adminValidated: product.adminValidated, // Champ crucial pour les produits WIZARD
       baseProduct: product.baseProduct ? {
         id: product.baseProduct.id,
         name: product.baseProduct.name

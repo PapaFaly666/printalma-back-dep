@@ -186,3 +186,6 @@ Pour toute divergence de structure, se référer à:
 - `BACKEND_PRODUCT_GET_RESPONSE_DOCUMENTATION.md` (données produits/mockups)
 
 
+
+
+
