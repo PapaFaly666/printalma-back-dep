@@ -190,15 +190,21 @@ export class AuthController {
 	@UseGuards(JwtAuthGuard)
 	@Get('check')
 	async checkAuth(@Req() req: RequestWithUser) {
+		// Récupérer le profil complet avec customRole
+		const profile = await this.authService.getUserProfile(req.user.sub);
+
 		return {
 			isAuthenticated: true,
 			user: {
-				id: req.user.sub,
-				email: req.user.email,
-				firstName: req.user.firstName,
-				lastName: req.user.lastName,
-				role: req.user.role,
-				vendeur_type: req.user.vendeur_type
+				id: profile.id,
+				email: profile.email,
+				firstName: profile.firstName,
+				lastName: profile.lastName,
+				role: profile.role,
+				customRole: profile.customRole,
+				vendeur_type: profile.vendeur_type,
+				status: profile.status,
+				profile_photo_url: profile.profile_photo_url
 			}
 		};
 	}
@@ -441,6 +447,29 @@ export class AuthController {
 	}
 
 	/**
+	 * Admin: Liste complète des vendeurs avec filtres avancés
+	 */
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@Get('admin/vendors')
+	@ApiOperation({ summary: 'Récupérer la liste complète des vendeurs avec filtres' })
+	@ApiResponse({ status: 200, description: 'Liste des vendeurs récupérée avec succès' })
+	async listAllVendors(@Query() queryDto: ListClientsQueryDto) {
+		return this.authService.listAllVendors(queryDto);
+	}
+
+	/**
+	 * Admin: Liste de la corbeille (vendeurs supprimés)
+	 * ⚠️ IMPORTANT: Cette route doit être AVANT /admin/vendors/:id pour éviter que "trash" soit interprété comme un :id
+	 */
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@Get('admin/vendors/trash')
+	@ApiOperation({ summary: 'Récupérer la liste des vendeurs supprimés (corbeille)' })
+	@ApiResponse({ status: 200, description: 'Liste de la corbeille récupérée avec succès' })
+	async getDeletedVendors(@Query() queryDto: ListClientsQueryDto) {
+		return this.authService.getDeletedVendors(queryDto);
+	}
+
+	/**
 	 * Admin: Récupérer un vendeur spécifique pour modification
 	 */
 	@UseGuards(JwtAuthGuard, AdminGuard)
@@ -490,17 +519,6 @@ export class AuthController {
 	}
 
 	/**
-	 * Admin: Liste complète des vendeurs avec filtres avancés
-	 */
-	@UseGuards(JwtAuthGuard, AdminGuard)
-	@Get('admin/vendors')
-	@ApiOperation({ summary: 'Récupérer la liste complète des vendeurs avec filtres' })
-	@ApiResponse({ status: 200, description: 'Liste des vendeurs récupérée avec succès' })
-	async listAllVendors(@Query() queryDto: ListClientsQueryDto) {
-		return this.authService.listAllVendors(queryDto);
-	}
-
-	/**
 	 * Endpoint de debug pour tester les cookies (temporaire)
 	 */
 	@Get('debug-cookies')
@@ -516,5 +534,38 @@ export class AuthController {
 			timestamp: new Date().toISOString(),
 			environment: process.env.NODE_ENV
 		};
+	}
+
+	// ========================
+	// SOFT DELETE ENDPOINTS
+	// ========================
+
+	/**
+	 * Admin: Soft delete d'un vendeur
+	 */
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@Put('admin/vendors/:id/soft-delete')
+	@ApiOperation({ summary: 'Supprimer un vendeur (soft delete)' })
+	@ApiResponse({ status: 200, description: 'Vendeur supprimé avec succès' })
+	@ApiResponse({ status: 400, description: 'Vendeur déjà supprimé ou erreur' })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	async softDeleteVendor(
+		@Param('id', ParseIntPipe) vendorId: number,
+		@Req() req: RequestWithUser
+	) {
+		return this.authService.softDeleteVendor(vendorId, req.user.sub);
+	}
+
+	/**
+	 * Admin: Restaurer un vendeur supprimé
+	 */
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@Put('admin/vendors/:id/restore')
+	@ApiOperation({ summary: 'Restaurer un vendeur supprimé' })
+	@ApiResponse({ status: 200, description: 'Vendeur restauré avec succès' })
+	@ApiResponse({ status: 400, description: 'Vendeur non supprimé ou erreur' })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	async restoreVendor(@Param('id', ParseIntPipe) vendorId: number) {
+		return this.authService.restoreVendor(vendorId);
 	}
 }

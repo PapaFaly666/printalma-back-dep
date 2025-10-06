@@ -1,6 +1,7 @@
 import { IsEmail, IsNotEmpty, IsString, IsOptional, MinLength, IsEnum, IsBoolean, IsNumber, Min, Max, IsInt, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { VendeurType } from '@prisma/client';
+import { Type } from 'class-transformer';
 
 export class CreateClientDto {
   @ApiProperty({ example: 'Jean' })
@@ -183,25 +184,33 @@ export class VerifyResetTokenDto {
 }
 
 export class ListClientsQueryDto {
+  @ApiProperty({ required: false, default: 1, description: 'Numéro de la page' })
   @IsOptional()
-  @IsNumber({}, { message: 'La page doit être un nombre' })
+  @Type(() => Number)
+  @IsInt({ message: 'La page doit être un nombre entier' })
   @Min(1, { message: 'La page doit être supérieure à 0' })
-  page?: number = 1;
+  page?: number;
 
+  @ApiProperty({ required: false, default: 10, description: 'Nombre d\'éléments par page' })
   @IsOptional()
-  @IsNumber({}, { message: 'La limite doit être un nombre' })
+  @Type(() => Number)
+  @IsInt({ message: 'La limite doit être un nombre entier' })
   @Min(1, { message: 'La limite doit être supérieure à 0' })
   @Max(100, { message: 'La limite ne peut pas dépasser 100' })
-  limit?: number = 10;
+  limit?: number;
 
+  @ApiProperty({ required: false, description: 'Statut actif/inactif' })
   @IsOptional()
+  @Type(() => Boolean)
   @IsBoolean({ message: 'Le statut doit être un booléen' })
   status?: boolean;
 
+  @ApiProperty({ required: false, enum: VendeurType, description: 'Type de vendeur' })
   @IsOptional()
   @IsEnum(VendeurType, { message: 'Le type de vendeur doit être DESIGNER, INFLUENCEUR ou ARTISTE' })
   vendeur_type?: VendeurType;
 
+  @ApiProperty({ required: false, description: 'Recherche par nom, email ou boutique' })
   @IsOptional()
   @IsString()
   search?: string; // Recherche par nom ou email

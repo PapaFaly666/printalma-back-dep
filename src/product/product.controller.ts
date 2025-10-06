@@ -22,6 +22,10 @@ import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateReadyProductDto } from './dto/create-ready-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { UpdateStocksDto } from './dto/update-stocks.dto';
+import { RechargeStockDto } from './dto/recharge-stock.dto';
+import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
+import { StockHistoryQueryDto } from './dto/stock-history-query.dto';
 import {
   ApiCreatedResponse,
   ApiOperation,
@@ -36,6 +40,7 @@ import {
 } from '@nestjs/swagger';
 import { ProductResponseDto } from './dto/product-response.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RequestWithUser } from '../auth/jwt.strategy';
 import { IsEnum } from 'class-validator';
 import { FileFieldsInterceptor, FileInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
 import { multerConfig } from '../../multerConfig';
@@ -1407,5 +1412,253 @@ export class ProductController {
   })
   async getFilterStats() {
     return this.productService.getFilterStats();
+  }
+
+  // ==========================================
+  // 📦 ENDPOINTS GESTION DES STOCKS
+  // ==========================================
+
+  @Post(':productId/stocks')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Créer ou mettre à jour les stocks d\'un produit' })
+  @ApiParam({ name: 'productId', type: 'number', description: 'ID du produit' })
+  @ApiBody({ type: UpdateStocksDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Stocks mis à jour avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Stocks mis à jour avec succès' },
+        data: {
+          type: 'object',
+          properties: {
+            productId: { type: 'number', example: 123 },
+            totalStockUpdated: { type: 'number', example: 3 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 404, description: 'Produit non trouvé' })
+  async updateProductStocks(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Body() updateStocksDto: UpdateStocksDto
+  ) {
+    return this.productService.updateProductStocks(productId, updateStocksDto);
+  }
+
+  @Get(':productId/stocks')
+  @ApiOperation({ summary: 'Récupérer tous les stocks d\'un produit' })
+  @ApiParam({ name: 'productId', type: 'number', description: 'ID du produit' })
+  @ApiResponse({
+    status: 200,
+    description: 'Stocks récupérés avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            productId: { type: 'number', example: 123 },
+            stocks: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'number', example: 1 },
+                  colorId: { type: 'number', example: 1 },
+                  colorName: { type: 'string', example: 'Blanc' },
+                  sizeName: { type: 'string', example: 'M' },
+                  stock: { type: 'number', example: 25 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  async getProductStocks(@Param('productId', ParseIntPipe) productId: number) {
+    return this.productService.getProductStocks(productId);
+  }
+
+  @Patch(':productId/stocks/:stockId')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Mettre à jour un stock spécifique' })
+  @ApiParam({ name: 'productId', type: 'number', description: 'ID du produit' })
+  @ApiParam({ name: 'stockId', type: 'number', description: 'ID du stock' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        stock: { type: 'number', example: 50, minimum: 0 }
+      },
+      required: ['stock']
+    }
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Stock mis à jour avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Stock mis à jour avec succès' },
+        data: {
+          type: 'object',
+          properties: {
+            stockId: { type: 'number', example: 1 },
+            previousStock: { type: 'number', example: 30 },
+            newStock: { type: 'number', example: 50 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 404, description: 'Stock non trouvé' })
+  async updateSingleStock(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Param('stockId', ParseIntPipe) stockId: number,
+    @Body('stock', ParseIntPipe) stock: number
+  ) {
+    return this.productService.updateSingleStock(productId, stockId, stock);
+  }
+
+  @Post(':productId/stocks/:stockId/recharge')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Recharger le stock (ajouter au stock existant)' })
+  @ApiParam({ name: 'productId', type: 'number', description: 'ID du produit' })
+  @ApiParam({ name: 'stockId', type: 'number', description: 'ID du stock' })
+  @ApiBody({ type: RechargeStockDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Stock rechargé avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Stock rechargé avec succès' },
+        data: {
+          type: 'object',
+          properties: {
+            previousStock: { type: 'number', example: 30 },
+            addedAmount: { type: 'number', example: 20 },
+            newStock: { type: 'number', example: 50 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 404, description: 'Stock non trouvé' })
+  async rechargeStock(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Param('stockId', ParseIntPipe) stockId: number,
+    @Body() rechargeDto: RechargeStockDto
+  ) {
+    return this.productService.rechargeStock(productId, stockId, rechargeDto);
+  }
+
+  @Post(':productId/stocks/movement')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Enregistrer un mouvement de stock (entrée ou sortie)' })
+  @ApiParam({ name: 'productId', type: 'number', description: 'ID du produit' })
+  @ApiBody({ type: CreateStockMovementDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Mouvement de stock enregistré',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Mouvement de stock enregistré' },
+        data: {
+          type: 'object',
+          properties: {
+            movement: {
+              type: 'object',
+              properties: {
+                id: { type: 'number', example: 123 },
+                productId: { type: 'number', example: 45 },
+                colorId: { type: 'number', example: 15 },
+                sizeName: { type: 'string', example: 'M' },
+                type: { type: 'string', enum: ['IN', 'OUT'], example: 'IN' },
+                quantity: { type: 'number', example: 50 },
+                reason: { type: 'string', example: 'Réception fournisseur XYZ' },
+                createdAt: { type: 'string', format: 'date-time' }
+              }
+            },
+            newStock: { type: 'number', example: 150 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Validation échouée' })
+  @ApiResponse({ status: 404, description: 'Produit ou couleur introuvable' })
+  @ApiResponse({ status: 409, description: 'Stock insuffisant pour une sortie' })
+  async createStockMovement(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Body() dto: CreateStockMovementDto,
+    @Req() req: RequestWithUser
+  ) {
+    const userId = req.user.sub;
+    return this.productService.createStockMovement(productId, dto, userId);
+  }
+
+  @Get(':productId/stocks/history')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Récupérer l\'historique des mouvements de stock' })
+  @ApiParam({ name: 'productId', type: 'number', description: 'ID du produit' })
+  @ApiQuery({ name: 'colorId', required: false, type: 'number', description: 'Filtrer par ID de couleur' })
+  @ApiQuery({ name: 'sizeName', required: false, type: 'string', description: 'Filtrer par taille' })
+  @ApiQuery({ name: 'type', required: false, enum: ['IN', 'OUT'], description: 'Filtrer par type de mouvement' })
+  @ApiQuery({ name: 'limit', required: false, type: 'number', description: 'Nombre d\'éléments par page (défaut: 20)' })
+  @ApiQuery({ name: 'offset', required: false, type: 'number', description: 'Décalage pour la pagination (défaut: 0)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Historique des mouvements récupéré',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            movements: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'number', example: 125 },
+                  productId: { type: 'number', example: 45 },
+                  productName: { type: 'string', example: 'T-shirt Premium' },
+                  colorId: { type: 'number', example: 15 },
+                  colorName: { type: 'string', example: 'Bleu Marine' },
+                  sizeName: { type: 'string', example: 'M' },
+                  type: { type: 'string', enum: ['IN', 'OUT'], example: 'IN' },
+                  quantity: { type: 'number', example: 50 },
+                  reason: { type: 'string', example: 'Réception fournisseur XYZ' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  createdBy: { type: 'string', example: 'Admin' }
+                }
+              }
+            },
+            total: { type: 'number', example: 47 },
+            limit: { type: 'number', example: 20 },
+            offset: { type: 'number', example: 0 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 404, description: 'Produit introuvable' })
+  async getStockHistory(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Query() query: StockHistoryQueryDto
+  ) {
+    return this.productService.getStockHistory(productId, query);
   }
 }

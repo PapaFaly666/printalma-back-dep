@@ -22,9 +22,20 @@ export class AuthService {
     async login(loginDto: LoginDto) {
         const { email, password } = loginDto;
 
-        // Récupérer l'utilisateur par email
+        // Récupérer l'utilisateur par email avec son customRole et permissions
         const user = await this.prisma.user.findUnique({
             where: { email },
+            include: {
+                customRole: {
+                    include: {
+                        permissions: {
+                            include: {
+                                permission: true
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         // Vérifier si l'utilisateur existe
@@ -125,11 +136,52 @@ export class AuthService {
             };
         }
 
-        // Générer le token JWT
+        // Déterminer le rôle pour l'affichage et la logique
+        let roleString = user.role; // Ancien système (peut être null)
+        let roleDisplay = user.role; // Ce qui sera affiché dans le frontend
+
+        // Préparer customRole avec permissions si disponible
+        let customRoleData = null;
+        if (user.customRole) {
+            const permissions = user.customRole.permissions.map(rp => ({
+                id: rp.permission.id,
+                slug: rp.permission.key, // ✅ Le champ s'appelle 'key' dans la DB
+                name: rp.permission.name,
+                module: rp.permission.module,
+                description: rp.permission.description
+            }));
+
+            customRoleData = {
+                id: user.customRole.id,
+                name: user.customRole.name,
+                slug: user.customRole.slug,
+                description: user.customRole.description,
+                permissions
+            };
+
+            // Pour l'affichage, utiliser le nom du customRole
+            roleDisplay = user.customRole.name;
+
+            // Pour la logique backend (guards anciens), mapper vers les rôles enum
+            const slugUpper = user.customRole.slug.toUpperCase();
+            if (slugUpper === 'SUPERADMIN') {
+                roleString = Role.SUPERADMIN;
+            } else if (slugUpper === 'ADMIN') {
+                roleString = Role.ADMIN;
+            } else if (slugUpper === 'VENDOR') {
+                roleString = Role.VENDEUR;
+            } else {
+                // Pour les autres rôles custom (finance, production, marketing)
+                // On garde le roleString pour la compatibilité backend mais on affiche le vrai nom
+                roleString = Role.ADMIN; // Pour les guards anciens
+            }
+        }
+
+        // Générer le token JWT avec le role mappé
         const payload = {
             sub: user.id,
             email: user.email,
-            role: user.role,
+            role: roleString, // Role string pour compatibilité
             vendeur_type: user.vendeur_type,
             firstName: user.firstName,
             lastName: user.lastName,
@@ -150,7 +202,9 @@ export class AuthService {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
-                role: user.role,
+                role: roleString, // ✅ Role pour la logique backend (SUPERADMIN, ADMIN, VENDEUR)
+                roleDisplay: roleDisplay, // ✅ Nom du rôle pour l'affichage (peut être "Super Administrateur", "Finances", etc.)
+                customRole: customRoleData, // ✅ Objet customRole avec permissions ou null
                 vendeur_type: user.vendeur_type,
                 status: user.status,
                 profile_photo_url: user.profile_photo_url,
@@ -475,10 +529,11 @@ export class AuthService {
      */
     async listClients(queryDto: ListClientsQueryDto): Promise<ListClientsResponseDto> {
         const { page = 1, limit = 10, status, vendeur_type, search } = queryDto;
-        
+
         // Construction de la condition WHERE
         const whereCondition: any = {
-            role: Role.VENDEUR // On ne veut que les clients (VENDEUR)
+            role: Role.VENDEUR, // On ne veut que les clients (VENDEUR)
+            is_deleted: false // ✅ Exclure les vendeurs supprimés
         };
 
         // Filtrer par statut si spécifié
@@ -765,6 +820,7 @@ export class AuthService {
                 firstName: true,
                 lastName: true,
                 role: true,
+                roleId: true, // ✅ Ajouter roleId pour vérifier le customRole
                 vendeur_type: true,
                 status: true,
                 must_change_password: true,
@@ -783,7 +839,58 @@ export class AuthService {
             throw new NotFoundException('Utilisateur non trouvé');
         }
 
-        return user;
+        // Récupérer le customRole avec permissions si l'utilisateur en a un
+        let customRoleData = null;
+        let roleString = user.role;
+
+        if (user.roleId) {
+            const customRoleWithPermissions = await this.prisma.customRole.findUnique({
+                where: { id: user.roleId },
+                include: {
+                    permissions: {
+                        include: {
+                            permission: true
+                        }
+                    }
+                }
+            });
+
+            if (customRoleWithPermissions) {
+                const permissions = customRoleWithPermissions.permissions.map(rp => ({
+                    id: rp.permission.id,
+                    slug: rp.permission.key, // ✅ Le champ s'appelle 'key' dans la DB
+                    name: rp.permission.name,
+                    module: rp.permission.module,
+                    description: rp.permission.description
+                }));
+
+                customRoleData = {
+                    id: customRoleWithPermissions.id,
+                    name: customRoleWithPermissions.name,
+                    slug: customRoleWithPermissions.slug,
+                    description: customRoleWithPermissions.description,
+                    permissions
+                };
+
+                // Mapper le slug vers le role string pour compatibilité
+                const slugUpper = customRoleWithPermissions.slug.toUpperCase();
+                if (slugUpper === 'SUPERADMIN') {
+                    roleString = Role.SUPERADMIN;
+                } else if (slugUpper === 'ADMIN') {
+                    roleString = Role.ADMIN;
+                } else if (slugUpper === 'VENDOR') {
+                    roleString = Role.VENDEUR;
+                } else {
+                    roleString = Role.ADMIN;
+                }
+            }
+        }
+
+        return {
+            ...user,
+            role: roleString,
+            customRole: customRoleData
+        };
     }
 
     async onModuleInit() {
@@ -1118,8 +1225,12 @@ export class AuthService {
      * Récupérer le profil complet d'un vendeur
      */
     async getExtendedVendorProfile(userId: number): Promise<ExtendedVendorProfileResponseDto> {
-        const vendor = await this.prisma.user.findUnique({
-            where: { id: userId, role: Role.VENDEUR },
+        const vendor = await this.prisma.user.findFirst({
+            where: {
+                id: userId,
+                role: Role.VENDEUR,
+                is_deleted: false // ✅ Ne pas retourner un vendeur supprimé
+            },
             select: {
                 id: true,
                 firstName: true,
@@ -1285,9 +1396,10 @@ export class AuthService {
         try {
             const stats = await this.prisma.user.groupBy({
                 by: ['country'],
-                where: { 
+                where: {
                     role: Role.VENDEUR,
-                    country: { not: null }
+                    country: { not: null },
+                    is_deleted: false // ✅ Exclure les vendeurs supprimés
                 },
                 _count: {
                     id: true
@@ -1583,6 +1695,7 @@ export class AuthService {
         // Construire la condition WHERE pour filtrer uniquement les vendeurs
         const whereCondition: any = {
             role: Role.VENDEUR, // Seuls les vendeurs
+            is_deleted: false, // ✅ Exclure les vendeurs supprimés
         };
 
         // Ajouter les filtres optionnels
@@ -1661,6 +1774,231 @@ export class AuthService {
         } catch (error) {
             console.error('Erreur lors de la récupération des vendeurs:', error);
             throw new BadRequestException('Erreur lors de la récupération des vendeurs');
+        }
+    }
+
+    // ========================
+    // SOFT DELETE ENDPOINTS
+    // ========================
+
+    /**
+     * Admin: Soft delete d'un vendeur (suppression logique)
+     */
+    async softDeleteVendor(vendorId: number, adminId: number) {
+        try {
+            // Vérifier que c'est bien un vendeur
+            const vendor = await this.prisma.user.findUnique({
+                where: { id: vendorId },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    role: true,
+                    is_deleted: true,
+                }
+            });
+
+            if (!vendor) {
+                throw new NotFoundException('Vendeur non trouvé');
+            }
+
+            if (vendor.role !== Role.VENDEUR) {
+                throw new BadRequestException('Cet utilisateur n\'est pas un vendeur');
+            }
+
+            // Vérifier que le vendeur n'est pas déjà supprimé
+            if (vendor.is_deleted) {
+                throw new BadRequestException('Ce vendeur est déjà supprimé');
+            }
+
+            // Marquer comme supprimé
+            const deletedVendor = await this.prisma.user.update({
+                where: { id: vendorId },
+                data: {
+                    is_deleted: true,
+                    deleted_at: new Date(),
+                    deleted_by: adminId,
+                    status: false, // Désactiver aussi le compte
+                    updated_at: new Date()
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    is_deleted: true,
+                    deleted_at: true,
+                    deleted_by: true,
+                    status: true
+                }
+            });
+
+            console.log(`🗑️ Vendeur ${vendorId} supprimé (soft delete) par admin ${adminId}`);
+
+            return {
+                success: true,
+                message: 'Vendeur supprimé avec succès',
+                vendor: deletedVendor
+            };
+        } catch (error) {
+            if (error instanceof NotFoundException || error instanceof BadRequestException) {
+                throw error;
+            }
+            console.error('Erreur lors de la suppression du vendeur:', error);
+            throw new BadRequestException('Erreur lors de la suppression du vendeur');
+        }
+    }
+
+    /**
+     * Admin: Restaurer un vendeur supprimé
+     */
+    async restoreVendor(vendorId: number) {
+        try {
+            const vendor = await this.prisma.user.findUnique({
+                where: { id: vendorId },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    role: true,
+                    is_deleted: true,
+                }
+            });
+
+            if (!vendor) {
+                throw new NotFoundException('Vendeur non trouvé');
+            }
+
+            if (vendor.role !== Role.VENDEUR) {
+                throw new BadRequestException('Cet utilisateur n\'est pas un vendeur');
+            }
+
+            if (!vendor.is_deleted) {
+                throw new BadRequestException('Ce vendeur n\'est pas supprimé');
+            }
+
+            // Restaurer le vendeur
+            const restoredVendor = await this.prisma.user.update({
+                where: { id: vendorId },
+                data: {
+                    is_deleted: false,
+                    deleted_at: null,
+                    deleted_by: null,
+                    status: true, // Réactiver le compte
+                    updated_at: new Date()
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    is_deleted: true,
+                    deleted_at: true,
+                    deleted_by: true,
+                    status: true
+                }
+            });
+
+            console.log(`♻️ Vendeur ${vendorId} restauré`);
+
+            return {
+                success: true,
+                message: 'Vendeur restauré avec succès',
+                vendor: restoredVendor
+            };
+        } catch (error) {
+            if (error instanceof NotFoundException || error instanceof BadRequestException) {
+                throw error;
+            }
+            console.error('Erreur lors de la restauration du vendeur:', error);
+            throw new BadRequestException('Erreur lors de la restauration du vendeur');
+        }
+    }
+
+    /**
+     * Admin: Liste de la corbeille (vendeurs supprimés)
+     */
+    async getDeletedVendors(queryDto: ListClientsQueryDto) {
+        const { page = 1, limit = 10, vendeur_type, search } = queryDto;
+
+        const whereCondition: any = {
+            role: Role.VENDEUR,
+            is_deleted: true, // Seulement les vendeurs supprimés
+        };
+
+        // Filtre par type
+        if (vendeur_type) {
+            whereCondition.vendeur_type = vendeur_type;
+        }
+
+        // Filtre de recherche
+        if (search) {
+            whereCondition.OR = [
+                { firstName: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { shop_name: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        const skip = (page - 1) * limit;
+
+        try {
+            const [vendors, total] = await Promise.all([
+                this.prisma.user.findMany({
+                    where: whereCondition,
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
+                        vendeur_type: true,
+                        phone: true,
+                        country: true,
+                        address: true,
+                        shop_name: true,
+                        profile_photo_url: true,
+                        is_deleted: true,
+                        deleted_at: true,
+                        deleted_by: true,
+                        created_at: true,
+                        deletedByUser: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true
+                            }
+                        }
+                    },
+                    orderBy: { deleted_at: 'desc' },
+                    skip,
+                    take: limit,
+                }),
+                this.prisma.user.count({
+                    where: whereCondition,
+                })
+            ]);
+
+            const totalPages = Math.ceil(total / limit);
+
+            return {
+                vendors,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages,
+                    hasNext: page < totalPages,
+                    hasPrevious: page > 1,
+                },
+                message: `${total} vendeur(s) supprimé(s) trouvé(s)`,
+            };
+        } catch (error) {
+            console.error('Erreur lors de la récupération de la corbeille:', error);
+            throw new BadRequestException('Erreur lors de la récupération de la corbeille');
         }
     }
 }

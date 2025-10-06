@@ -1,10 +1,14 @@
 // products/product.service.ts
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { CreateProductDto, CoordinateType as DTOCoordinateType } from './dto/create-product.dto';
 import { CreateReadyProductDto } from './dto/create-ready-product.dto';
+import { UpdateStocksDto } from './dto/update-stocks.dto';
+import { RechargeStockDto } from './dto/recharge-stock.dto';
+import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
+import { StockHistoryQueryDto } from './dto/stock-history-query.dto';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 import { PrismaService } from '../prisma.service';
-import { PublicationStatus, CoordinateType as PrismaCoordinateType, ProductGenre } from '@prisma/client';
+import { PublicationStatus, CoordinateType as PrismaCoordinateType, ProductGenre, StockMovementType } from '@prisma/client';
 import { DelimitationService } from '../delimitation/delimitation.service';
 import { MailService } from '../core/mail/mail.service';
 
@@ -55,13 +59,27 @@ export class ProductService {
 
     // 3. Use new optimal transaction with advanced retry
     return this.prisma.executeTransaction(async (tx) => {
-      // 3.1. Upsert categories and get their IDs
+      // 3.1. Find or create categories and get their IDs
       const categoryPromises = dto.categories.map(async (name) => {
-        const category = await tx.category.upsert({
-          where: { name },
-          update: {},
-          create: { name },
+        // Find existing category with this name and no parent (level 0)
+        let category = await tx.category.findFirst({
+          where: {
+            name,
+            parentId: null
+          }
         });
+
+        // If not found, create it
+        if (!category) {
+          category = await tx.category.create({
+            data: {
+              name,
+              level: 0,
+              parentId: null
+            }
+          });
+        }
+
         return category;
       });
       const categories = await Promise.all(categoryPromises);
@@ -332,6 +350,7 @@ export class ProductService {
       include: {
         categories: true,
         sizes: true,
+        stocks: true, // 📦 Inclure les stocks
         colorVariations: {
           include: {
             images: {
@@ -375,22 +394,33 @@ export class ProductService {
       });
 
       // Transformer les images pour inclure les informations de design
-      const transformedColorVariations = product.colorVariations.map(colorVar => ({
-        ...colorVar,
-        images: colorVar.images.map(image => ({
-          ...image,
-          customDesign: image.designUrl ? {
-            id: image.designPublicId,
-            url: image.designUrl,
-            originalName: image.designOriginalName,
-            thumbnailUrl: image.designUrl,
-            uploadedAt: image.designUploadDate?.toISOString(),
-            size: image.designSize,
-            isActive: image.isDesignActive,
-            description: image.designDescription
-          } : null
-        }))
-      }));
+      const transformedColorVariations = product.colorVariations.map(colorVar => {
+        // 📦 Organiser les stocks par couleur et taille (ARRAY d'objets)
+        const colorStocks = product.stocks
+          .filter(s => s.colorId === colorVar.id)
+          .map(s => ({
+            sizeName: s.sizeName,
+            stock: s.stock
+          }));
+
+        return {
+          ...colorVar,
+          stocks: colorStocks, // 📦 Array d'objets [{ sizeName, stock }]
+          images: colorVar.images.map(image => ({
+            ...image,
+            customDesign: image.designUrl ? {
+              id: image.designPublicId,
+              url: image.designUrl,
+              originalName: image.designOriginalName,
+              thumbnailUrl: image.designUrl,
+              uploadedAt: image.designUploadDate?.toISOString(),
+              size: image.designSize,
+              isActive: image.isDesignActive,
+              description: image.designDescription
+            } : null
+          }))
+        };
+      });
 
       return {
         ...product,
@@ -427,6 +457,7 @@ export class ProductService {
       include: {
         categories: true,
         sizes: true,
+        stocks: true, // 📦 Inclure les stocks
         colorVariations: {
           include: {
             images: {
@@ -442,7 +473,7 @@ export class ProductService {
       },
     });
 
-    // Enrichir les produits avec les informations de design
+    // Enrichir les produits avec les informations de design et stocks
     const enrichedProducts = products.map(product => {
       // Calculer les métadonnées de design
       let designCount = 0;
@@ -458,22 +489,33 @@ export class ProductService {
       });
 
       // Transformer les images pour inclure les informations de design
-      const transformedColorVariations = product.colorVariations.map(colorVar => ({
-        ...colorVar,
-        images: colorVar.images.map(image => ({
-          ...image,
-          customDesign: image.designUrl ? {
-            id: image.designPublicId,
-            url: image.designUrl,
-            originalName: image.designOriginalName,
-            thumbnailUrl: image.designUrl, // Pour l'instant, même URL
-            uploadedAt: image.designUploadDate?.toISOString(),
-            size: image.designSize,
-            isActive: image.isDesignActive,
-            description: image.designDescription
-          } : null
-        }))
-      }));
+      const transformedColorVariations = product.colorVariations.map(colorVar => {
+        // 📦 Organiser les stocks par couleur et taille (ARRAY d'objets)
+        const colorStocks = product.stocks
+          .filter(s => s.colorId === colorVar.id)
+          .map(s => ({
+            sizeName: s.sizeName,
+            stock: s.stock
+          }));
+
+        return {
+          ...colorVar,
+          stocks: colorStocks, // 📦 Array d'objets [{ sizeName, stock }]
+          images: colorVar.images.map(image => ({
+            ...image,
+            customDesign: image.designUrl ? {
+              id: image.designPublicId,
+              url: image.designUrl,
+              originalName: image.designOriginalName,
+              thumbnailUrl: image.designUrl, // Pour l'instant, même URL
+              uploadedAt: image.designUploadDate?.toISOString(),
+              size: image.designSize,
+              isActive: image.isDesignActive,
+              description: image.designDescription
+            } : null
+          }))
+        };
+      });
 
       return {
         ...product,
@@ -495,6 +537,7 @@ export class ProductService {
       include: {
         categories: true,
         sizes: true,
+        stocks: true, // 📦 Inclure les stocks
         colorVariations: {
           include: {
             images: {
@@ -525,22 +568,33 @@ export class ProductService {
     });
 
     // Transformer les images pour inclure les informations de design
-    const transformedColorVariations = product.colorVariations.map(colorVar => ({
-      ...colorVar,
-      images: colorVar.images.map(image => ({
-        ...image,
-        customDesign: image.designUrl ? {
-          id: image.designPublicId,
-          url: image.designUrl,
-          originalName: image.designOriginalName,
-          thumbnailUrl: image.designUrl, // Pour l'instant, même URL
-          uploadedAt: image.designUploadDate?.toISOString(),
-          size: image.designSize,
-          isActive: image.isDesignActive,
-          description: image.designDescription
-        } : null
-      }))
-    }));
+    const transformedColorVariations = product.colorVariations.map(colorVar => {
+      // 📦 Organiser les stocks par couleur et taille (ARRAY d'objets)
+      const colorStocks = product.stocks
+        .filter(s => s.colorId === colorVar.id)
+        .map(s => ({
+          sizeName: s.sizeName,
+          stock: s.stock
+        }));
+
+      return {
+        ...colorVar,
+        stocks: colorStocks, // 📦 Array d'objets [{ sizeName, stock }]
+        images: colorVar.images.map(image => ({
+          ...image,
+          customDesign: image.designUrl ? {
+            id: image.designPublicId,
+            url: image.designUrl,
+            originalName: image.designOriginalName,
+            thumbnailUrl: image.designUrl, // Pour l'instant, même URL
+            uploadedAt: image.designUploadDate?.toISOString(),
+            size: image.designSize,
+            isActive: image.isDesignActive,
+            description: image.designDescription
+          } : null
+        }))
+      };
+    });
 
     return {
       ...product,
@@ -1717,13 +1771,27 @@ export class ProductService {
 
     // 3. Use transaction
     return this.prisma.executeTransaction(async (tx) => {
-      // 3.1. Upsert categories and get their IDs
+      // 3.1. Find or create categories and get their IDs
       const categoryPromises = dto.categories.map(async (name) => {
-        const category = await tx.category.upsert({
-          where: { name },
-          update: {},
-          create: { name },
+        // Find existing category with this name and no parent (level 0)
+        let category = await tx.category.findFirst({
+          where: {
+            name,
+            parentId: null
+          }
         });
+
+        // If not found, create it
+        if (!category) {
+          category = await tx.category.create({
+            data: {
+              name,
+              level: 0,
+              parentId: null
+            }
+          });
+        }
+
         return category;
       });
       const categories = await Promise.all(categoryPromises);
@@ -2013,11 +2081,25 @@ export class ProductService {
 
         // Add new categories
         const categoryPromises = updateDto.categories.map(async (name: string) => {
-          const category = await tx.category.upsert({
-            where: { name },
-            update: {},
-            create: { name },
+          // Find existing category with this name and no parent (level 0)
+          let category = await tx.category.findFirst({
+            where: {
+              name,
+              parentId: null
+            }
           });
+
+          // If not found, create it
+          if (!category) {
+            category = await tx.category.create({
+              data: {
+                name,
+                level: 0,
+                parentId: null
+              }
+            });
+          }
+
           return category;
         });
         const categories = await Promise.all(categoryPromises);
@@ -2301,6 +2383,376 @@ export class ProductService {
         byStatus,
         byType,
         byGenre
+      }
+    };
+  }
+
+  // ==========================================
+  // 📦 GESTION DES STOCKS
+  // ==========================================
+
+  /**
+   * Met à jour les stocks d'un produit
+   * @param productId - ID du produit
+   * @param updateStocksDto - Données des stocks à mettre à jour
+   */
+  async updateProductStocks(productId: number, updateStocksDto: UpdateStocksDto) {
+    // Vérifier que le produit existe
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId }
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produit non trouvé');
+    }
+
+    // Utiliser upsert pour chaque stock (créer ou mettre à jour)
+    const stockOperations = updateStocksDto.stocks.map(stockData =>
+      this.prisma.productStock.upsert({
+        where: {
+          productId_colorId_sizeName: {
+            productId,
+            colorId: stockData.colorId,
+            sizeName: stockData.sizeName
+          }
+        },
+        update: {
+          stock: stockData.stock
+        },
+        create: {
+          productId,
+          colorId: stockData.colorId,
+          sizeName: stockData.sizeName,
+          stock: stockData.stock
+        }
+      })
+    );
+
+    await this.prisma.$transaction(stockOperations);
+
+    return {
+      success: true,
+      message: 'Stocks mis à jour avec succès',
+      data: {
+        productId,
+        totalStockUpdated: updateStocksDto.stocks.length
+      }
+    };
+  }
+
+  /**
+   * Récupère tous les stocks d'un produit
+   * @param productId - ID du produit
+   */
+  async getProductStocks(productId: number) {
+    const stocks = await this.prisma.productStock.findMany({
+      where: { productId },
+      include: {
+        product: {
+          include: {
+            colorVariations: true
+          }
+        }
+      }
+    });
+
+    // Enrichir avec les noms de couleur
+    const enrichedStocks = stocks.map(stock => {
+      const color = stock.product.colorVariations.find(c => c.id === stock.colorId);
+      return {
+        id: stock.id,
+        colorId: stock.colorId,
+        colorName: color?.name || 'Inconnu',
+        sizeName: stock.sizeName,
+        stock: stock.stock
+      };
+    });
+
+    return {
+      success: true,
+      data: {
+        productId,
+        stocks: enrichedStocks
+      }
+    };
+  }
+
+  /**
+   * Recharge le stock d'un produit spécifique (ajoute au stock existant)
+   * @param productId - ID du produit
+   * @param stockId - ID du stock
+   * @param rechargeDto - Quantité à ajouter
+   */
+  async rechargeStock(
+    productId: number,
+    stockId: number,
+    rechargeDto: RechargeStockDto
+  ) {
+    const stock = await this.prisma.productStock.findFirst({
+      where: {
+        id: stockId,
+        productId
+      }
+    });
+
+    if (!stock) {
+      throw new NotFoundException('Stock non trouvé');
+    }
+
+    const previousStock = stock.stock;
+    const newStock = previousStock + rechargeDto.amount;
+
+    await this.prisma.productStock.update({
+      where: { id: stockId },
+      data: { stock: newStock }
+    });
+
+    return {
+      success: true,
+      message: 'Stock rechargé avec succès',
+      data: {
+        previousStock,
+        addedAmount: rechargeDto.amount,
+        newStock
+      }
+    };
+  }
+
+  /**
+   * Met à jour un stock spécifique
+   * @param productId - ID du produit
+   * @param stockId - ID du stock
+   * @param stock - Nouvelle quantité
+   */
+  async updateSingleStock(productId: number, stockId: number, stock: number) {
+    const existingStock = await this.prisma.productStock.findFirst({
+      where: {
+        id: stockId,
+        productId
+      }
+    });
+
+    if (!existingStock) {
+      throw new NotFoundException('Stock non trouvé');
+    }
+
+    if (stock < 0) {
+      throw new BadRequestException('Le stock ne peut pas être négatif');
+    }
+
+    await this.prisma.productStock.update({
+      where: { id: stockId },
+      data: { stock }
+    });
+
+    return {
+      success: true,
+      message: 'Stock mis à jour avec succès',
+      data: {
+        stockId,
+        previousStock: existingStock.stock,
+        newStock: stock
+      }
+    };
+  }
+
+  /**
+   * Crée un mouvement de stock (entrée ou sortie)
+   * @param productId - ID du produit
+   * @param dto - DTO de création de mouvement
+   * @param userId - ID de l'utilisateur effectuant le mouvement
+   */
+  async createStockMovement(
+    productId: number,
+    dto: CreateStockMovementDto,
+    userId?: number
+  ) {
+    // 1. Vérifier que le produit existe
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, isDelete: false },
+      include: {
+        colorVariations: {
+          where: { id: dto.colorId }
+        }
+      }
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produit non trouvé');
+    }
+
+    // 2. Vérifier que la couleur appartient au produit
+    if (!product.colorVariations || product.colorVariations.length === 0) {
+      throw new NotFoundException('Couleur non trouvée pour ce produit');
+    }
+
+    // 3. Récupérer ou créer le stock
+    let stock = await this.prisma.productStock.findUnique({
+      where: {
+        productId_colorId_sizeName: {
+          productId,
+          colorId: dto.colorId,
+          sizeName: dto.sizeName
+        }
+      }
+    });
+
+    if (!stock) {
+      // Créer le stock s'il n'existe pas
+      stock = await this.prisma.productStock.create({
+        data: {
+          productId,
+          colorId: dto.colorId,
+          sizeName: dto.sizeName,
+          stock: 0
+        }
+      });
+    }
+
+    // 4. Si sortie, vérifier le stock disponible
+    if (dto.type === 'OUT' && stock.stock < dto.quantity) {
+      throw new ConflictException(
+        `Stock insuffisant. Disponible: ${stock.stock}, Demandé: ${dto.quantity}`
+      );
+    }
+
+    // 5. Calculer le nouveau stock
+    const newStockValue = dto.type === 'IN'
+      ? stock.stock + dto.quantity
+      : stock.stock - dto.quantity;
+
+    // 6. Utiliser une transaction pour créer le mouvement et mettre à jour le stock
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Créer le mouvement
+      const movement = await tx.stockMovement.create({
+        data: {
+          productId,
+          colorId: dto.colorId,
+          sizeName: dto.sizeName,
+          type: dto.type as StockMovementType,
+          quantity: dto.quantity,
+          reason: dto.reason,
+          createdBy: userId
+        },
+        include: {
+          product: {
+            select: { name: true }
+          },
+          colorVariation: {
+            select: { name: true }
+          },
+          user: {
+            select: { firstName: true, lastName: true }
+          }
+        }
+      });
+
+      // Mettre à jour le stock
+      const updatedStock = await tx.productStock.update({
+        where: { id: stock.id },
+        data: { stock: newStockValue }
+      });
+
+      return { movement, updatedStock };
+    });
+
+    return {
+      success: true,
+      message: 'Mouvement de stock enregistré',
+      data: {
+        movement: {
+          id: result.movement.id,
+          productId: result.movement.productId,
+          colorId: result.movement.colorId,
+          sizeName: result.movement.sizeName,
+          type: result.movement.type,
+          quantity: result.movement.quantity,
+          reason: result.movement.reason,
+          createdAt: result.movement.createdAt
+        },
+        newStock: result.updatedStock.stock
+      }
+    };
+  }
+
+  /**
+   * Récupère l'historique des mouvements de stock d'un produit
+   * @param productId - ID du produit
+   * @param query - Paramètres de filtrage et pagination
+   */
+  async getStockHistory(productId: number, query: StockHistoryQueryDto) {
+    // 1. Vérifier que le produit existe
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, isDelete: false }
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produit non trouvé');
+    }
+
+    // 2. Construire les filtres
+    const where: any = {
+      productId
+    };
+
+    if (query.colorId) {
+      where.colorId = query.colorId;
+    }
+
+    if (query.sizeName) {
+      where.sizeName = query.sizeName;
+    }
+
+    if (query.type) {
+      where.type = query.type as StockMovementType;
+    }
+
+    // 3. Récupérer le total et les mouvements
+    const [total, movements] = await Promise.all([
+      this.prisma.stockMovement.count({ where }),
+      this.prisma.stockMovement.findMany({
+        where,
+        include: {
+          product: {
+            select: { name: true }
+          },
+          colorVariation: {
+            select: { name: true }
+          },
+          user: {
+            select: { firstName: true, lastName: true }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: query.offset,
+        take: query.limit
+      })
+    ]);
+
+    // 4. Formater les résultats
+    const formattedMovements = movements.map(m => ({
+      id: m.id,
+      productId: m.productId,
+      productName: m.product.name,
+      colorId: m.colorId,
+      colorName: m.colorVariation.name,
+      sizeName: m.sizeName,
+      type: m.type,
+      quantity: m.quantity,
+      reason: m.reason,
+      createdAt: m.createdAt,
+      createdBy: m.user ? `${m.user.firstName} ${m.user.lastName}` : 'Système'
+    }));
+
+    return {
+      success: true,
+      data: {
+        movements: formattedMovements,
+        total,
+        limit: query.limit,
+        offset: query.offset
       }
     };
   }

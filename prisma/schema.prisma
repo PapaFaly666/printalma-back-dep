@@ -15,16 +15,22 @@ model User {
   lastName                String
   email                   String                  @unique
   password                String
-  role                    Role                    @default(VENDEUR)
+  role                    Role?
+  roleId                  Int?                    @map("role_id")
   status                  Boolean                 @default(true)
+  userStatus              UserStatus              @default(ACTIVE) @map("user_status")
   photo_profil            String?
+  avatar                  String?
   login_attempts          Int                     @default(0)
   locked_until            DateTime?
   last_login_at           DateTime?
+  email_verified          Boolean                 @default(false) @map("email_verified")
   created_at              DateTime                @default(now())
   updated_at              DateTime                @updatedAt
+  created_by              Int?                    @map("created_by")
   must_change_password    Boolean                 @default(false)
   vendeur_type            VendeurType?
+  vendorTypeId            Int?                    @map("vendor_type_id")
   address                 String?
   country                 String?
   phone                   String?
@@ -32,6 +38,9 @@ model User {
   shop_name               String?                 @unique
   activation_code         String?
   activation_code_expires DateTime?
+  is_deleted              Boolean                 @default(false)
+  deleted_at              DateTime?
+  deleted_by              Int?
   validatedDesigns        Design[]                @relation("DesignValidator")
   designs                 Design[]
   createdDesignCategories DesignCategory[]        @relation("DesignCategoryCreator")
@@ -41,6 +50,7 @@ model User {
   validatedOrders         Order[]                 @relation("OrderValidator")
   passwordResets          PasswordReset[]
   validatedProducts       Product[]               @relation("ProductValidator")
+  stockMovements          StockMovement[]         @relation("StockMovementCreator")
   vendorDesignTransforms  VendorDesignTransform[]
   validatedVendorProducts VendorProduct[]         @relation("VendorProductValidator")
   vendorProducts          VendorProduct[]
@@ -51,9 +61,22 @@ model User {
   vendorEarnings          VendorEarnings?         @relation("VendorEarnings")
   processedFundsRequests  VendorFundsRequest[]    @relation("ProcessedFundsRequests")
   vendorFundsRequests     VendorFundsRequest[]    @relation("VendorFundsRequests")
+  customRole              CustomRole?             @relation("UserCustomRole", fields: [roleId], references: [id])
+  vendorType              VendorType?             @relation("UserVendorType", fields: [vendorTypeId], references: [id])
+  createdByUser           User?                   @relation("UserCreatedBy", fields: [created_by], references: [id], onDelete: SetNull)
+  createdUsers            User[]                  @relation("UserCreatedBy")
+  deletedByUser           User?                   @relation("DeletedByUser", fields: [deleted_by], references: [id], onDelete: SetNull)
+  deletedUsers            User[]                  @relation("DeletedByUser")
+  auditLogs               AuditLog[]              @relation("AuditLogUser")
 
   @@index([country])
   @@index([shop_name])
+  @@index([vendorTypeId])
+  @@index([is_deleted])
+  @@index([deleted_at])
+  @@index([email])
+  @@index([roleId])
+  @@index([userStatus])
 }
 
 model PasswordReset {
@@ -94,6 +117,8 @@ model Product {
   orderItems               OrderItem[]
   validator                User?             @relation("ProductValidator", fields: [validatedBy], references: [id])
   sizes                    ProductSize[]
+  stocks                   ProductStock[]
+  stockMovements           StockMovement[]
   themeProducts            ThemeProduct[]
   vendorProducts           VendorProduct[]
   categories               Category[]        @relation("CategoryToProduct")
@@ -112,11 +137,57 @@ model ProductSize {
   @@index([productId])
 }
 
+model ProductStock {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  colorId   Int
+  sizeName  String
+  stock     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, colorId, sizeName])
+  @@index([productId])
+  @@index([colorId])
+}
+
+model StockMovement {
+  id        Int                 @id @default(autoincrement())
+  productId Int                 @map("product_id")
+  colorId   Int                 @map("color_id")
+  sizeName  String              @map("size_name")
+  type      StockMovementType
+  quantity  Int
+  reason    String?
+  createdAt DateTime            @default(now()) @map("created_at")
+  createdBy Int?                @map("created_by")
+  product   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  colorVariation ColorVariation  @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  user      User?               @relation("StockMovementCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([createdAt(sort: Desc)])
+  @@map("stock_movements")
+}
+
 model Category {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
+  id          Int        @id @default(autoincrement())
+  name        String
   description String?
-  products    Product[] @relation("CategoryToProduct")
+  parentId    Int?       @map("parent_id")
+  level       Int        @default(0)
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]  @relation("CategoryToProduct")
+
+  @@unique([name, parentId], name: "unique_category_per_parent")
+  @@index([parentId])
+  @@index([level])
+  @@map("categories")
 }
 
 model ColorVariation {
@@ -127,6 +198,7 @@ model ColorVariation {
   product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItems          OrderItem[]
   images              ProductImage[]
+  stockMovements      StockMovement[]
   vendorProductImages VendorProductImage[]
 }
 
@@ -718,4 +790,91 @@ enum FundsRequestStatus {
   APPROVED
   REJECTED
   PAID
+}
+
+/// Table des types de vendeurs personnalisables
+model VendorType {
+  id          Int      @id @default(autoincrement())
+  label       String   @unique
+  description String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  users       User[]   @relation("UserVendorType")
+
+  @@map("vendor_types")
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+/// Système de rôles personnalisables (RBAC)
+model CustomRole {
+  id          Int                   @id @default(autoincrement())
+  name        String
+  slug        String                @unique
+  description String?
+  isSystem    Boolean               @default(false) @map("is_system")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  users       User[]                @relation("UserCustomRole")
+  permissions RolePermission[]      @relation("RolePermissions")
+
+  @@index([slug])
+  @@index([isSystem])
+  @@map("custom_roles")
+}
+
+/// Permissions granulaires
+model Permission {
+  id          Int              @id @default(autoincrement())
+  key         String           @unique
+  name        String
+  description String?
+  module      String
+  createdAt   DateTime         @default(now()) @map("created_at")
+  roles       RolePermission[] @relation("PermissionRoles")
+
+  @@index([module])
+  @@index([key])
+  @@map("permissions")
+}
+
+/// Table pivot pour les permissions des rôles
+model RolePermission {
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  role         CustomRole @relation("RolePermissions", fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation("PermissionRoles", fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Logs d'audit pour traçabilité
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   Int?     @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
 }

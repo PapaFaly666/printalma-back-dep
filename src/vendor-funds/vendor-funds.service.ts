@@ -108,13 +108,11 @@ export class VendorFundsService {
     const paidAmount = paidRequests.reduce((sum, req) => sum + req.amount, 0);
     const availableAmount = Math.max(0, totalEarnings - pendingAmount - paidAmount);
 
-    // Mettre à jour le cache des gains
+    // Mettre à jour le cache des gains (sans availableAmount qui se calcule dynamiquement)
     await this.prisma.vendorEarnings.upsert({
       where: { vendorId: vendorId },
       update: {
         totalEarnings,
-        availableAmount,
-        pendingAmount,
         thisMonthEarnings,
         lastMonthEarnings,
         totalCommissionPaid: totalEarnings * 0.10,
@@ -123,13 +121,20 @@ export class VendorFundsService {
       create: {
         vendorId,
         totalEarnings,
-        availableAmount,
-        pendingAmount,
+        availableAmount: 0, // Valeur par défaut, sera recalculée dynamiquement
+        pendingAmount: 0,   // Valeur par défaut, sera recalculée dynamiquement
         thisMonthEarnings,
         lastMonthEarnings,
         totalCommissionPaid: totalEarnings * 0.10,
         averageCommissionRate: 0.10,
       },
+    });
+
+    console.log(`[VENDOR ${vendorId}] Calcul complet des gains:`, {
+      totalEarnings,
+      paidAmount,
+      pendingAmount,
+      availableAmount
     });
 
     return {
@@ -154,21 +159,33 @@ export class VendorFundsService {
     });
 
     if (cachedEarnings) {
-      // Calculer le montant en attente depuis les demandes
-      const pendingRequests = await this.prisma.vendorFundsRequest.findMany({
-        where: {
-          vendorId,
-          status: {
-            in: ['PENDING', 'APPROVED']
-          }
-        }
+      // Calculer correctement les montants depuis les demandes de fonds
+      const fundsRequests = await this.prisma.vendorFundsRequest.findMany({
+        where: { vendorId }
       });
 
-      const pendingAmount = pendingRequests.reduce((sum, req) => sum + req.amount, 0);
+      // Séparer les demandes payées et en attente
+      const paidAmount = fundsRequests
+        .filter(req => req.status === 'PAID')
+        .reduce((sum, req) => sum + req.amount, 0);
+
+      const pendingAmount = fundsRequests
+        .filter(req => req.status === 'PENDING')
+        .reduce((sum, req) => sum + req.amount, 0);
+
+      // Calcul correct : Revenus Totaux - Payé - En Attente
+      const availableAmount = Math.max(0, cachedEarnings.totalEarnings - paidAmount - pendingAmount);
+
+      console.log(`[VENDOR ${vendorId}] Calcul des gains depuis cache:`, {
+        totalEarnings: cachedEarnings.totalEarnings,
+        paidAmount,
+        pendingAmount,
+        availableAmount
+      });
 
       return {
         totalEarnings: cachedEarnings.totalEarnings,
-        availableAmount: Math.max(0, cachedEarnings.availableAmount - pendingAmount),
+        availableAmount: availableAmount,
         pendingAmount: pendingAmount,
         thisMonthEarnings: cachedEarnings.thisMonthEarnings,
         lastMonthEarnings: cachedEarnings.lastMonthEarnings,
@@ -287,8 +304,8 @@ export class VendorFundsService {
         // bankIban: paymentMethod === 'BANK_TRANSFER' ? iban : null, // TODO: Add to schema
         availableBalance: earnings.availableAmount,
         commissionRate: earnings.averageCommissionRate,
-        // Auto-approbation immédiate (pas de rejet/motif)
-        status: 'APPROVED',
+        // Statut automatiquement en attente dès la demande
+        status: 'PENDING',
       },
       include: {
         vendor: {
@@ -601,9 +618,9 @@ export class VendorFundsService {
       throw new BadRequestException('Cette demande ne peut plus être modifiée');
     }
 
-    // Rejet désactivé: empêcher tout passage à REJECTED
+    // Le rejet n'est plus autorisé
     if (status === 'REJECTED') {
-      throw new BadRequestException('Le rejet de demandes est désactivé.');
+      throw new BadRequestException('Le rejet de demandes n\'est plus autorisé.');
     }
 
     // Mettre à jour la demande
@@ -612,7 +629,6 @@ export class VendorFundsService {
       data: {
         status,
         adminNote,
-        // Rejet désactivé
         rejectReason: null,
         processedBy: adminId,
         processedAt: new Date(),
@@ -651,8 +667,9 @@ export class VendorFundsService {
   ): Promise<{ processed: number; errors: string[] }> {
     const { requestIds, status, adminNote, rejectReason } = batchData;
 
-    if (status === 'REJECTED' && !rejectReason) {
-      throw new BadRequestException('La raison du rejet est requise pour le traitement en lot');
+    // Le rejet en lot n'est plus autorisé
+    if (status === 'REJECTED') {
+      throw new BadRequestException('Le rejet de demandes n\'est plus autorisé.');
     }
 
     let processed = 0;

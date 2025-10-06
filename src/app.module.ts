@@ -25,6 +25,9 @@ import { VendorOrdersModule } from './vendor-orders/vendor-orders.module';
 import { VendorFundsModule } from './vendor-funds/vendor-funds.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DebugDesignMiddleware } from './core/middleware/debug-design.middleware';
+import { VendorTypeModule } from './vendor-type/vendor-type.module';
+import { AdminUsersModule } from './admin-users/admin-users.module';
+import { RolesModule } from './roles/roles.module';
 
 @Module({
   imports: [
@@ -50,7 +53,10 @@ import { DebugDesignMiddleware } from './core/middleware/debug-design.middleware
     CommissionModule,
     DesignCategoryModule,
     VendorOrdersModule,
-    VendorFundsModule
+    VendorFundsModule,
+    VendorTypeModule,
+    AdminUsersModule,
+    RolesModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

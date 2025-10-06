@@ -886,13 +886,13 @@ export class VendorPublishService {
           where: { vendorId, isDelete: false }
         }),
         this.prisma.design.count({
-          where: { vendorId, isPublished: true, isDelete: false }
+          where: { vendorId, isValidated: true, isPublished: true, isDelete: false }
         }),
         this.prisma.design.count({
           where: { vendorId, isDraft: true, isDelete: false }
         }),
         this.prisma.design.count({
-          where: { vendorId, isPending: true, isDelete: false }
+          where: { vendorId, isPending: true, isValidated: false, isDelete: false }
         }),
         this.prisma.design.count({
           where: { vendorId, isValidated: true, isDelete: false }
