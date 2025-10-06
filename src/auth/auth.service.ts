@@ -137,8 +137,8 @@ export class AuthService {
         }
 
         // Déterminer le rôle pour l'affichage et la logique
-        let roleString = user.role; // Ancien système (peut être null)
-        let roleDisplay = user.role; // Ce qui sera affiché dans le frontend
+        let roleString: Role = user.role; // Ancien système (peut être null)
+        let roleDisplay: string = user.role; // Ce qui sera affiché dans le frontend
 
         // Préparer customRole avec permissions si disponible
         let customRoleData = null;
