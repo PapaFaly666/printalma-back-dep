@@ -145,6 +145,76 @@ export class OrderService {
     return orders.map(order => this.formatOrderResponse(order));
   }
 
+  /**
+   * Récupère toutes les commandes contenant des produits du vendeur
+   */
+  async getVendorOrders(vendorId: number) {
+    // Récupérer les informations du vendeur
+    const vendor = await this.prisma.user.findUnique({
+      where: { id: vendorId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        shop_name: true,
+        role: true
+      }
+    });
+
+    // Récupérer tous les produits de base liés à ce vendeur via VendorProduct
+    const vendorProducts = await this.prisma.vendorProduct.findMany({
+      where: { vendorId },
+      select: { baseProductId: true }
+    });
+
+    const baseProductIds = vendorProducts.map(vp => vp.baseProductId);
+
+    if (baseProductIds.length === 0) {
+      this.logger.log(`Vendeur ${vendorId} n'a aucun produit`);
+      return [];
+    }
+
+    // Récupérer toutes les commandes contenant ces produits
+    const orders = await this.prisma.order.findMany({
+      where: {
+        orderItems: {
+          some: {
+            productId: { in: baseProductIds }
+          }
+        }
+      },
+      include: {
+        orderItems: {
+          include: {
+            product: true,
+            colorVariation: true,
+          },
+        },
+        user: true,
+        validator: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    this.logger.log(`Vendeur ${vendorId}: ${orders.length} commande(s) trouvée(s)`);
+
+    // Ajouter les informations du vendeur à chaque commande
+    return orders.map(order => ({
+      ...this.formatOrderResponse(order),
+      vendor: {
+        id: vendor.id,
+        firstName: vendor.firstName,
+        lastName: vendor.lastName,
+        email: vendor.email,
+        shopName: vendor.shop_name,
+        role: vendor.role
+      }
+    }));
+  }
+
   async getOrderById(id: number, userId?: number) {
     const where: any = { id };
     if (userId) {

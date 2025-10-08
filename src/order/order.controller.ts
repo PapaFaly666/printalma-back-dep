@@ -71,6 +71,16 @@ export class OrderController {
   // Obtenir les commandes de l'utilisateur connecté
   @Get('my-orders')
   async getUserOrders(@Request() req) {
+    // Si l'utilisateur est un VENDEUR, récupérer les commandes de ses produits
+    if (req.user.role === 'VENDEUR') {
+      return {
+        success: true,
+        message: 'Vos commandes récupérées avec succès',
+        data: await this.orderService.getVendorOrders(req.user.sub)
+      };
+    }
+
+    // Sinon, commandes normales (client)
     return {
       success: true,
       message: 'Vos commandes récupérées avec succès',

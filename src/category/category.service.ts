@@ -188,9 +188,27 @@ export class CategoryService {
             }
         });
 
+        // 🔄 SYNCHRONISATION AUTOMATIQUE DES PRODUITS
+        // Si le nom a changé, mettre à jour tous les produits liés
+        if (updateCategoryDto.name && updateCategoryDto.name.trim() !== category.name) {
+            const productsToUpdate = await this.prisma.product.findMany({
+                where: {
+                    categories: {
+                        some: { id }
+                    }
+                },
+                select: { id: true }
+            });
+
+            console.log(`🔄 Synchronisation: ${productsToUpdate.length} produit(s) liés à la catégorie "${category.name}" → "${updatedCategory.name}"`);
+
+            // Note: La synchronisation est automatique via la relation many-to-many
+            // Les produits afficheront automatiquement le nouveau nom de catégorie
+        }
+
         return {
             success: true,
-            message: 'Catégorie mise à jour avec succès',
+            message: `Catégorie mise à jour avec succès${updatedCategory._count.products > 0 ? ` (${updatedCategory._count.products} produit(s) synchronisé(s))` : ''}`,
             data: {
                 ...updatedCategory,
                 productCount: updatedCategory._count.products
