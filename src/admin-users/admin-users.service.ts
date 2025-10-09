@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -215,6 +216,25 @@ export class AdminUsersService {
 
     if (!role) {
       throw new NotFoundException('Rôle non trouvé');
+    }
+
+    // Enforcer: seuls les SUPERADMIN peuvent créer des comptes ADMIN ou SUPERADMIN
+    if (role.slug === 'admin' || role.slug === 'superadmin') {
+      // Récupérer le créateur et son rôle
+      const creator = createdBy
+        ? await this.prisma.user.findUnique({
+            where: { id: createdBy },
+            include: { customRole: true },
+          })
+        : null;
+
+      const creatorRoleSlug = creator?.customRole?.slug;
+
+      if (creatorRoleSlug !== 'superadmin') {
+        throw new ForbiddenException(
+          "Seul un SUPERADMIN peut créer des utilisateurs avec le rôle 'admin' ou 'superadmin'",
+        );
+      }
     }
 
     // Hasher le mot de passe
