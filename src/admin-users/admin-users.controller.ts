@@ -54,6 +54,17 @@ export class AdminUsersController {
     return this.adminUsersService.findAll(query);
   }
 
+  @Get('admins-only')
+  @RequirePermissions('users.view')
+  @ApiOperation({ summary: 'Lister uniquement les admins et superadmins (exclut vendeurs)' })
+  @ApiQuery({ name: 'search', required: false, description: 'Recherche par nom ou email' })
+  @ApiQuery({ name: 'page', required: false, description: 'Numéro de page' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Nombre par page' })
+  @ApiResponse({ status: 200, description: 'Liste des admins/superadmins récupérée' })
+  getAdminsOnly(@Query() query: ListUsersQueryDto) {
+    return this.adminUsersService.findAdminsOnly(query);
+  }
+
   @Get('stats')
   @RequirePermissions('users.view')
   @ApiOperation({ summary: 'Récupérer les statistiques des utilisateurs' })

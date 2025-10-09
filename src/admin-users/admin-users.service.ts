@@ -220,7 +220,7 @@ export class AdminUsersService {
 
     // Enforcer: seuls les SUPERADMIN peuvent créer des comptes ADMIN ou SUPERADMIN
     if (role.slug === 'admin' || role.slug === 'superadmin') {
-      // Récupérer le créateur et son rôle
+      // Récupérer le créateur et son rôle (enum et RBAC customRole)
       const creator = createdBy
         ? await this.prisma.user.findUnique({
             where: { id: createdBy },
@@ -229,8 +229,12 @@ export class AdminUsersService {
         : null;
 
       const creatorRoleSlug = creator?.customRole?.slug;
+      const creatorEnumRole = creator?.role; // enum Role.SUPERADMIN | ADMIN | VENDEUR
 
-      if (creatorRoleSlug !== 'superadmin') {
+      const isCreatorSuperadmin =
+        creatorRoleSlug === 'superadmin' || creatorEnumRole === ('SUPERADMIN' as any);
+
+      if (!isCreatorSuperadmin) {
         throw new ForbiddenException(
           "Seul un SUPERADMIN peut créer des utilisateurs avec le rôle 'admin' ou 'superadmin'",
         );
@@ -493,6 +497,81 @@ export class AdminUsersService {
         suspended,
         byRole,
       },
+    };
+  }
+
+  /**
+   * Lister uniquement les utilisateurs avec rôles admin/superadmin
+   */
+  async findAdminsOnly(query: ListUsersQueryDto) {
+    const { search, page = 1, limit = 20 } = query;
+    const skip = (page - 1) * limit;
+
+    // Récupérer les rôles admin et superadmin
+    const roles = await this.prisma.customRole.findMany({
+      where: { slug: { in: ['admin', 'superadmin'] } },
+      select: { id: true, slug: true },
+    });
+
+    const roleIds = roles.map((r) => r.id);
+    if (roleIds.length === 0) {
+      return { success: true, data: { users: [], total: 0, page, limit } };
+    }
+
+    const where: any = {
+      is_deleted: false,
+      roleId: { in: roleIds },
+    };
+
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [total, users] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        include: {
+          customRole: {
+            select: { id: true, name: true, slug: true },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const formattedUsers = users.map((user) => {
+      const firstName = user.firstName || '';
+      const lastName = user.lastName || '';
+      const fullName = `${firstName} ${lastName}`.trim() || user.email;
+      return {
+        id: user.id,
+        name: fullName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        status: user.userStatus,
+        role: user.customRole
+          ? { id: user.customRole.id, name: user.customRole.name, slug: user.customRole.slug }
+          : null,
+        roleId: user.roleId,
+        emailVerified: user.email_verified,
+        lastLogin: user.last_login_at,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      };
+    });
+
+    return {
+      success: true,
+      data: { users: formattedUsers, total, page, limit },
     };
   }
 
