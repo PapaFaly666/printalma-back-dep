@@ -1,5 +1,5 @@
 // categories/category.service.ts
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ConflictException as HttpConflictException } from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { PrismaService } from '../prisma.service';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -239,10 +239,11 @@ export class CategoryService {
         });
 
         if (productsCount > 0) {
-            throw new BadRequestException(
-                `Impossible de supprimer la catégorie car elle (ou ses sous-catégories) est liée à ${productsCount} produit(s). ` +
-                `Veuillez d'abord supprimer ou déplacer ces produits vers une autre catégorie.`
-            );
+            throw new ConflictException({
+                code: 'CategoryInUse',
+                message: `La catégorie est utilisée par ${productsCount} produit(s).`,
+                details: await this.getUsage(id)
+            });
         }
 
         // Suppression en cascade (Prisma gère automatiquement avec onDelete: Cascade)
@@ -275,6 +276,184 @@ export class CategoryService {
         }
 
         return allIds;
+    }
+
+    /**
+     * Admin: Obtenir l'usage d'une catégorie (produits liés, sous-catégories, variations)
+     */
+    async getUsage(id: number) {
+        // Vérifier existence
+        const cat = await this.prisma.category.findUnique({ where: { id } });
+        if (!cat) {
+            throw new NotFoundException(`Catégorie avec ID ${id} non trouvée`);
+        }
+
+        const directProductsCount = await this.prisma.product.count({
+            where: { categories: { some: { id } } }
+        });
+
+        // Sous-catégories directes
+        const subcategories = await this.prisma.category.findMany({
+            where: { parentId: id },
+            select: { id: true }
+        });
+        const subcategoryIds = subcategories.map(s => s.id);
+
+        const productsWithSubCategory = subcategoryIds.length === 0 ? 0 : await this.prisma.product.count({
+            where: { categories: { some: { id: { in: subcategoryIds } } } }
+        });
+
+        // Variations: enfants de niveau 2 sous cette catégorie
+        let variationsCount = 0;
+        if (subcategoryIds.length > 0) {
+            variationsCount = await this.prisma.category.count({
+                where: { parentId: { in: subcategoryIds } }
+            });
+        } else {
+            // Si la catégorie n'a pas d'enfants, variations = 0
+            variationsCount = 0;
+        }
+
+        return {
+            success: true,
+            data: {
+                categoryId: id,
+                productsWithCategory: directProductsCount,
+                productsWithSubCategory,
+                subcategoriesCount: subcategoryIds.length,
+                variationsCount
+            }
+        };
+    }
+
+    /**
+     * Admin: Réaffecter des produits liés à une catégorie/source vers une cible
+     */
+    async reassignCategory(
+        id: number,
+        body: {
+            targetCategoryId: number,
+            reassignType: 'category' | 'subcategory' | 'both',
+            reassignVariations?: 'keep' | 'null' | 'map',
+            variationMap?: Array<{ from: number, to: number }>
+        }
+    ) {
+        const { targetCategoryId, reassignType } = body;
+
+        if (id === targetCategoryId) {
+            throw new BadRequestException('La catégorie cible doit être différente de la catégorie source');
+        }
+
+        const [source, target] = await Promise.all([
+            this.prisma.category.findUnique({ where: { id } }),
+            this.prisma.category.findUnique({ where: { id: targetCategoryId } })
+        ]);
+
+        if (!source) throw new NotFoundException(`Catégorie source ${id} introuvable`);
+        if (!target) throw new BadRequestException({ code: 'InvalidTarget', message: 'Catégorie cible introuvable.' });
+
+        // Construire le set d'IDs de catégories à réassigner selon le type
+        const idsToReassign = new Set<number>();
+        if (reassignType === 'category' || reassignType === 'both') {
+            idsToReassign.add(id);
+        }
+        if (reassignType === 'subcategory' || reassignType === 'both') {
+            const directChildren = await this.prisma.category.findMany({ where: { parentId: id }, select: { id: true } });
+            directChildren.forEach(c => idsToReassign.add(c.id));
+        }
+
+        if (idsToReassign.size === 0) {
+            return { success: true, data: { updated: 0 } };
+        }
+
+        const categoryIds = Array.from(idsToReassign);
+
+        // Trouver les produits liés à au moins une des catégories à réassigner
+        const products = await this.prisma.product.findMany({
+            where: { categories: { some: { id: { in: categoryIds } } } },
+            select: { id: true, categories: { select: { id: true } } }
+        });
+
+        let updated = 0;
+        await this.prisma.$transaction(async (tx) => {
+            for (const p of products) {
+                const productCategoryIds = p.categories.map(c => c.id);
+                const toDisconnect = productCategoryIds.filter(cid => categoryIds.includes(cid));
+
+                // Déconnecter les anciennes et connecter la cible
+                await tx.product.update({
+                    where: { id: p.id },
+                    data: {
+                        categories: {
+                            disconnect: toDisconnect.map(cid => ({ id: cid })),
+                            connect: [{ id: targetCategoryId }]
+                        }
+                    }
+                });
+                updated += 1;
+            }
+        });
+
+        return { success: true, data: { updated } };
+    }
+
+    /**
+     * Admin: lister les variations (enfants directs) d'une catégorie
+     */
+    async getVariations(categoryId: number) {
+        // Ici "variations" = enfants directs, généralement level 2 si parent est une sous-catégorie
+        const variations = await this.prisma.category.findMany({
+            where: { parentId: categoryId },
+            orderBy: [{ order: 'asc' }, { name: 'asc' }]
+        });
+        return { success: true, data: variations };
+    }
+
+    /**
+     * Admin: lister les sous-catégories (enfants directs) d'une catégorie
+     */
+    async getChildren(categoryId: number) {
+        const children = await this.prisma.category.findMany({
+            where: { parentId: categoryId },
+            orderBy: [{ order: 'asc' }, { name: 'asc' }]
+        });
+        return { success: true, data: children };
+    }
+
+    /**
+     * Admin: retourner l'arbre complet à partir d'un noeud donné
+     */
+    async getTree(rootId: number) {
+        const all = await this.prisma.category.findMany({
+            orderBy: [{ level: 'asc' }, { order: 'asc' }, { name: 'asc' }]
+        });
+        const byId: Record<number, any> = {};
+        for (const c of all) {
+            byId[c.id] = { ...c, subcategories: [] };
+        }
+        for (const c of all) {
+            if (c.parentId && byId[c.parentId]) {
+                byId[c.parentId].subcategories.push(byId[c.id]);
+            }
+        }
+        const root = byId[rootId];
+        if (!root) {
+            throw new NotFoundException(`Catégorie avec ID ${rootId} non trouvée`);
+        }
+        return { success: true, data: root };
+    }
+
+    /**
+     * Admin: suppression avec garde 409 si utilisée
+     */
+    async adminRemove(id: number) {
+        const usage = await this.getUsage(id);
+        const { productsWithCategory, productsWithSubCategory } = usage.data;
+        if ((productsWithCategory || 0) + (productsWithSubCategory || 0) > 0) {
+            throw new ConflictException({ code: 'CategoryInUse', message: 'La catégorie est utilisée par des produits.', details: usage.data });
+        }
+        await this.prisma.category.delete({ where: { id } });
+        return { success: true };
     }
 
     /**

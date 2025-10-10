@@ -1314,6 +1314,34 @@ export class ProductController {
     }
   }
 
+  // =========================
+  // Admin: Mise à jour des catégories d'un produit (mockup)
+  // =========================
+  @Patch('admin/:id/category')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Admin: Mettre à jour les catégories d’un produit (catégorie, sous-catégorie, variation)' })
+  @ApiParam({ name: 'id', description: 'ID du produit' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        categoryId: { type: 'number', nullable: true },
+        subCategoryId: { type: 'number', nullable: true },
+        variationId: { type: 'number', nullable: true }
+      }
+    }
+  })
+  async updateProductCategoriesAdmin(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { categoryId?: number | null; subCategoryId?: number | null; variationId?: number | null },
+    @Req() req: any
+  ) {
+    if (!['ADMIN', 'SUPERADMIN'].includes(req.user.role)) {
+      throw new BadRequestException('Seuls les administrateurs peuvent modifier les catégories d’un produit');
+    }
+    return (this.productService as any).updateProductCategoriesAdmin(id, body);
+  }
+
   @Get('filters/categories')
   @ApiOperation({ summary: 'Récupérer toutes les catégories disponibles' })
   @ApiResponse({ 

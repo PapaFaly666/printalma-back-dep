@@ -111,4 +111,59 @@ export class CategoryController {
     remove(@Param('id', ParseIntPipe) id: number) {
         return this.categoryService.remove(id);
     }
+
+    // =========================
+    // Admin endpoints
+    // =========================
+
+    //@UseGuards(JwtAuthGuard)
+    @Get('admin/:id/usage')
+    @ApiOperation({ summary: 'Obtenir l’usage d’une catégorie (admin)' })
+    @ApiParam({ name: 'id', type: Number })
+    getUsage(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.getUsage(id);
+    }
+
+    //@UseGuards(JwtAuthGuard)
+    @Post('admin/:id/reassign')
+    @ApiOperation({ summary: 'Réaffecter les produits liés à une catégorie (admin)' })
+    @ApiParam({ name: 'id', type: Number })
+    reassign(
+        @Param('id', ParseIntPipe) id: number,
+        @Body() body: { targetCategoryId: number; reassignType: 'category' | 'subcategory' | 'both'; reassignVariations?: 'keep' | 'null' | 'map'; variationMap?: Array<{ from: number, to: number }>; }
+    ) {
+        return this.categoryService.reassignCategory(id, body);
+    }
+
+    //@UseGuards(JwtAuthGuard)
+    @Get('admin/:id/variations')
+    @ApiOperation({ summary: 'Lister les variations d’une catégorie (admin)' })
+    @ApiParam({ name: 'id', type: Number })
+    getVariations(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.getVariations(id);
+    }
+
+    //@UseGuards(JwtAuthGuard)
+    @Delete('admin/:id')
+    @ApiOperation({ summary: 'Supprimer une catégorie avec garde 409 (admin)' })
+    @ApiParam({ name: 'id', type: Number })
+    async adminRemove(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.adminRemove(id);
+    }
+
+    //@UseGuards(JwtAuthGuard)
+    @Get('admin/:id/children')
+    @ApiOperation({ summary: 'Lister les sous-catégories (enfants directs) d’une catégorie' })
+    @ApiParam({ name: 'id', type: Number })
+    getChildren(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.getChildren(id);
+    }
+
+    //@UseGuards(JwtAuthGuard)
+    @Get('admin/:id/tree')
+    @ApiOperation({ summary: 'Obtenir l’arbre hiérarchique complet à partir d’une catégorie' })
+    @ApiParam({ name: 'id', type: Number })
+    getTree(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.getTree(id);
+    }
 }

@@ -450,6 +450,91 @@ export class ProductService {
     };
   }
 
+  /**
+   * Admin: Met à jour les catégories d'un produit avec validation hiérarchique basique.
+   * Règle: si subCategoryId est fourni, il doit avoir parentId = categoryId (si fourni).
+   * Si variationId est fourni, son parentId doit être subCategoryId (si fourni) ou categoryId (si subCategoryId absent mais variation enfant direct).
+   */
+  async updateProductCategoriesAdmin(
+    productId: number,
+    body: { categoryId?: number | null; subCategoryId?: number | null; variationId?: number | null }
+  ) {
+    const product = await this.prisma.product.findUnique({ where: { id: productId }, include: { categories: true } });
+    if (!product) {
+      throw new NotFoundException('Produit non trouvé');
+    }
+
+    const { categoryId, subCategoryId, variationId } = body;
+
+    const categoriesToConnect: number[] = [];
+    const categoriesToEnsure: number[] = [];
+
+    // Charger catégories si nécessaires
+    let category: any = null;
+    let subCategory: any = null;
+    let variation: any = null;
+
+    if (categoryId) {
+      category = await this.prisma.category.findUnique({ where: { id: categoryId } });
+      if (!category) throw new BadRequestException({ code: 'InvalidTarget', message: 'Catégorie cible introuvable.' });
+      categoriesToEnsure.push(categoryId);
+    }
+    if (subCategoryId) {
+      subCategory = await this.prisma.category.findUnique({ where: { id: subCategoryId } });
+      if (!subCategory) throw new BadRequestException({ code: 'InvalidTarget', message: 'Sous-catégorie cible introuvable.' });
+      categoriesToEnsure.push(subCategoryId);
+    }
+    if (variationId) {
+      variation = await this.prisma.category.findUnique({ where: { id: variationId } });
+      if (!variation) throw new BadRequestException({ code: 'InvalidTarget', message: 'Variation cible introuvable.' });
+      categoriesToEnsure.push(variationId);
+    }
+
+    // Validation hiérarchique basique
+    if (subCategory && category && subCategory.parentId !== category.id) {
+      throw new BadRequestException({ code: 'InvalidHierarchy', message: 'La sous-catégorie doit appartenir à la catégorie sélectionnée.' });
+    }
+    if (variation) {
+      if (subCategory) {
+        if (variation.parentId !== subCategory.id) {
+          throw new BadRequestException({ code: 'InvalidHierarchy', message: 'La variation doit appartenir à la sous-catégorie sélectionnée.' });
+        }
+      } else if (category) {
+        if (variation.parentId !== category.id) {
+          throw new BadRequestException({ code: 'InvalidHierarchy', message: 'La variation doit être enfant direct de la catégorie si aucune sous-catégorie n’est fournie.' });
+        }
+      }
+    }
+
+    // Construire la nouvelle liste de catégories liées
+    if (categoryId) categoriesToConnect.push(categoryId);
+    if (subCategoryId) categoriesToConnect.push(subCategoryId);
+    if (variationId) categoriesToConnect.push(variationId);
+
+    // Mise à jour: déconnecter toutes les anciennes catégories et connecter les nouvelles
+    await this.prisma.product.update({
+      where: { id: productId },
+      data: {
+        categories: {
+          set: [],
+        },
+      },
+    });
+
+    if (categoriesToConnect.length > 0) {
+      await this.prisma.product.update({
+        where: { id: productId },
+        data: {
+          categories: {
+            connect: categoriesToConnect.map((cid) => ({ id: cid })),
+          },
+        },
+      });
+    }
+
+    return this.prisma.product.findUnique({ where: { id: productId }, include: { categories: true } });
+  }
+
   // Méthode mise à jour pour inclure les informations de design
   async findAllWithDesignInfo() {
     const products = await this.prisma.product.findMany({
