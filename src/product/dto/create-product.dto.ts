@@ -249,7 +249,7 @@ export class CreateProductDto {
   @IsOptional()
   status: 'published' | 'draft' = 'draft';
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Liste des catégories du produit',
     type: [String],
     example: ['T-shirts', 'Vêtements éco-responsables']
@@ -259,7 +259,38 @@ export class CreateProductDto {
   @ArrayMinSize(1, { message: 'Au moins une catégorie est requise' })
   categories: string[];
 
-  @ApiProperty({ 
+  // Hiérarchie de catégories à 3 niveaux (optionnel)
+  @ApiProperty({
+    description: 'ID de la catégorie principale (niveau 0)',
+    example: 1,
+    required: false
+  })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  categoryId?: number;
+
+  @ApiProperty({
+    description: 'ID de la sous-catégorie (niveau 1)',
+    example: 1,
+    required: false
+  })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  subCategoryId?: number;
+
+  @ApiProperty({
+    description: 'ID de la variation (niveau 2)',
+    example: 1,
+    required: false
+  })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  variationId?: number;
+
+  @ApiProperty({
     description: 'Liste des tailles disponibles pour ce produit',
     type: [String],
     example: ['S', 'M', 'L', 'XL'],

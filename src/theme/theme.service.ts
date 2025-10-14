@@ -449,11 +449,7 @@ export class ThemeService {
       this.prisma.product.findMany({
         where,
         include: {
-          categories: {
-            select: {
-              name: true
-            }
-          },
+          categories: true,
           colorVariations: {
             include: {
               images: {
@@ -474,18 +470,22 @@ export class ThemeService {
     ]);
 
     // Transformer les données
-    const transformedProducts = products.map(product => ({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      status: product.status,
-      isReadyProduct: product.isReadyProduct,
-      description: product.description,
-      categories: product.categories.map(cat => cat.name),
-      mainImage: product.colorVariations[0]?.images[0]?.url || null,
-      createdAt: product.createdAt,
-      updatedAt: product.updatedAt
-    }));
+    const transformedProducts = products.map(product => {
+      const categories = (product.categories || []).map(c => c.name);
+
+      return {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        status: product.status,
+        isReadyProduct: product.isReadyProduct,
+        description: product.description,
+        categories: categories,
+        mainImage: product.colorVariations[0]?.images[0]?.url || null,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt
+      };
+    });
 
     return {
       success: true,
@@ -575,11 +575,7 @@ export class ThemeService {
       this.prisma.product.findMany({
         where,
         include: {
-          categories: {
-            select: {
-              name: true
-            }
-          },
+          categories: true,
           colorVariations: {
             include: {
               images: {
@@ -591,6 +587,7 @@ export class ThemeService {
               }
             }
           },
+          sizes: true,
           themeProducts: {
             where: { themeId },
             select: {
@@ -606,29 +603,34 @@ export class ThemeService {
     ]);
 
     // Transformer les données
-    const transformedProducts = products.map(product => ({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      status: product.status,
-      isReadyProduct: product.isReadyProduct,
-      description: product.description,
-      categories: product.categories.map(cat => cat.name),
-      mainImage: product.colorVariations[0]?.images[0]?.url || null,
-      addedToThemeAt: product.themeProducts[0]?.createdAt || null,
-      createdAt: product.createdAt,
-      updatedAt: product.updatedAt,
-      colorVariations: product.colorVariations.map(colorVar => ({
-        id: colorVar.id,
-        name: colorVar.name,
-        colorCode: colorVar.colorCode,
-        images: colorVar.images.map(img => ({
-          url: img.url,
-          view: img.view,
-          publicId: img.publicId
-        }))
-      }))
-    }));
+    const transformedProducts = products.map(product => {
+      const categories = (product.categories || []).map(c => c.name);
+
+      return {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        status: product.status,
+        isReadyProduct: product.isReadyProduct,
+        description: product.description,
+        categories: categories,
+        mainImage: product.colorVariations[0]?.images[0]?.url || null,
+        addedToThemeAt: product.themeProducts[0]?.createdAt || null,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+        colorVariations: product.colorVariations.map(colorVar => ({
+          id: colorVar.id,
+          name: colorVar.name,
+          colorCode: colorVar.colorCode,
+          images: colorVar.images.map(img => ({
+            url: img.url,
+            view: img.view,
+            publicId: img.publicId
+          }))
+        })),
+        sizes: product.sizes || []
+      };
+    });
 
     return {
       success: true,

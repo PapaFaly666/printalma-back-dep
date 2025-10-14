@@ -222,3 +222,4 @@ function validateHierarchy({ categoryId, subCategoryId, variationId }, tree) {
 - [ ] Formulaire produit: 3 sélecteurs dépendants et sauvegarde via `PATCH /products/admin/:id/category`
 
 
+

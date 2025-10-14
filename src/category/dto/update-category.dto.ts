@@ -1,10 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MinLength, MaxLength, IsInt, Min, IsUrl } from 'class-validator';
 
 export class UpdateCategoryDto {
   @ApiProperty({
     description: 'Nom de la catégorie',
-    example: 'T-Shirt',
+    example: 'Vêtements',
     required: false,
     minLength: 2,
     maxLength: 100
@@ -17,7 +17,7 @@ export class UpdateCategoryDto {
 
   @ApiProperty({
     description: 'Description de la catégorie',
-    example: 'T-shirts personnalisables pour homme et femme',
+    example: 'Tous les vêtements personnalisables',
     required: false,
     maxLength: 500
   })
@@ -25,4 +25,32 @@ export class UpdateCategoryDto {
   @MaxLength(500, { message: 'La description ne peut pas dépasser 500 caractères' })
   @IsOptional()
   description?: string;
+
+  @ApiProperty({
+    description: 'Ordre d\'affichage',
+    example: 0,
+    required: false
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  displayOrder?: number;
+
+  @ApiProperty({
+    description: 'URL de l\'image de couverture',
+    example: 'https://res.cloudinary.com/...',
+    required: false
+  })
+  @IsUrl()
+  @IsOptional()
+  coverImageUrl?: string;
+
+  @ApiProperty({
+    description: 'Public ID Cloudinary de l\'image de couverture',
+    example: 'categories/vetements_abc123',
+    required: false
+  })
+  @IsString()
+  @IsOptional()
+  coverImagePublicId?: string;
 } 

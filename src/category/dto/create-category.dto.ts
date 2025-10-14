@@ -1,30 +1,45 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, IsUrl } from 'class-validator';
 
 export class CreateCategoryDto {
-  @ApiProperty({ description: 'Nom de la catégorie', example: 'T-Shirt' })
+  @ApiProperty({ description: 'Nom de la catégorie', example: 'Vêtements' })
   @IsString()
   name: string;
 
-  @ApiProperty({ description: 'Description de la catégorie', example: 'T-shirts personnalisables pour homme et femme', required: false })
+  @ApiProperty({
+    description: 'Description de la catégorie',
+    example: 'Tous les vêtements personnalisables',
+    required: false
+  })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiProperty({ description: 'ID de la catégorie parent', example: 1, required: false })
-  @IsInt()
-  @IsOptional()
-  parentId?: number;
-
-  @ApiProperty({ description: 'Niveau hiérarchique (0: parent, 1: sous-catégorie, 2: variation)', example: 0, required: false })
+  @ApiProperty({
+    description: 'Ordre d\'affichage',
+    example: 0,
+    required: false
+  })
   @IsInt()
   @Min(0)
-  @Max(2)
   @IsOptional()
-  level?: number;
+  displayOrder?: number;
 
-  @ApiProperty({ description: 'Ordre d\'affichage', example: 0, required: false })
-  @IsInt()
+  @ApiProperty({
+    description: 'URL de l\'image de couverture',
+    example: 'https://res.cloudinary.com/...',
+    required: false
+  })
+  @IsUrl()
   @IsOptional()
-  order?: number;
+  coverImageUrl?: string;
+
+  @ApiProperty({
+    description: 'Public ID Cloudinary de l\'image de couverture',
+    example: 'categories/vetements_abc123',
+    required: false
+  })
+  @IsString()
+  @IsOptional()
+  coverImagePublicId?: string;
 }

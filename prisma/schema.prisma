@@ -113,6 +113,12 @@ model Product {
   validatedAt              DateTime?
   validatedBy              Int?
   suggestedPrice           Float?            @map("suggested_price")
+
+  // Hiérarchie de catégories à 3 niveaux
+  categoryId               Int?              @map("category_id")
+  subCategoryId            Int?              @map("sub_category_id")
+  variationId              Int?              @map("variation_id")
+
   colorVariations          ColorVariation[]
   orderItems               OrderItem[]
   validator                User?             @relation("ProductValidator", fields: [validatedBy], references: [id])
@@ -122,10 +128,16 @@ model Product {
   themeProducts            ThemeProduct[]
   vendorProducts           VendorProduct[]
   categories               Category[]        @relation("CategoryToProduct")
+  category                 Category?         @relation("ProductCategory", fields: [categoryId], references: [id])
+  subCategory              SubCategory?      @relation("ProductSubCategory", fields: [subCategoryId], references: [id])
+  variation                Variation?        @relation("ProductVariation", fields: [variationId], references: [id])
 
   @@index([isValidated])
   @@index([submittedForValidationAt])
   @@index([isReadyProduct])
+  @@index([categoryId])
+  @@index([subCategoryId])
+  @@index([variationId])
 }
 
 model ProductSize {
@@ -171,23 +183,68 @@ model StockMovement {
   @@map("stock_movements")
 }
 
+// Niveau 0 - Catégorie principale (ex: Vêtements, Accessoires)
 model Category {
-  id          Int        @id @default(autoincrement())
-  name        String
-  description String?
-  parentId    Int?       @map("parent_id")
-  level       Int        @default(0)
-  order       Int        @default(0)
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Category[] @relation("CategoryHierarchy")
-  products    Product[]  @relation("CategoryToProduct")
+  id                 Int            @id @default(autoincrement())
+  name               String         @unique
+  slug               String         @unique
+  description        String?
+  displayOrder       Int            @default(0) @map("display_order")
+  coverImageUrl      String?        @map("cover_image_url")
+  coverImagePublicId String?        @map("cover_image_public_id")
+  isActive           Boolean        @default(true) @map("is_active")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  subCategories      SubCategory[]  @relation("CategorySubCategories")
+  products           Product[]      @relation("CategoryToProduct")
+  directProducts     Product[]      @relation("ProductCategory")
 
-  @@unique([name, parentId], name: "unique_category_per_parent")
-  @@index([parentId])
-  @@index([level])
+  @@index([isActive])
+  @@index([displayOrder])
   @@map("categories")
+}
+
+// Niveau 1 - Sous-catégorie (ex: T-Shirts, Sweats, Hoodies)
+model SubCategory {
+  id           Int         @id @default(autoincrement())
+  name         String
+  slug         String
+  description  String?
+  categoryId   Int         @map("category_id")
+  displayOrder Int         @default(0) @map("display_order")
+  isActive     Boolean     @default(true) @map("is_active")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  category     Category    @relation("CategorySubCategories", fields: [categoryId], references: [id], onDelete: Cascade)
+  variations   Variation[] @relation("SubCategoryVariations")
+  products     Product[]   @relation("ProductSubCategory")
+
+  @@unique([name, categoryId], name: "unique_subcategory_per_category")
+  @@index([categoryId])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@map("sub_categories")
+}
+
+// Niveau 2 - Variation (ex: Col V, Col Rond, Manches Longues)
+model Variation {
+  id            Int         @id @default(autoincrement())
+  name          String
+  slug          String
+  description   String?
+  subCategoryId Int         @map("sub_category_id")
+  displayOrder  Int         @default(0) @map("display_order")
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  subCategory   SubCategory @relation("SubCategoryVariations", fields: [subCategoryId], references: [id], onDelete: Cascade)
+  products      Product[]   @relation("ProductVariation")
+
+  @@unique([name, subCategoryId], name: "unique_variation_per_subcategory")
+  @@index([subCategoryId])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@map("variations")
 }
 
 model ColorVariation {

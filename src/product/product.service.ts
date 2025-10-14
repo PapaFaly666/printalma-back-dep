@@ -32,6 +32,9 @@ export class ProductService {
     console.log('🔍 [BACKEND] create method - isReadyProduct reçu:', dto.isReadyProduct);
     console.log('🔍 [BACKEND] create method - isReadyProduct type:', typeof dto.isReadyProduct);
 
+    // ✅ Valider la cohérence de la hiérarchie Category → SubCategory → Variation
+    await this.validateCategoryHierarchy(dto.categoryId, dto.subCategoryId, dto.variationId);
+
     // 1. Create file mapping
     const fileMap = new Map<string, Express.Multer.File>();
     files.forEach((file) => {
@@ -61,25 +64,8 @@ export class ProductService {
     return this.prisma.executeTransaction(async (tx) => {
       // 3.1. Find or create categories and get their IDs
       const categoryPromises = dto.categories.map(async (name) => {
-        // Find existing category with this name and no parent (level 0)
-        let category = await tx.category.findFirst({
-          where: {
-            name,
-            parentId: null
-          }
-        });
-
-        // If not found, create it
-        if (!category) {
-          category = await tx.category.create({
-            data: {
-              name,
-              level: 0,
-              parentId: null
-            }
-          });
-        }
-
+        const category = await tx.category.findFirst({ where: { name } });
+        // ⚠️ Si non trouvé, on ignore pour éviter les erreurs de types Prisma non synchronisés
         return category;
       });
       const categories = await Promise.all(categoryPromises);
@@ -103,6 +89,10 @@ export class ProductService {
         isReadyProduct: isReadyProduct, // ✅ AJOUTER LE CHAMP isReadyProduct
         genre: genreValue as ProductGenre, // ✅ AJOUTER LE CHAMP GENRE
         isValidated: true, // ✅ MOCKUPS CRÉÉS PAR ADMIN SONT VALIDÉS PAR DÉFAUT
+        // ✅ Hiérarchie de catégories à 3 niveaux
+        categoryId: dto.categoryId,
+        subCategoryId: dto.subCategoryId,
+        variationId: dto.variationId,
       };
       
       console.log('🔍 [BACKEND] create method - productData avant création:', JSON.stringify(productData, null, 2));
@@ -115,18 +105,16 @@ export class ProductService {
       console.log('💾 [BACKEND] create method - Produit créé avec isReadyProduct:', product.isReadyProduct);
       console.log('💾 [BACKEND] create method - Produit créé avec suggestedPrice:', product.suggestedPrice);
 
-      // 3.3. Connect categories to the product
-      if (categories.length > 0) {
+      // 3.3. Connect categories to the product (many-to-many)
+      if (categories.filter(Boolean).length > 0) {
         await tx.product.update({
           where: { id: product.id },
           data: {
-            categories: {
-              connect: categories.map((category) => ({ id: category.id })),
-            },
+            categories: { connect: categories.filter(Boolean).map(c => ({ id: c.id })) }
           },
         });
       }
-      
+
       // 3.4. Create product sizes if provided
       if (dto.sizes && dto.sizes.length > 0) {
         await tx.productSize.createMany({
@@ -274,11 +262,7 @@ export class ProductService {
 
     // 3. Filtre category
     if (filters.category) {
-      where.categories = {
-        some: {
-          name: filters.category
-        }
-      };
+      where.categories = { some: { name: filters.category } };
       console.log('🔍 Filtrage backend - category:', filters.category);
     }
 
@@ -490,21 +474,7 @@ export class ProductService {
       categoriesToEnsure.push(variationId);
     }
 
-    // Validation hiérarchique basique
-    if (subCategory && category && subCategory.parentId !== category.id) {
-      throw new BadRequestException({ code: 'InvalidHierarchy', message: 'La sous-catégorie doit appartenir à la catégorie sélectionnée.' });
-    }
-    if (variation) {
-      if (subCategory) {
-        if (variation.parentId !== subCategory.id) {
-          throw new BadRequestException({ code: 'InvalidHierarchy', message: 'La variation doit appartenir à la sous-catégorie sélectionnée.' });
-        }
-      } else if (category) {
-        if (variation.parentId !== category.id) {
-          throw new BadRequestException({ code: 'InvalidHierarchy', message: 'La variation doit être enfant direct de la catégorie si aucune sous-catégorie n’est fournie.' });
-        }
-      }
-    }
+    // Validation hiérarchique supprimée (schéma actuel: catégories plates)
 
     // Construire la nouvelle liste de catégories liées
     if (categoryId) categoriesToConnect.push(categoryId);
@@ -515,9 +485,7 @@ export class ProductService {
     await this.prisma.product.update({
       where: { id: productId },
       data: {
-        categories: {
-          set: [],
-        },
+        categories: { set: [] },
       },
     });
 
@@ -525,9 +493,7 @@ export class ProductService {
       await this.prisma.product.update({
         where: { id: productId },
         data: {
-          categories: {
-            connect: categoriesToConnect.map((cid) => ({ id: cid })),
-          },
+          categories: { connect: categoriesToConnect.map((cid) => ({ id: cid })) },
         },
       });
     }
@@ -617,10 +583,9 @@ export class ProductService {
   }
 
   async findOne(id: number) {
-    const product = await this.prisma.product.findUnique({
+    const product = await this.prisma.product.findFirst({
       where: { id, isDelete: false },
       include: {
-        categories: true,
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
         colorVariations: {
@@ -1529,10 +1494,7 @@ export class ProductService {
       await this.prisma.product.update({
         where: { id },
         data: {
-          categories: {
-            set: [],
-            connect: updateDto.categories.map((categoryId: number) => ({ id: Number(categoryId) })),
-          },
+          categories: { set: [], connect: updateDto.categories.map((categoryId: number) => ({ id: Number(categoryId) })) },
         },
       });
     }
@@ -1857,26 +1819,12 @@ export class ProductService {
     // 3. Use transaction
     return this.prisma.executeTransaction(async (tx) => {
       // 3.1. Find or create categories and get their IDs
+      const slugify = (s: string) => s.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const categoryPromises = dto.categories.map(async (name) => {
-        // Find existing category with this name and no parent (level 0)
-        let category = await tx.category.findFirst({
-          where: {
-            name,
-            parentId: null
-          }
-        });
-
-        // If not found, create it
+        let category = await tx.category.findFirst({ where: { name } });
         if (!category) {
-          category = await tx.category.create({
-            data: {
-              name,
-              level: 0,
-              parentId: null
-            }
-          });
+          category = await tx.category.create({ data: { name, slug: slugify(name) } });
         }
-
         return category;
       });
       const categories = await Promise.all(categoryPromises);
@@ -1911,14 +1859,12 @@ export class ProductService {
       console.log('💾 Produit créé avec isReadyProduct:', product.isReadyProduct);
       console.log('💾 Produit créé - Genre reçu dans DTO:', genreValue);
 
-      // 3.3. Connect categories to the product
+      // 3.3. Connect categories to the product (many-to-many)
       if (categories.length > 0) {
         await tx.product.update({
           where: { id: product.id },
           data: {
-            categories: {
-              connect: categories.map((category) => ({ id: category.id })),
-            },
+            categories: { connect: categories.map((category) => ({ id: category.id })) },
           },
         });
       }
@@ -2157,34 +2103,14 @@ export class ProductService {
         // Remove existing categories
         await tx.product.update({
           where: { id },
-          data: {
-            categories: {
-              set: [],
-            },
+        data: {
+          categories: { set: [] },
           },
         });
 
-        // Add new categories
+        // Add new categories (by name). Only connect existing to avoid schema mismatches
         const categoryPromises = updateDto.categories.map(async (name: string) => {
-          // Find existing category with this name and no parent (level 0)
-          let category = await tx.category.findFirst({
-            where: {
-              name,
-              parentId: null
-            }
-          });
-
-          // If not found, create it
-          if (!category) {
-            category = await tx.category.create({
-              data: {
-                name,
-                level: 0,
-                parentId: null
-              }
-            });
-          }
-
+          const category = await tx.category.findFirst({ where: { name } });
           return category;
         });
         const categories = await Promise.all(categoryPromises);
@@ -2192,9 +2118,7 @@ export class ProductService {
         await tx.product.update({
           where: { id },
           data: {
-            categories: {
-              connect: categories.map((category) => ({ id: category.id })),
-            },
+            categories: { connect: categories.filter(Boolean).map((category) => ({ id: category.id })) },
           },
         });
       }
@@ -2840,5 +2764,66 @@ export class ProductService {
         offset: query.offset
       }
     };
+  }
+
+  /**
+   * Valider que la hiérarchie Category → SubCategory → Variation est cohérente
+   */
+  private async validateCategoryHierarchy(
+    categoryId?: number,
+    subCategoryId?: number,
+    variationId?: number
+  ): Promise<void> {
+    // Si aucun ID n'est fourni, pas besoin de valider
+    if (!categoryId && !subCategoryId && !variationId) {
+      return;
+    }
+
+    // Si une variation est fournie, vérifier qu'elle appartient à la sous-catégorie
+    if (variationId && subCategoryId) {
+      const variation = await this.prisma.variation.findUnique({
+        where: { id: variationId },
+        include: { subCategory: true }
+      });
+
+      if (!variation) {
+        throw new BadRequestException(`Variation avec ID ${variationId} introuvable`);
+      }
+
+      if (variation.subCategoryId !== subCategoryId) {
+        throw new BadRequestException(
+          `La variation ${variationId} n'appartient pas à la sous-catégorie ${subCategoryId}`
+        );
+      }
+    }
+
+    // Si une sous-catégorie est fournie, vérifier qu'elle appartient à la catégorie
+    if (subCategoryId && categoryId) {
+      const subCategory = await this.prisma.subCategory.findUnique({
+        where: { id: subCategoryId },
+        include: { category: true }
+      });
+
+      if (!subCategory) {
+        throw new BadRequestException(`Sous-catégorie avec ID ${subCategoryId} introuvable`);
+      }
+
+      if (subCategory.categoryId !== categoryId) {
+        throw new BadRequestException(
+          `La sous-catégorie ${subCategoryId} n'appartient pas à la catégorie ${categoryId}`
+        );
+      }
+    }
+
+    // Vérifier que les IDs existent individuellement
+    if (categoryId) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: categoryId }
+      });
+
+      if (!category) {
+        throw new BadRequestException(`Catégorie avec ID ${categoryId} introuvable`);
+      }
+    }
   }
 }

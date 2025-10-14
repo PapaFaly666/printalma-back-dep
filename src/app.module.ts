@@ -28,6 +28,8 @@ import { DebugDesignMiddleware } from './core/middleware/debug-design.middleware
 import { VendorTypeModule } from './vendor-type/vendor-type.module';
 import { AdminUsersModule } from './admin-users/admin-users.module';
 import { RolesModule } from './roles/roles.module';
+import { SubCategoryModule } from './sub-category/sub-category.module';
+import { VariationModule } from './variation/variation.module';
 
 @Module({
   imports: [
@@ -36,12 +38,14 @@ import { RolesModule } from './roles/roles.module';
       envFilePath: '.env',
     }),
     ScheduleModule.forRoot(),
-    ProductModule, 
-    CategoryModule, 
-    SizeModule, 
-    ColorModule, 
-    ProductViewModule, 
-    AuthModule, 
+    ProductModule,
+    CategoryModule,
+    SubCategoryModule,
+    VariationModule,
+    SizeModule,
+    ColorModule,
+    ProductViewModule,
+    AuthModule,
     MailModule,
     OrderModule,
     NotificationModule,

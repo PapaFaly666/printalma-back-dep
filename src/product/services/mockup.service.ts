@@ -307,6 +307,9 @@ export class MockupService {
    * Méthode utilitaire pour mapper vers la réponse
    */
   private mapToResponseDto(mockup: any): MockupResponseDto {
+    // Build categories array from many-to-many relation
+    const categories = (mockup.categories || []).map((c: any) => c);
+
     return {
       id: mockup.id,
       name: mockup.name,
@@ -315,7 +318,7 @@ export class MockupService {
       status: mockup.status === 'PUBLISHED' ? 'published' : 'draft',
       isReadyProduct: false,
       genre: MockupGenre.UNISEXE, // Default value since genre field doesn't exist in schema
-      categories: mockup.categories || [],
+      categories: categories,
       colorVariations: mockup.colorVariations || [],
       sizes: mockup.sizes || [],
       createdAt: mockup.createdAt,
@@ -327,29 +330,26 @@ export class MockupService {
    * Créer les catégories pour un produit
    */
   private async createCategoriesForProduct(productId: number, categoryNames: string[]): Promise<void> {
-    for (const categoryName of categoryNames) {
-      // Vérifier si la catégorie existe déjà
-      let category = await this.prisma.category.findFirst({
-        where: { name: categoryName }
-      });
+    if (categoryNames.length === 0) return;
 
-      // Créer la catégorie si elle n'existe pas
+    const slugify = (s: string) => s.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const categories = [] as any[];
+    for (const categoryName of categoryNames) {
+      let category = await this.prisma.category.findFirst({ where: { name: categoryName } });
       if (!category) {
         category = await this.prisma.category.create({
-          data: { name: categoryName }
+          data: { name: categoryName, slug: slugify(categoryName) }
         });
       }
-
-      // Lier la catégorie au produit
-      await this.prisma.product.update({
-        where: { id: productId },
-        data: {
-          categories: {
-            connect: { id: category.id }
-          }
-        }
-      });
+      categories.push(category);
     }
+
+    await this.prisma.product.update({
+      where: { id: productId },
+      data: {
+        categories: { connect: categories.map(c => ({ id: c.id })) }
+      }
+    });
   }
 
   /**
