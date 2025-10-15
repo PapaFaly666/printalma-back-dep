@@ -335,6 +335,8 @@ export class ProductService {
         categories: true,
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
+        subCategory: true, // ✅ Inclure la sous-catégorie
+        variation: true, // ✅ Inclure la variation
         colorVariations: {
           include: {
             images: {
@@ -588,6 +590,8 @@ export class ProductService {
       include: {
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
+        subCategory: true, // ✅ Inclure la sous-catégorie
+        variation: true, // ✅ Inclure la variation
         colorVariations: {
           include: {
             images: {
@@ -991,6 +995,8 @@ export class ProductService {
       include: {
         categories: true,
         sizes: true,
+        subCategory: true, // ✅ Inclure la sous-catégorie
+        variation: true, // ✅ Inclure la variation
         colorVariations: {
           include: {
             images: {

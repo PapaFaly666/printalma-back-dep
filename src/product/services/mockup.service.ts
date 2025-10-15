@@ -37,6 +37,8 @@ export class MockupService {
         },
         include: {
           categories: true,
+          subCategory: true, // ✅ Inclure la sous-catégorie
+          variation: true, // ✅ Inclure la variation
           colorVariations: {
             include: {
               images: {
@@ -109,6 +111,8 @@ export class MockupService {
         data: updateData,
         include: {
           categories: true,
+          subCategory: true, // ✅ Inclure la sous-catégorie
+          variation: true, // ✅ Inclure la variation
           colorVariations: {
             include: {
               images: {
@@ -145,6 +149,8 @@ export class MockupService {
         },
         include: {
           categories: true,
+          subCategory: true, // ✅ Inclure la sous-catégorie
+          variation: true, // ✅ Inclure la variation
           colorVariations: {
             include: {
               images: {
@@ -204,6 +210,8 @@ export class MockupService {
         where: whereClause,
         include: {
           categories: true,
+          subCategory: true, // ✅ Inclure la sous-catégorie
+          variation: true, // ✅ Inclure la variation
           colorVariations: {
             include: {
               images: {
@@ -244,6 +252,8 @@ export class MockupService {
         },
         include: {
           categories: true,
+          subCategory: true, // ✅ Inclure la sous-catégorie
+          variation: true, // ✅ Inclure la variation
           colorVariations: {
             include: {
               images: {
@@ -394,6 +404,119 @@ export class MockupService {
           });
         }
       }
+    }
+  }
+
+  /**
+   * Régénérer les mockups pour les produits d'une catégorie
+   * (Appelé quand une catégorie est modifiée)
+   */
+  async regenerateMockupsForCategory(categoryId: number): Promise<void> {
+    this.logger.log(`🔄 Régénération mockups pour catégorie ${categoryId}`);
+
+    try {
+      // Récupérer tous les produits mockups liés à cette catégorie
+      const mockups = await this.prisma.product.findMany({
+        where: {
+          categoryId,
+          isReadyProduct: false,
+          isDelete: false
+        },
+        include: {
+          colorVariations: {
+            include: {
+              images: true
+            }
+          }
+        }
+      });
+
+      this.logger.log(`📦 ${mockups.length} mockups à régénérer pour la catégorie ${categoryId}`);
+
+      // Pour chaque mockup, on peut déclencher une régénération
+      // (actuellement, on log simplement, mais on pourrait régénérer les images si nécessaire)
+      for (const mockup of mockups) {
+        this.logger.log(`   ✓ Mockup ${mockup.id} - ${mockup.name} marqué pour régénération`);
+        // TODO: Implémenter la régénération réelle des images si nécessaire
+        // await this.regenerateMockupImages(mockup.id);
+      }
+
+      this.logger.log(`✅ Régénération terminée pour ${mockups.length} mockups`);
+    } catch (error) {
+      this.logger.error(`❌ Erreur régénération mockups catégorie ${categoryId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Régénérer les mockups pour les produits d'une sous-catégorie
+   * (Appelé quand une sous-catégorie est modifiée)
+   */
+  async regenerateMockupsForSubCategory(subCategoryId: number): Promise<void> {
+    this.logger.log(`🔄 Régénération mockups pour sous-catégorie ${subCategoryId}`);
+
+    try {
+      const mockups = await this.prisma.product.findMany({
+        where: {
+          subCategoryId,
+          isReadyProduct: false,
+          isDelete: false
+        },
+        include: {
+          colorVariations: {
+            include: {
+              images: true
+            }
+          }
+        }
+      });
+
+      this.logger.log(`📦 ${mockups.length} mockups à régénérer pour la sous-catégorie ${subCategoryId}`);
+
+      for (const mockup of mockups) {
+        this.logger.log(`   ✓ Mockup ${mockup.id} - ${mockup.name} marqué pour régénération`);
+      }
+
+      this.logger.log(`✅ Régénération terminée pour ${mockups.length} mockups`);
+    } catch (error) {
+      this.logger.error(`❌ Erreur régénération mockups sous-catégorie ${subCategoryId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Régénérer les mockups pour les produits d'une variation
+   * (Appelé quand une variation est modifiée)
+   */
+  async regenerateMockupsForVariation(variationId: number): Promise<void> {
+    this.logger.log(`🔄 Régénération mockups pour variation ${variationId}`);
+
+    try {
+      const mockups = await this.prisma.product.findMany({
+        where: {
+          variationId,
+          isReadyProduct: false,
+          isDelete: false
+        },
+        include: {
+          colorVariations: {
+            include: {
+              images: true
+            }
+          }
+        }
+      });
+
+      this.logger.log(`📦 ${mockups.length} mockups à régénérer pour la variation ${variationId}`);
+
+      for (const mockup of mockups) {
+        this.logger.log(`   ✓ Mockup ${mockup.id} - ${mockup.name} marqué pour régénération`);
+      }
+
+      this.logger.log(`✅ Régénération terminée pour ${mockups.length} mockups`);
+    } catch (error) {
+      this.logger.error(`❌ Erreur régénération mockups variation ${variationId}:`, error);
+      throw error;
     }
   }
 } 

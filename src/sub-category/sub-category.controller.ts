@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseIntPipe, Patch } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { CreateSubCategoryDto } from './dto/create-sub-category.dto';
 import { SubCategoryService } from './sub-category.service';
@@ -27,5 +27,15 @@ export class SubCategoryController {
   @ApiOperation({ summary: 'Récupérer une sous-catégorie par ID' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     return this.subCategoryService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Mettre à jour une sous-catégorie' })
+  @ApiResponse({ status: 200, description: 'Sous-catégorie mise à jour avec succès' })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<CreateSubCategoryDto>
+  ) {
+    return this.subCategoryService.update(id, dto);
   }
 }

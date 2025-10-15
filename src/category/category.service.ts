@@ -1,11 +1,17 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { PrismaService } from '../prisma.service';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { MockupService } from '../product/services/mockup.service';
 
 @Injectable()
 export class CategoryService {
-    constructor(private prisma: PrismaService) { }
+    private readonly logger = new Logger(CategoryService.name);
+
+    constructor(
+        private prisma: PrismaService,
+        private mockupService: MockupService
+    ) { }
 
     /**
      * Crée une catégorie principale avec vérification des doublons
@@ -194,6 +200,15 @@ export class CategoryService {
                 }
             }
         });
+
+        // Régénérer les mockups pour cette catégorie
+        this.logger.log(`🔄 Déclenchement de la régénération des mockups pour la catégorie ${id}`);
+        try {
+            await this.mockupService.regenerateMockupsForCategory(id);
+        } catch (error) {
+            this.logger.warn(`⚠️ Erreur lors de la régénération des mockups: ${error.message}`);
+            // On continue même si la régénération échoue
+        }
 
         return {
             success: true,

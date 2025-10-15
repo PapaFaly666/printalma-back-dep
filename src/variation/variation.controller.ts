@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseIntPipe, Patch } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { CreateVariationDto } from './dto/create-variation.dto';
 import { VariationService } from './variation.service';
@@ -27,5 +27,15 @@ export class VariationController {
   @ApiOperation({ summary: 'Récupérer une variation par ID' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     return this.variationService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Mettre à jour une variation' })
+  @ApiResponse({ status: 200, description: 'Variation mise à jour avec succès' })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<CreateVariationDto>
+  ) {
+    return this.variationService.update(id, dto);
   }
 }
