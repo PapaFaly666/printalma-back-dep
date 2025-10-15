@@ -211,7 +211,9 @@ export class AdminWizardValidationController {
       // 🔧 Récupération enrichie des produits avec tous les détails complets
       const productsWithImages = await Promise.all(
         result.products.map(async (product) => {
-          const isWizardProduct = !product.designId || product.designId === null;
+          // 🎯 LOGIQUE CORRIGÉE: Un produit WIZARD n'a NI designId NI designCloudinaryUrl
+          const isWizardProduct = (!product.designId || product.designId === null) &&
+                                 (!product.designCloudinaryUrl || product.designCloudinaryUrl === null);
 
           let vendorImages = [];
           let adminProductDetails = null;
@@ -465,7 +467,8 @@ export class AdminWizardValidationController {
 
       // 🔧 Format de réponse selon ha.md
       if (result.success && result.product) {
-        const isWizardProduct = !result.product.designId || result.product.designId === null;
+        const isWizardProduct = (!result.product.designId || result.product.designId === null) &&
+                               (!result.product.designCloudinaryUrl || result.product.designCloudinaryUrl === null);
         const productType = isWizardProduct ? 'WIZARD' : 'TRADITIONNEL';
 
         return {
@@ -604,7 +607,8 @@ export class AdminWizardValidationController {
             processedProducts.push(productId);
 
             // Compter selon le type
-            const isWizardProduct = !result.product?.designId || result.product?.designId === null;
+            const isWizardProduct = (!result.product?.designId || result.product?.designId === null) &&
+                                   (!result.product?.designCloudinaryUrl || result.product?.designCloudinaryUrl === null);
             if (isWizardProduct) {
               wizardCount++;
             } else {
