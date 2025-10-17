@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, ParseIntPipe, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseIntPipe, Patch, Delete, HttpStatus, HttpCode } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { CreateSubCategoryDto } from './dto/create-sub-category.dto';
 import { SubCategoryService } from './sub-category.service';
@@ -37,5 +37,15 @@ export class SubCategoryController {
     @Body() dto: Partial<CreateSubCategoryDto>
   ) {
     return this.subCategoryService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Supprimer une sous-catégorie' })
+  @ApiResponse({ status: 204, description: 'Sous-catégorie supprimée avec succès' })
+  @ApiResponse({ status: 404, description: 'Sous-catégorie non trouvée' })
+  @ApiResponse({ status: 409, description: 'Sous-catégorie utilisée par des produits' })
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    return this.subCategoryService.remove(id);
   }
 }

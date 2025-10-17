@@ -73,7 +73,10 @@ export class SubCategoryService {
       include: {
         category: true,
         _count: {
-          select: { variations: true }
+          select: {
+            variations: { where: { isActive: true } },
+            products: { where: { isDelete: false } }
+          }
         }
       },
       orderBy: [
@@ -183,6 +186,107 @@ export class SubCategoryService {
       success: true,
       message: 'Sous-catégorie mise à jour avec succès',
       data: updated
+    };
+  }
+
+  /**
+   * Supprimer une sous-catégorie si elle n'est pas utilisée par des produits
+   */
+  async remove(id: number) {
+    // Vérifier que la sous-catégorie existe
+    const subCategory = await this.findOne(id);
+
+    // Vérifier si des produits sont liés directement à cette sous-catégorie
+    const directProductsCount = await this.prisma.product.count({
+      where: {
+        subCategoryId: id,
+        isDelete: false
+      }
+    });
+
+    // Vérifier si des variations de cette sous-catégorie sont utilisées par des produits
+    const variationsWithProducts = await this.prisma.variation.findMany({
+      where: {
+        subCategoryId: id,
+        products: {
+          some: {
+            isDelete: false
+          }
+        }
+      },
+      include: {
+        _count: {
+          select: {
+            products: {
+              where: {
+                isDelete: false
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const totalProductsThroughVariations = variationsWithProducts.reduce(
+      (total, variation) => total + variation._count.products,
+      0
+    );
+
+    // Calculer le nombre total de produits affectés
+    const totalAffectedProducts = directProductsCount + totalProductsThroughVariations;
+
+    if (totalAffectedProducts > 0) {
+      const messages = [];
+      if (directProductsCount > 0) {
+        messages.push(`${directProductsCount} produit(s) lié(s) directement`);
+      }
+      if (totalProductsThroughVariations > 0) {
+        messages.push(`${totalProductsThroughVariations} produit(s) via ${variationsWithProducts.length} variation(s)`);
+      }
+
+      throw new ConflictException({
+        success: false,
+        error: 'SUBCATEGORY_IN_USE',
+        message: `La sous-catégorie est utilisée par ${totalAffectedProducts} produit(s) au total. Elle ne peut pas être supprimée.`,
+        details: {
+          subCategoryId: id,
+          directProductsCount,
+          variationsWithProducts: variationsWithProducts.length,
+          totalProductsThroughVariations,
+          totalAffectedProducts,
+          breakdown: messages.join(', ')
+        }
+      });
+    }
+
+    // Vérifier si la sous-catégorie a des variations (même sans produits)
+    const variationsCount = await this.prisma.variation.count({
+      where: {
+        subCategoryId: id,
+        isActive: true
+      }
+    });
+
+    if (variationsCount > 0) {
+      throw new ConflictException({
+        success: false,
+        error: 'SUBCATEGORY_HAS_VARIATIONS',
+        message: `La sous-catégorie contient ${variationsCount} variation(s). Veuillez d'abord supprimer toutes les variations.`,
+        details: {
+          subCategoryId: id,
+          variationsCount
+        }
+      });
+    }
+
+    // Supprimer la sous-catégorie
+    await this.prisma.subCategory.delete({
+      where: { id }
+    });
+
+    return {
+      success: true,
+      message: 'Sous-catégorie supprimée avec succès'
     };
   }
 }

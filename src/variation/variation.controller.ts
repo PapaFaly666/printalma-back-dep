@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, ParseIntPipe, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseIntPipe, Patch, Delete, HttpStatus, HttpCode } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { CreateVariationDto } from './dto/create-variation.dto';
 import { VariationService } from './variation.service';
@@ -37,5 +37,15 @@ export class VariationController {
     @Body() dto: Partial<CreateVariationDto>
   ) {
     return this.variationService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Supprimer une variation' })
+  @ApiResponse({ status: 204, description: 'Variation supprimée avec succès' })
+  @ApiResponse({ status: 404, description: 'Variation non trouvée' })
+  @ApiResponse({ status: 409, description: 'Variation utilisée par des produits' })
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    return this.variationService.remove(id);
   }
 }

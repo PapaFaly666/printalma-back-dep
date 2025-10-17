@@ -237,7 +237,7 @@ model Variation {
   isActive      Boolean     @default(true) @map("is_active")
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
-  subCategory   SubCategory @relation("SubCategoryVariations", fields: [subCategoryId], references: [id], onDelete: Cascade)
+  subCategory   SubCategory @relation("SubCategoryVariations", fields: [subCategoryId], references: [id])
   products      Product[]   @relation("ProductVariation")
 
   @@unique([name, subCategoryId], name: "unique_variation_per_subcategory")

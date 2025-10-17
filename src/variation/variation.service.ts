@@ -79,6 +79,11 @@ export class VariationService {
           include: {
             category: true
           }
+        },
+        _count: {
+          select: {
+            products: { where: { isDelete: false } }
+          }
         }
       },
       orderBy: [
@@ -191,6 +196,51 @@ export class VariationService {
       success: true,
       message: 'Variation mise à jour avec succès',
       data: updated
+    };
+  }
+
+  /**
+   * Supprimer une variation si elle n'est pas utilisée par des produits
+   */
+  async remove(id: number) {
+    // Vérifier que la variation existe
+    const variation = await this.findOne(id);
+
+    // Vérifier UNIQUEMENT si des produits sont liés directement à cette variation
+    const productsCount = await this.prisma.product.count({
+      where: {
+        variationId: id,
+        isDelete: false
+      }
+    });
+
+    if (productsCount > 0) {
+      throw new ConflictException({
+        success: false,
+        error: 'VARIATION_IN_USE',
+        message: `La variation est utilisée par ${productsCount} produit(s). Elle ne peut pas être supprimée.`,
+        details: {
+          variationId: id,
+          subCategoryId: variation.subCategoryId,
+          productsCount,
+          message: `${productsCount} produit(s) utilisent directement cette variation`
+        }
+      });
+    }
+
+    // Marquer la variation comme inactive au lieu de la supprimer
+    // pour éviter les problèmes de suppression en cascade
+    await this.prisma.variation.update({
+      where: { id },
+      data: {
+        isActive: false,
+        updatedAt: new Date()
+      }
+    });
+
+    return {
+      success: true,
+      message: 'Variation désactivée avec succès'
     };
   }
 }
