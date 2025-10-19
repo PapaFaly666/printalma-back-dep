@@ -224,23 +224,52 @@ export class CategoryService {
 
     /**
      * Supprime une catégorie et toutes ses sous-catégories en cascade
+     * Protection: bloque la suppression si des produits utilisent cette catégorie
      */
     async remove(id: number) {
         // Vérifier si la catégorie existe
         const category = await this.findOne(id);
 
-        // Vérifier si des produits sont liés à cette catégorie
-        const productsCount = category._count?.products || 0;
+        // Vérifier si des produits sont liés directement à cette catégorie
+        const directProductsCount = await this.prisma.product.count({
+            where: { categoryId: id, isDelete: false }
+        });
 
-        if (productsCount > 0) {
+        if (directProductsCount > 0) {
             throw new ConflictException({
                 code: 'CategoryInUse',
-                message: `La catégorie est utilisée par ${productsCount} produit(s).`,
+                message: `Impossible de supprimer cette catégorie car ${directProductsCount} produit(s) l'utilise(nt). Veuillez d'abord déplacer les produits vers une autre catégorie.`,
                 details: {
                     categoryId: id,
-                    productsCount
+                    categoryName: category.name,
+                    directProductsCount,
+                    suggestedAction: 'Déplacez les produits vers une autre catégorie avant de supprimer celle-ci.'
                 }
             });
+        }
+
+        // Vérifier si des produits utilisent les sous-catégories de cette catégorie
+        const subCategoryIds = category.subCategories?.map(sub => sub.id) || [];
+        if (subCategoryIds.length > 0) {
+            const subCategoryProductsCount = await this.prisma.product.count({
+                where: {
+                    subCategoryId: { in: subCategoryIds },
+                    isDelete: false
+                }
+            });
+
+            if (subCategoryProductsCount > 0) {
+                throw new ConflictException({
+                    code: 'CategoryInUse',
+                    message: `Impossible de supprimer cette catégorie car ${subCategoryProductsCount} produit(s) utilise(nt) ses sous-catégories. Veuillez d'abord déplacer les produits.`,
+                    details: {
+                        categoryId: id,
+                        categoryName: category.name,
+                        subCategoryProductsCount,
+                        suggestedAction: 'Déplacez les produits des sous-catégories avant de supprimer la catégorie principale.'
+                    }
+                });
+            }
         }
 
         // Suppression en cascade (Prisma gère automatiquement avec onDelete: Cascade)
@@ -251,6 +280,296 @@ export class CategoryService {
         return {
             success: true,
             message: 'Catégorie supprimée avec succès'
+        };
+    }
+
+    /**
+     * Supprime une sous-catégorie
+     * Protection: bloque la suppression si des produits utilisent cette sous-catégorie
+     */
+    async removeSubCategory(id: number) {
+        // Vérifier si la sous-catégorie existe
+        const subCategory = await this.prisma.subCategory.findUnique({
+            where: { id },
+            include: {
+                category: true,
+                variations: true,
+                _count: {
+                    select: { products: true }
+                }
+            }
+        });
+
+        if (!subCategory) {
+            throw new NotFoundException(`Sous-catégorie avec ID ${id} non trouvée`);
+        }
+
+        // Vérifier si des produits sont liés directement à cette sous-catégorie
+        const directProductsCount = await this.prisma.product.count({
+            where: { subCategoryId: id, isDelete: false }
+        });
+
+        if (directProductsCount > 0) {
+            throw new ConflictException({
+                code: 'SubCategoryInUse',
+                message: `Impossible de supprimer cette sous-catégorie car ${directProductsCount} produit(s) l'utilise(nt). Veuillez d'abord déplacer les produits vers une autre sous-catégorie.`,
+                details: {
+                    subCategoryId: id,
+                    subCategoryName: subCategory.name,
+                    categoryName: subCategory.category.name,
+                    directProductsCount,
+                    suggestedAction: 'Déplacez les produits vers une autre sous-catégorie avant de la supprimer.'
+                }
+            });
+        }
+
+        // Vérifier si des produits utilisent les variations de cette sous-catégorie
+        const variationIds = subCategory.variations?.map(v => v.id) || [];
+        if (variationIds.length > 0) {
+            const variationProductsCount = await this.prisma.product.count({
+                where: {
+                    variationId: { in: variationIds },
+                    isDelete: false
+                }
+            });
+
+            if (variationProductsCount > 0) {
+                throw new ConflictException({
+                    code: 'SubCategoryInUse',
+                    message: `Impossible de supprimer cette sous-catégorie car ${variationProductsCount} produit(s) utilise(nt) ses variations. Veuillez d'abord déplacer les produits.`,
+                    details: {
+                        subCategoryId: id,
+                        subCategoryName: subCategory.name,
+                        variationProductsCount,
+                        suggestedAction: 'Déplacez les produits des variations avant de supprimer la sous-catégorie.'
+                    }
+                });
+            }
+        }
+
+        // Suppression (les variations seront supprimées en cascade grâce à onDelete: Cascade)
+        await this.prisma.subCategory.delete({
+            where: { id },
+        });
+
+        return {
+            success: true,
+            message: 'Sous-catégorie supprimée avec succès'
+        };
+    }
+
+    /**
+     * Supprime une variation
+     * Protection: bloque la suppression si des produits utilisent cette variation
+     */
+    async removeVariation(id: number) {
+        // Vérifier si la variation existe
+        const variation = await this.prisma.variation.findUnique({
+            where: { id },
+            include: {
+                subCategory: {
+                    include: {
+                        category: true
+                    }
+                },
+                _count: {
+                    select: { products: true }
+                }
+            }
+        });
+
+        if (!variation) {
+            throw new NotFoundException(`Variation avec ID ${id} non trouvée`);
+        }
+
+        // Vérifier si des produits utilisent cette variation
+        const productsCount = await this.prisma.product.count({
+            where: { variationId: id, isDelete: false }
+        });
+
+        if (productsCount > 0) {
+            throw new ConflictException({
+                code: 'VariationInUse',
+                message: `Impossible de supprimer cette variation car ${productsCount} produit(s) l'utilise(nt). Veuillez d'abord déplacer les produits vers une autre variation.`,
+                details: {
+                    variationId: id,
+                    variationName: variation.name,
+                    subCategoryName: variation.subCategory.name,
+                    categoryName: variation.subCategory.category.name,
+                    productsCount,
+                    suggestedAction: 'Déplacez les produits vers une autre variation avant de la supprimer.'
+                }
+            });
+        }
+
+        // Suppression
+        await this.prisma.variation.delete({
+            where: { id },
+        });
+
+        return {
+            success: true,
+            message: 'Variation supprimée avec succès'
+        };
+    }
+
+    /**
+     * Vérifie si une catégorie peut être supprimée
+     */
+    async canDeleteCategory(id: number) {
+        const category = await this.prisma.category.findUnique({
+            where: { id },
+            include: {
+                subCategories: {
+                    include: {
+                        variations: true
+                    }
+                }
+            }
+        });
+
+        if (!category) {
+            throw new NotFoundException(`Catégorie avec ID ${id} non trouvée`);
+        }
+
+        const directProducts = await this.prisma.product.count({
+            where: { categoryId: id, isDelete: false }
+        });
+
+        const subCategoryIds = category.subCategories?.map(sub => sub.id) || [];
+        const subCategoryProducts = subCategoryIds.length > 0
+            ? await this.prisma.product.count({
+                where: {
+                    subCategoryId: { in: subCategoryIds },
+                    isDelete: false
+                }
+            })
+            : 0;
+
+        const variationIds = category.subCategories?.flatMap(sub =>
+            sub.variations?.map(v => v.id) || []
+        ) || [];
+        const variationProducts = variationIds.length > 0
+            ? await this.prisma.product.count({
+                where: {
+                    variationId: { in: variationIds },
+                    isDelete: false
+                }
+            })
+            : 0;
+
+        const canDelete = directProducts === 0 && subCategoryProducts === 0 && variationProducts === 0;
+
+        return {
+            success: true,
+            data: {
+                canDelete,
+                categoryId: id,
+                categoryName: category.name,
+                blockers: {
+                    directProducts,
+                    subCategoryProducts,
+                    variationProducts,
+                    total: directProducts + subCategoryProducts + variationProducts
+                },
+                message: canDelete
+                    ? 'Cette catégorie peut être supprimée'
+                    : `Cette catégorie ne peut pas être supprimée car ${directProducts + subCategoryProducts + variationProducts} produit(s) l'utilise(nt)`
+            }
+        };
+    }
+
+    /**
+     * Vérifie si une sous-catégorie peut être supprimée
+     */
+    async canDeleteSubCategory(id: number) {
+        const subCategory = await this.prisma.subCategory.findUnique({
+            where: { id },
+            include: {
+                category: true,
+                variations: true
+            }
+        });
+
+        if (!subCategory) {
+            throw new NotFoundException(`Sous-catégorie avec ID ${id} non trouvée`);
+        }
+
+        const directProducts = await this.prisma.product.count({
+            where: { subCategoryId: id, isDelete: false }
+        });
+
+        const variationIds = subCategory.variations?.map(v => v.id) || [];
+        const variationProducts = variationIds.length > 0
+            ? await this.prisma.product.count({
+                where: {
+                    variationId: { in: variationIds },
+                    isDelete: false
+                }
+            })
+            : 0;
+
+        const canDelete = directProducts === 0 && variationProducts === 0;
+
+        return {
+            success: true,
+            data: {
+                canDelete,
+                subCategoryId: id,
+                subCategoryName: subCategory.name,
+                categoryName: subCategory.category.name,
+                blockers: {
+                    directProducts,
+                    variationProducts,
+                    total: directProducts + variationProducts
+                },
+                message: canDelete
+                    ? 'Cette sous-catégorie peut être supprimée'
+                    : `Cette sous-catégorie ne peut pas être supprimée car ${directProducts + variationProducts} produit(s) l'utilise(nt)`
+            }
+        };
+    }
+
+    /**
+     * Vérifie si une variation peut être supprimée
+     */
+    async canDeleteVariation(id: number) {
+        const variation = await this.prisma.variation.findUnique({
+            where: { id },
+            include: {
+                subCategory: {
+                    include: {
+                        category: true
+                    }
+                }
+            }
+        });
+
+        if (!variation) {
+            throw new NotFoundException(`Variation avec ID ${id} non trouvée`);
+        }
+
+        const productsCount = await this.prisma.product.count({
+            where: { variationId: id, isDelete: false }
+        });
+
+        const canDelete = productsCount === 0;
+
+        return {
+            success: true,
+            data: {
+                canDelete,
+                variationId: id,
+                variationName: variation.name,
+                subCategoryName: variation.subCategory.name,
+                categoryName: variation.subCategory.category.name,
+                blockers: {
+                    productsCount
+                },
+                message: canDelete
+                    ? 'Cette variation peut être supprimée'
+                    : `Cette variation ne peut pas être supprimée car ${productsCount} produit(s) l'utilise(nt)`
+            }
         };
     }
 

@@ -128,9 +128,9 @@ model Product {
   themeProducts            ThemeProduct[]
   vendorProducts           VendorProduct[]
   categories               Category[]        @relation("CategoryToProduct")
-  category                 Category?         @relation("ProductCategory", fields: [categoryId], references: [id])
-  subCategory              SubCategory?      @relation("ProductSubCategory", fields: [subCategoryId], references: [id])
-  variation                Variation?        @relation("ProductVariation", fields: [variationId], references: [id])
+  category                 Category?         @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  subCategory              SubCategory?      @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
+  variation                Variation?        @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
 
   @@index([isValidated])
   @@index([submittedForValidationAt])
@@ -237,7 +237,7 @@ model Variation {
   isActive      Boolean     @default(true) @map("is_active")
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
-  subCategory   SubCategory @relation("SubCategoryVariations", fields: [subCategoryId], references: [id])
+  subCategory   SubCategory @relation("SubCategoryVariations", fields: [subCategoryId], references: [id], onDelete: Restrict)
   products      Product[]   @relation("ProductVariation")
 
   @@unique([name, subCategoryId], name: "unique_variation_per_subcategory")

@@ -190,4 +190,109 @@ export class CategoryController {
     createBatchVariations(@Body() createVariationBatchDto: CreateVariationBatchDto) {
         return this.categoryService.createBatchVariations(createVariationBatchDto);
     }
+
+    // =========================
+    // Routes de suppression avec protection
+    // =========================
+
+    @Delete('subcategory/:id')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Supprimer une sous-catégorie',
+        description: 'Supprime une sous-catégorie si aucun produit ne l\'utilise'
+    })
+    @ApiResponse({ status: 200, description: 'Sous-catégorie supprimée avec succès.' })
+    @ApiResponse({ status: 404, description: 'Sous-catégorie non trouvée.' })
+    @ApiResponse({
+        status: 409,
+        description: 'Impossible de supprimer: des produits utilisent cette sous-catégorie'
+    })
+    @ApiParam({ name: 'id', type: Number, description: 'ID de la sous-catégorie' })
+    removeSubCategory(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.removeSubCategory(id);
+    }
+
+    @Delete('variation/:id')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Supprimer une variation',
+        description: 'Supprime une variation si aucun produit ne l\'utilise'
+    })
+    @ApiResponse({ status: 200, description: 'Variation supprimée avec succès.' })
+    @ApiResponse({ status: 404, description: 'Variation non trouvée.' })
+    @ApiResponse({
+        status: 409,
+        description: 'Impossible de supprimer: des produits utilisent cette variation'
+    })
+    @ApiParam({ name: 'id', type: Number, description: 'ID de la variation' })
+    removeVariation(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.removeVariation(id);
+    }
+
+    // =========================
+    // Routes de vérification avant suppression
+    // =========================
+
+    @Get(':id/can-delete')
+    @ApiOperation({
+        summary: 'Vérifier si une catégorie peut être supprimée',
+        description: 'Retourne si la catégorie peut être supprimée et le nombre de produits qui l\'utilisent'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Informations sur la possibilité de suppression',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        canDelete: { type: 'boolean', example: false },
+                        categoryId: { type: 'number', example: 1 },
+                        categoryName: { type: 'string', example: 'Vêtements' },
+                        blockers: {
+                            type: 'object',
+                            properties: {
+                                directProducts: { type: 'number', example: 5 },
+                                subCategoryProducts: { type: 'number', example: 12 },
+                                variationProducts: { type: 'number', example: 8 },
+                                total: { type: 'number', example: 25 }
+                            }
+                        },
+                        message: { type: 'string', example: 'Cette catégorie ne peut pas être supprimée car 25 produit(s) l\'utilise(nt)' }
+                    }
+                }
+            }
+        }
+    })
+    @ApiResponse({ status: 404, description: 'Catégorie non trouvée.' })
+    @ApiParam({ name: 'id', type: Number, description: 'ID de la catégorie' })
+    canDeleteCategory(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.canDeleteCategory(id);
+    }
+
+    @Get('subcategory/:id/can-delete')
+    @ApiOperation({
+        summary: 'Vérifier si une sous-catégorie peut être supprimée',
+        description: 'Retourne si la sous-catégorie peut être supprimée et le nombre de produits qui l\'utilisent'
+    })
+    @ApiResponse({ status: 200, description: 'Informations sur la possibilité de suppression.' })
+    @ApiResponse({ status: 404, description: 'Sous-catégorie non trouvée.' })
+    @ApiParam({ name: 'id', type: Number, description: 'ID de la sous-catégorie' })
+    canDeleteSubCategory(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.canDeleteSubCategory(id);
+    }
+
+    @Get('variation/:id/can-delete')
+    @ApiOperation({
+        summary: 'Vérifier si une variation peut être supprimée',
+        description: 'Retourne si la variation peut être supprimée et le nombre de produits qui l\'utilisent'
+    })
+    @ApiResponse({ status: 200, description: 'Informations sur la possibilité de suppression.' })
+    @ApiResponse({ status: 404, description: 'Variation non trouvée.' })
+    @ApiParam({ name: 'id', type: Number, description: 'ID de la variation' })
+    canDeleteVariation(@Param('id', ParseIntPipe) id: number) {
+        return this.categoryService.canDeleteVariation(id);
+    }
 }
