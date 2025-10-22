@@ -2293,7 +2293,28 @@ export class VendorPublishService {
       if (options.vendorId) whereClause.vendorId = options.vendorId;
       if (options.minPrice) whereClause.price = { gte: options.minPrice };
       if (options.maxPrice) whereClause.price = { ...whereClause.price, lte: options.maxPrice };
-      if (options.category) whereClause.design = { category: options.category };
+      if (options.category) {
+        // Récupérer d'abord l'ID de la catégorie
+        const category = await this.prisma.designCategory.findFirst({
+          where: {
+            name: {
+              equals: options.category,
+              mode: 'insensitive'
+            }
+          }
+        });
+
+        if (category) {
+          whereClause.design = {
+            categoryId: category.id
+          };
+        } else {
+          // Si la catégorie n'existe pas, retourner des résultats vides
+          whereClause.design = {
+            categoryId: -1
+          };
+        }
+      }
 
       const products = await this.prisma.vendorProduct.findMany({
         where: whereClause,
@@ -2316,7 +2337,11 @@ export class VendorPublishService {
               }
             }
           },
-          design: true,
+          design: {
+            include: {
+              category: true
+            }
+          },
           designPositions: {
             include: {
               design: true
@@ -2324,8 +2349,8 @@ export class VendorPublishService {
           }
         },
         orderBy: [
-          
-          
+
+
           { createdAt: 'desc' }
         ],
         take: Math.min(options.limit || 20, 100)
