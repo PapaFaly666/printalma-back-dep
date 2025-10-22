@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Démonstration Positionnement Design - API Public</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+
+        .controls {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            font-weight: bold;
+            min-width: 150px;
+        }
+
+        .control-group select, .control-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .control-group button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .control-group button:hover {
+            background: #0056b3;
+        }
+
+        .product-demo {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .product-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+
+        .product-header {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .product-title {
+            margin: 0;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .product-price {
+            font-size: 16px;
+            font-weight: bold;
+            color: #28a745;
+            margin-top: 5px;
+        }
+
+        .product-visual {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            margin: 20px auto;
+            border: 1px solid #eee;
+        }
+
+        .product-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .design-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .design-image {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform-origin: center;
+            max-width: 80%;
+            max-height: 80%;
+        }
+
+        .product-info {
+            padding: 20px;
+        }
+
+        .position-info {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+
+        .position-info h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+
+        .position-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .position-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .position-item:last-child {
+            border-bottom: none;
+        }
+
+        .position-label {
+            font-weight: bold;
+            color: #6c757d;
+        }
+
+        .position-value {
+            color: #212529;
+            font-family: monospace;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #6c757d;
+        }
+
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .highlight {
+            background: #d4edda !important;
+            border-color: #c3e6cb !important;
+        }
+
+        .api-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .api-url {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 5px 8px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Démonstration Positionnement Design</h1>
+            <p>API Public: <code>GET /public/vendor-products</code></p>
+            <div class="api-info">
+                <strong>✅ L'endpoint inclut déjà le positionnement exact du design!</strong><br>
+                Similar à l'endpoint <code>/vendor/products</code>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Produit:</label>
+                <select id="productSelect">
+                    <option value="">Tous les produits</option>
+                    <option value="Tshirt">Tshirts</option>
+                    <option value="Polos">Polos</option>
+                </select>
+                <button onclick="loadProducts()">Charger</button>
+            </div>
+            <div class="control-group">
+                <label>API URL:</label>
+                <div class="api-url" id="apiUrl">/public/vendor-products</div>
+            </div>
+        </div>
+
+        <div id="loadingDiv" class="loading" style="display: none;">
+            🔄 Chargement des produits...
+        </div>
+
+        <div id="errorDiv" class="error" style="display: none;">
+            ❌ Erreur lors du chargement des produits
+        </div>
+
+        <div id="productsContainer" class="product-demo"></div>
+    </div>
+
+    <script>
+        class DesignPositioningDemo {
+            constructor() {
+                this.products = [];
+                this.currentFilter = '';
+                this.init();
+            }
+
+            init() {
+                this.loadProducts();
+            }
+
+            async loadProducts() {
+                const productType = document.getElementById('productSelect').value;
+                const loadingDiv = document.getElementById('loadingDiv');
+                const errorDiv = document.getElementById('errorDiv');
+                const container = document.getElementById('productsContainer');
+
+                // Afficher le chargement
+                loadingDiv.style.display = 'block';
+                errorDiv.style.display = 'none';
+                container.innerHTML = '';
+
+                try {
+                    const url = productType
+                        ? `http://localhost:3004/public/vendor-products?adminProductName=${productType}&limit=2`
+                        : `http://localhost:3004/public/vendor-products?limit=2`;
+
+                    console.log('🔍 URL:', url);
+
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.products = data.data;
+                        this.renderProducts();
+                    } else {
+                        throw new Error(data.message || 'Erreur inconnue');
+                    }
+                } catch (error) {
+                    console.error('❌ Erreur:', error);
+                    loadingDiv.style.display = 'none';
+                    errorDiv.style.display = 'block';
+                    errorDiv.textContent = `❌ Erreur: ${error.message}`;
+                }
+            }
+
+            renderProducts() {
+                const container = document.getElementById('productsContainer');
+                const loadingDiv = document.getElementById('loadingDiv');
+
+                if (this.products.length === 0) {
+                    container.innerHTML = '<div class="error">Aucun produit trouvé</div>';
+                    loadingDiv.style.display = 'none';
+                    return;
+                }
+
+                container.innerHTML = this.products.map(product => this.createProductCard(product)).join('');
+                loadingDiv.style.display = 'none';
+            }
+
+            createProductCard(product) {
+                const designPosition = product.designPositions?.[0]?.position;
+                const design = product.design;
+
+                if (!designPosition || !design) {
+                    return `
+                        <div class="product-card">
+                            <div class="product-header">
+                                <h3 class="product-title">${product.vendorName || product.adminProduct?.name}</h3>
+                                <div class="product-price">${(product.price / 100).toFixed(2)}€</div>
+                            </div>
+                            <div class="product-visual">
+                                <img src="${product.images?.primaryImageUrl}" alt="${product.adminProduct?.name}" class="product-image">
+                            </div>
+                            <div class="product-info">
+                                <div class="position-info">
+                                    <h4>⚠️ Pas de design positionné</h4>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const transform = `
+                    translate(-50%, -50%)
+                    translate(${designPosition.x}px, ${designPosition.y}px)
+                    scale(${designPosition.scale})
+                    rotate(${designPosition.rotation}deg)
+                `;
+
+                return `
+                    <div class="product-card highlight">
+                        <div class="product-header">
+                            <h3 class="product-title">${product.vendorName || product.adminProduct?.name}</h3>
+                            <div class="product-price">${(product.price / 100).toFixed(2)}€</div>
+                        </div>
+
+                        <div class="product-visual">
+                            <img src="${product.images?.primaryImageUrl}" alt="${product.adminProduct?.name}" class="product-image">
+                            <div class="design-overlay">
+                                <img src="${design.imageUrl}" alt="${design.name}" class="design-image" style="transform: ${transform};">
+                            </div>
+                        </div>
+
+                        <div class="product-info">
+                            <div class="position-info">
+                                <h4>🎯 Positionnement Design</h4>
+                                <div class="position-grid">
+                                    <div class="position-item">
+                                        <span class="position-label">X:</span>
+                                        <span class="position-value">${designPosition.x}px</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Y:</span>
+                                        <span class="position-value">${designPosition.y}px</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Échelle:</span>
+                                        <span class="position-value">${designPosition.scale}</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Rotation:</span>
+                                        <span class="position-value">${designPosition.rotation}°</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Largeur:</span>
+                                        <span class="position-value">${designPosition.designWidth}px</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Hauteur:</span>
+                                        <span class="position-value">${designPosition.designHeight}px</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Min Échelle:</span>
+                                        <span class="position-value">${designPosition.constraints?.minScale || 'N/A'}</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Max Échelle:</span>
+                                        <span class="position-value">${designPosition.constraints?.maxScale || 'N/A'}</span>
+                                    </div>
+                                </div>
+
+                                <h4>🎨 Design Info</h4>
+                                <div class="position-grid">
+                                    <div class="position-item">
+                                        <span class="position-label">ID:</span>
+                                        <span class="position-value">#${design.id}</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Nom:</span>
+                                        <span class="position-value">${design.name}</span>
+                                    </div>
+                                    <div class="position-item">
+                                        <span class="position-label">Validé:</span>
+                                        <span class="position-value">${design.isValidated ? '✅' : '❌'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Initialiser la démo
+        const demo = new DesignPositioningDemo();
+
+        // Fonction globale pour le bouton
+        window.loadProducts = () => demo.loadProducts();
+    </script>
+</body>
+</html>

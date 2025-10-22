@@ -956,6 +956,328 @@ Pour toute question ou problème avec l'API :
 
 ---
 
-**🎉 Félicitations !** Vous êtes maintenant prêt à intégrer le système de meilleures ventes PrintAlma dans votre application frontend. 
+**🎉 Félicitations !** Vous êtes maintenant prêt à intégrer le système de meilleures ventes PrintAlma dans votre application frontend.
 
-N'hésitez pas à consulter les exemples de code et à adapter les composants selon vos besoins spécifiques. L'API est conçue pour être flexible et performante ! 🚀 
+N'hésitez pas à consulter les exemples de code et à adapter les composants selon vos besoins spécifiques. L'API est conçue pour être flexible et performante ! 🚀
+
+---
+
+## 🛍️ Endpoint Produits Vendeurs (Vendor Products)
+
+### GET `/public/vendor-products`
+
+**Description :** Récupère la liste complète des produits vendeurs avec filtres avancés, y compris le nouveau filtre par nom de produit admin.
+
+#### Paramètres de Requête
+
+| Paramètre | Type | Description | Exemple | Requis |
+|-----------|------|-------------|---------|---------|
+| `limit` | number | Nombre max de produits (max 100) | `20` | Non |
+| `offset` | number | Pagination - produits à sauter | `0` | Non |
+| `search` | string | Recherche textuelle globale | `"chemise"` | Non |
+| `vendorId` | number | ID du vendeur spécifique | `123` | Non |
+| `category` | string | Nom de la catégorie | `"Vêtements"` | Non |
+| `adminProductName` | string | **NOUVEAU** - Nom du produit admin (mockup) | `"Tshirt"` | Non |
+| `minPrice` | number | Prix minimum | `10.00` | Non |
+| `maxPrice` | number | Prix maximum | `100.00` | Non |
+| `allProducts` | boolean | `false` = uniquement les best-sellers | `true` | Non |
+
+#### 🆕 Filtre `adminProductName`
+
+Ce filtre permet de rechercher des produits en se basant sur le nom du produit de base (mockup/admin) associé.
+
+**Caractéristiques :**
+- **Recherche insensible à la casse**
+- **Recherche partielle (contient)**
+- **Filtre sur le champ `adminProduct.name`**
+
+**Exemples d'utilisation :**
+```javascript
+// Rechercher tous les Tshirts
+const tshirts = await fetch('/public/vendor-products?adminProductName=Tshirt');
+
+// Combiner avec d'autres filtres
+const polosChers = await fetch('/public/vendor-products?adminProductName=Polos&minPrice=50');
+
+// Recherche avancée
+const chemisesBleues = await fetch('/public/vendor-products?adminProductName=Chemise&search=bleu');
+```
+
+#### Structure de la réponse
+
+```json
+{
+  "success": true,
+  "message": "Produits récupérés avec succès",
+  "data": [
+    {
+      "id": 1,
+      "vendorId": 123,
+      "baseProductId": 456,
+      "price": 29.99,
+      "createdAt": "2024-01-15T10:30:00.000Z",
+      "updatedAt": "2024-01-15T10:30:00.000Z",
+      "vendor": {
+        "id": 123,
+        "name": "Jean Dupont",
+        "email": "jean@example.com",
+        "shopName": "Boutique Créative"
+      },
+      "adminProduct": {
+        "id": 456,
+        "name": "Tshirt Premium",
+        "slug": "tshirt-premium",
+        "description": "T-shirt de haute qualité",
+        "imageUrls": ["url1.jpg", "url2.jpg"],
+        "category": {
+          "id": 1,
+          "name": "Vêtements",
+          "slug": "vetements"
+        },
+        "subCategory": {
+          "id": 2,
+          "name": "Tshirts",
+          "slug": "tshirts"
+        },
+        "variation": {
+          "id": 3,
+          "name": "Col V",
+          "slug": "col-v"
+        }
+      },
+      "_count": {
+        "reviews": 15,
+        "orders": 42
+      }
+    }
+  ],
+  "pagination": {
+    "total": 150,
+    "limit": 20,
+    "offset": 0,
+    "hasMore": true,
+    "totalPages": 8,
+    "currentPage": 1
+  }
+}
+```
+
+#### 📁 Affichage des Catégories Disponibles
+
+Pour afficher les catégories disponibles dans le frontend :
+
+**Approche 1 : Extraire des produits existants**
+```javascript
+async function getAvailableCategories() {
+  const response = await fetch('/public/vendor-products?limit=100');
+  const data = await response.json();
+
+  if (!data.success) return [];
+
+  // Extraire les catégories uniques
+  const categories = [...new Set(
+    data.data
+      .map(product => product.adminProduct?.category?.name)
+      .filter(Boolean)
+  )];
+
+  return categories;
+}
+```
+
+**Approche 2 : Filtrer par catégorie spécifique**
+```javascript
+async function getProductsByCategory(categoryName) {
+  const response = await fetch(
+    `/public/vendor-products?category=${encodeURIComponent(categoryName)}`
+  );
+  return await response.json();
+}
+
+// Exemple d'utilisation
+const vetementsProducts = await getProductsByCategory('Vêtements');
+```
+
+#### 🎯 Exemples d'Intégration Frontend
+
+**React Hook personnalisé :**
+```javascript
+function useVendorProducts(filters = {}) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState(null);
+
+  const fetchProducts = async (newFilters = {}) => {
+    setLoading(true);
+
+    const params = new URLSearchParams({
+      limit: '20',
+      offset: '0',
+      ...filters,
+      ...newFilters
+    });
+
+    try {
+      const response = await fetch(`/public/vendor-products?${params}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setProducts(data.data);
+        setPagination(data.pagination);
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { products, loading, pagination, fetchProducts };
+}
+
+// Utilisation dans un composant
+function ProductList() {
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [productNameFilter, setProductNameFilter] = useState('');
+  const { products, loading, fetchProducts } = useVendorProducts();
+
+  useEffect(() => {
+    fetchProducts({
+      category: selectedCategory,
+      adminProductName: productNameFilter
+    });
+  }, [selectedCategory, productNameFilter]);
+
+  return (
+    <div>
+      {/* Filtres */}
+      <select onChange={(e) => setSelectedCategory(e.target.value)}>
+        <option value="">Toutes les catégories</option>
+        <option value="Vêtements">Vêtements</option>
+        <option value="Accessoires">Accessoires</option>
+      </select>
+
+      <input
+        type="text"
+        placeholder="Rechercher par nom de produit..."
+        value={productNameFilter}
+        onChange={(e) => setProductNameFilter(e.target.value)}
+      />
+
+      {/* Liste des produits */}
+      {loading ? (
+        <div>Chargement...</div>
+      ) : (
+        <div className="product-grid">
+          {products.map(product => (
+            <ProductCard key={product.id} product={product} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+**Tests avec curl :**
+```bash
+# Test du filtre adminProductName
+curl "http://localhost:3000/public/vendor-products?adminProductName=Tshirt"
+
+# Test combiné avec recherche
+curl "http://localhost:3000/public/vendor-products?adminProductName=Polos&search=bleu"
+
+# Test avec filtre de prix
+curl "http://localhost:3000/public/vendor-products?adminProductName=Chemise&minPrice=20&maxPrice=100"
+```
+
+#### 🎨 Composant Vue.js pour les filtres
+
+```vue
+<template>
+  <div class="product-filters">
+    <div class="filter-group">
+      <label>Nom du produit admin:</label>
+      <input
+        v-model="filters.adminProductName"
+        @input="applyFilters"
+        placeholder="Ex: Tshirt, Polo, Chemise..."
+      />
+    </div>
+
+    <div class="filter-group">
+      <label>Catégorie:</label>
+      <select v-model="filters.category" @change="applyFilters">
+        <option value="">Toutes les catégories</option>
+        <option v-for="category in categories" :key="category" :value="category">
+          {{ category }}
+        </option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label>Prix:</label>
+      <div class="price-range">
+        <input
+          type="number"
+          v-model="filters.minPrice"
+          @change="applyFilters"
+          placeholder="Min"
+        />
+        <span>-</span>
+        <input
+          type="number"
+          v-model="filters.maxPrice"
+          @change="applyFilters"
+          placeholder="Max"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      filters: {
+        adminProductName: '',
+        category: '',
+        minPrice: null,
+        maxPrice: null
+      },
+      categories: []
+    };
+  },
+
+  async mounted() {
+    await this.loadCategories();
+  },
+
+  methods: {
+    async loadCategories() {
+      try {
+        const response = await fetch('/public/vendor-products?limit=100');
+        const data = await response.json();
+
+        if (data.success) {
+          this.categories = [...new Set(
+            data.data
+              .map(product => product.adminProduct?.category?.name)
+              .filter(Boolean)
+          )];
+        }
+      } catch (error) {
+        console.error('Erreur chargement catégories:', error);
+      }
+    },
+
+    applyFilters() {
+      this.$emit('filters-changed', this.filters);
+    }
+  }
+};
+</script>
+```
+
+Cette nouvelle section complète parfaitement la documentation existante pour aider les développeurs frontend à intégrer l'endpoint des produits vendeurs avec le nouveau filtre `adminProductName`. 

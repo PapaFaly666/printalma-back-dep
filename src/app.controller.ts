@@ -21,6 +21,7 @@ export class AppController {
     @Query('search') search?: string,
     @Query('vendorId') vendorId?: number,
     @Query('category') category?: string,
+    @Query('adminProductName') adminProductName?: string,
     @Query('minPrice') minPrice?: number,
     @Query('maxPrice') maxPrice?: number,
     @Query('allProducts') allProducts?: boolean,
@@ -32,6 +33,7 @@ export class AppController {
       if (vendorId) filters.vendorId = parseInt(vendorId.toString());
       if (search) filters.search = search;
       if (category) filters.category = category;
+      if (adminProductName) filters.adminProductName = adminProductName;
       if (minPrice) filters.minPrice = minPrice;
       if (maxPrice) filters.maxPrice = maxPrice;
 

@@ -2082,6 +2082,7 @@ export class VendorPublishService {
     status?: string;
     search?: string;
     category?: string;
+    adminProductName?: string;
     minPrice?: number;
     maxPrice?: number;
     isBestSeller?: boolean;
@@ -2105,6 +2106,42 @@ export class VendorPublishService {
       }
       if (options.minPrice) whereClause.price = { gte: options.minPrice };
       if (options.maxPrice) whereClause.price = { ...whereClause.price, lte: options.maxPrice };
+
+      // 🆕 FILTRE PAR NOM DE PRODUIT ADMIN
+      let adminProductFilters: any[] = [];
+
+      if (options.adminProductName) {
+        this.logger.log(`🎯 Filtre par nom de produit admin: "${options.adminProductName}"`);
+
+        // Chercher les produits de base dont le nom correspond
+        const matchingBaseProducts = await this.prisma.product.findMany({
+          where: {
+            name: {
+              contains: options.adminProductName,
+              mode: 'insensitive'
+            },
+            isReadyProduct: false // Uniquement les produits admin/mockups
+          },
+          select: {
+            id: true,
+            name: true
+          }
+        });
+
+        if (matchingBaseProducts.length > 0) {
+          const baseProductIds = matchingBaseProducts.map(bp => bp.id);
+          adminProductFilters.push({
+            baseProductId: { in: baseProductIds }
+          });
+          this.logger.log(`✅ ${baseProductIds.length} produits de base trouvés pour "${options.adminProductName}":`, matchingBaseProducts.map(bp => bp.name));
+        } else {
+          // Si aucun produit trouvé, retourner des résultats vides
+          adminProductFilters.push({
+            baseProductId: -1
+          });
+          this.logger.log(`❌ Aucun produit de base trouvé pour "${options.adminProductName}" - retour vide`);
+        }
+      }
 
       // 🆕 FILTRE PAR CATÉGORIE COMPLET (Design + Produits de base)
       if (options.category) {
@@ -2159,17 +2196,35 @@ export class VendorPublishService {
           this.logger.log(`✅ Ajout filtre Category ID: ${baseCategory.id}`);
         }
 
-        // 4. Appliquer le filtre combiné
-        if (categoryFilters.length > 0) {
-          whereClause.OR = categoryFilters;
-          this.logger.log(`🔗 Filtre catégorie combiné avec ${categoryFilters.length} conditions`);
+        // 4. Combiner tous les filtres (adminProduct + category)
+        const allFilters = [...adminProductFilters, ...categoryFilters];
+
+        if (allFilters.length > 0) {
+          if (allFilters.length === 1) {
+            // Si un seul filtre, l'appliquer directement
+            Object.assign(whereClause, allFilters[0]);
+          } else {
+            // Si plusieurs filtres, les combiner avec OR
+            whereClause.OR = allFilters;
+          }
+          this.logger.log(`🔗 Filtres combinés avec ${allFilters.length} conditions:`, allFilters);
         } else {
-          // Si aucune catégorie trouvée, retourner des résultats vides
-          whereClause.design = {
-            categoryId: -1
-          };
-          this.logger.log(`❌ Aucune catégorie trouvée pour "${options.category}" - retour vide`);
+          // Si aucun filtre trouvé mais category demandé, retourner des résultats vides
+          if (options.category) {
+            whereClause.design = {
+              categoryId: -1
+            };
+            this.logger.log(`❌ Aucune catégorie trouvée pour "${options.category}" - retour vide`);
+          }
         }
+      } else if (adminProductFilters.length > 0) {
+        // Si pas de catégorie mais filtre adminProduct
+        if (adminProductFilters.length === 1) {
+          Object.assign(whereClause, adminProductFilters[0]);
+        } else {
+          whereClause.OR = adminProductFilters;
+        }
+        this.logger.log(`🎯 Filtre adminProduct appliqué:`, adminProductFilters);
       }
 
       this.logger.log(`🔍 Where clause finale:`, JSON.stringify(whereClause, null, 2));
