@@ -2106,17 +2106,96 @@ export class VendorPublishService {
       if (options.minPrice) whereClause.price = { gte: options.minPrice };
       if (options.maxPrice) whereClause.price = { ...whereClause.price, lte: options.maxPrice };
 
+      // 🆕 FILTRE PAR CATÉGORIE COMPLET (Design + Produits de base)
+      if (options.category) {
+        this.logger.log(`🏷️ Filtre par catégorie: "${options.category}"`);
+
+        // 1. Chercher dans les DesignCategory (pour les produits avec designs)
+        const designCategory = await this.prisma.designCategory.findFirst({
+          where: {
+            name: {
+              equals: options.category,
+              mode: 'insensitive'
+            }
+          }
+        });
+
+        // 2. Chercher dans les Category (pour les produits de base)
+        const baseCategory = await this.prisma.category.findFirst({
+          where: {
+            name: {
+              equals: options.category,
+              mode: 'insensitive'
+            }
+          }
+        });
+
+        this.logger.log(`📊 Catégories trouvées - Design: ${designCategory?.id || 'NULL'}, Base: ${baseCategory?.id || 'NULL'}`);
+
+        // 3. Construire le filtre OR pour les deux types de catégories
+        const categoryFilters: any[] = [];
+
+        // Ajouter filtre pour DesignCategory si trouvée
+        if (designCategory) {
+          categoryFilters.push({
+            design: {
+              categoryId: designCategory.id
+            }
+          });
+          this.logger.log(`✅ Ajout filtre DesignCategory ID: ${designCategory.id}`);
+        }
+
+        // Ajouter filtre pour Category (produits de base) si trouvée
+        if (baseCategory) {
+          categoryFilters.push({
+            baseProduct: {
+              categories: {
+                some: {
+                  id: baseCategory.id
+                }
+              }
+            }
+          });
+          this.logger.log(`✅ Ajout filtre Category ID: ${baseCategory.id}`);
+        }
+
+        // 4. Appliquer le filtre combiné
+        if (categoryFilters.length > 0) {
+          whereClause.OR = categoryFilters;
+          this.logger.log(`🔗 Filtre catégorie combiné avec ${categoryFilters.length} conditions`);
+        } else {
+          // Si aucune catégorie trouvée, retourner des résultats vides
+          whereClause.design = {
+            categoryId: -1
+          };
+          this.logger.log(`❌ Aucune catégorie trouvée pour "${options.category}" - retour vide`);
+        }
+      }
+
       this.logger.log(`🔍 Where clause finale:`, JSON.stringify(whereClause, null, 2));
 
-      // Recherche textuelle
+      // Recherche textielle - combiner avec le filtre de catégorie si présent
       if (options.search) {
-        whereClause.OR = [
+        const searchFilters = [
           { name: { contains: options.search, mode: 'insensitive' } },
           { description: { contains: options.search, mode: 'insensitive' } },
           { vendor: { firstName: { contains: options.search, mode: 'insensitive' } } },
           { vendor: { lastName: { contains: options.search, mode: 'insensitive' } } },
           { vendor: { shop_name: { contains: options.search, mode: 'insensitive' } } }
         ];
+
+        if (whereClause.OR && whereClause.OR.length > 0) {
+          // S'il y a déjà un filtre de catégorie (OR), combiner avec AND
+          whereClause.AND = [
+            { OR: whereClause.OR }, // Le filtre de catégorie
+            { OR: searchFilters }   // Le filtre de recherche
+          ];
+          delete whereClause.OR; // Nettoyer l'OR direct
+          this.logger.log(`🔗 Combinaison recherche + catégorie avec AND logique`);
+        } else {
+          // Pas de filtre de catégorie, utiliser la recherche normalement
+          whereClause.OR = searchFilters;
+        }
       }
 
       const products = await this.prisma.vendorProduct.findMany({
@@ -2135,7 +2214,11 @@ export class VendorPublishService {
             include: {
               colorVariations: {
                 include: {
-                  images: true
+                  images: {
+                    include: {
+                      delimitations: true
+                    }
+                  }
                 }
               }
             }
@@ -2232,7 +2315,11 @@ export class VendorPublishService {
             include: {
               colorVariations: {
                 include: {
-                  images: true
+                  images: {
+                    include: {
+                      delimitations: true
+                    }
+                  }
                 }
               }
             }
@@ -2293,9 +2380,13 @@ export class VendorPublishService {
       if (options.vendorId) whereClause.vendorId = options.vendorId;
       if (options.minPrice) whereClause.price = { gte: options.minPrice };
       if (options.maxPrice) whereClause.price = { ...whereClause.price, lte: options.maxPrice };
+
+      // 🆕 FILTRE PAR CATÉGORIE COMPLET (Design + Produits de base)
       if (options.category) {
-        // Récupérer d'abord l'ID de la catégorie
-        const category = await this.prisma.designCategory.findFirst({
+        this.logger.log(`🔍 Recherche: filtre catégorie "${options.category}"`);
+
+        // 1. Chercher dans les DesignCategory (pour les produits avec designs)
+        const designCategory = await this.prisma.designCategory.findFirst({
           where: {
             name: {
               equals: options.category,
@@ -2304,15 +2395,51 @@ export class VendorPublishService {
           }
         });
 
-        if (category) {
-          whereClause.design = {
-            categoryId: category.id
-          };
+        // 2. Chercher dans les Category (pour les produits de base)
+        const baseCategory = await this.prisma.category.findFirst({
+          where: {
+            name: {
+              equals: options.category,
+              mode: 'insensitive'
+            }
+          }
+        });
+
+        // 3. Construire le filtre OR pour les deux types de catégories
+        const categoryFilters: any[] = [];
+
+        // Ajouter filtre pour DesignCategory si trouvée
+        if (designCategory) {
+          categoryFilters.push({
+            design: {
+              categoryId: designCategory.id
+            }
+          });
+          this.logger.log(`✅ Recherche: DesignCategory trouvée ID: ${designCategory.id}`);
+        }
+
+        // Ajouter filtre pour Category (produits de base) si trouvée
+        if (baseCategory) {
+          categoryFilters.push({
+            baseProduct: {
+              categories: {
+                some: {
+                  id: baseCategory.id
+                }
+              }
+            }
+          });
+          this.logger.log(`✅ Recherche: Category trouvée ID: ${baseCategory.id}`);
+        }
+
+        // 4. Ajouter à la clause OR existante
+        if (categoryFilters.length > 0) {
+          // Combiner avec les filtres de recherche existants
+          whereClause.OR.push(...categoryFilters);
+          this.logger.log(`🔗 Recherche: filtre catégorie combiné (${categoryFilters.length} conditions)`);
         } else {
-          // Si la catégorie n'existe pas, retourner des résultats vides
-          whereClause.design = {
-            categoryId: -1
-          };
+          // Si aucune catégorie trouvée, garder la recherche sur les autres champs
+          this.logger.log(`❌ Recherche: aucune catégorie trouvée pour "${options.category}"`);
         }
       }
 
@@ -2408,7 +2535,7 @@ export class VendorPublishService {
             // Traiter les images avec les utilitaires unifiés
             const processedImages = processImageDelimitations(colorVariation.images);
             const image = processedImages[0]; // Première image comme référence
-            
+
             designDelimitations.push({
               colorName: colorVariation.name,
               colorCode: colorVariation.colorCode,

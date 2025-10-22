@@ -1,10 +1,13 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { AppService } from './app.service';
-import { PrismaService } from './prisma.service';
+import { VendorPublishService } from './vendor-product/vendor-publish.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService, private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly vendorPublishService: VendorPublishService
+  ) {}
 
   @Get()
   getHello(): string {
@@ -14,63 +17,43 @@ export class AppController {
   @Get('public/vendor-products')
   async getAllVendorProducts(
     @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
     @Query('search') search?: string,
+    @Query('vendorId') vendorId?: number,
+    @Query('category') category?: string,
+    @Query('minPrice') minPrice?: number,
+    @Query('maxPrice') maxPrice?: number,
+    @Query('allProducts') allProducts?: boolean,
   ) {
     try {
-      const whereClause: any = {
-        isDelete: false,
-        status: 'PUBLISHED'
-      };
+      // Construire les filtres
+      const filters: any = {};
 
-      if (search) {
-        whereClause.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } }
-        ];
+      if (vendorId) filters.vendorId = parseInt(vendorId.toString());
+      if (search) filters.search = search;
+      if (category) filters.category = category;
+      if (minPrice) filters.minPrice = minPrice;
+      if (maxPrice) filters.maxPrice = maxPrice;
+
+      // Par défaut on affiche tous les produits (pas seulement les best sellers)
+      // Sauf si on veut explicitement filtrer par best sellers
+      if (allProducts === false) {
+        filters.isBestSeller = true;
       }
 
-      const products = await this.prisma.vendorProduct.findMany({
-        where: whereClause,
-        include: {
-          vendor: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              shop_name: true
-            }
-          },
-          baseProduct: {
-            select: {
-              id: true,
-              name: true,
-              description: true
-            }
-          }
-        },
-        orderBy: [
-          { createdAt: 'desc' }
-        ],
-        take: Math.min(limit || 20, 100)
+      // Récupérer les produits enrichis avec toutes les informations
+      const result = await this.vendorPublishService.getPublicVendorProducts({
+        limit: Math.min(limit || 20, 100),
+        offset: offset || 0,
+        ...filters
       });
 
+      // Retourner les produits enrichis avec toutes les informations
       return {
         success: true,
         message: 'Produits récupérés avec succès',
-        data: products.map(product => ({
-          id: product.id,
-          name: product.name,
-          description: product.description,
-          price: product.price,
-          status: product.status,
-          createdAt: product.createdAt,
-          vendor: {
-            id: product.vendor.id,
-            name: `${product.vendor.firstName} ${product.vendor.lastName}`,
-            shopName: product.vendor.shop_name
-          },
-          baseProduct: product.baseProduct
-        }))
+        data: result.products,
+        pagination: result.pagination
       };
     } catch (error) {
       return {
