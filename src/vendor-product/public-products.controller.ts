@@ -54,6 +54,7 @@ export class PublicProductsController {
     - status: Filtrer par statut (PUBLISHED, DRAFT, etc.)
     - search: Recherche textuelle
     - category: Catégorie de design
+    - genre: Filtrer par genre (HOMME, FEMME, BEBE, UNISEXE)
     - minPrice/maxPrice: Filtre par prix
     - allProducts: Afficher tous les produits au lieu des meilleures ventes
     `
@@ -64,6 +65,7 @@ export class PublicProductsController {
   @ApiQuery({ name: 'status', required: false, type: 'string', description: 'Statut: PUBLISHED, DRAFT, etc.' })
   @ApiQuery({ name: 'search', required: false, type: 'string', description: 'Recherche textuelle' })
   @ApiQuery({ name: 'category', required: false, type: 'string', description: 'Catégorie de design' })
+  @ApiQuery({ name: 'genre', required: false, enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE'], description: 'Filtrer par genre (public cible)' })
   @ApiQuery({ name: 'minPrice', required: false, type: 'number', description: 'Prix minimum' })
   @ApiQuery({ name: 'maxPrice', required: false, type: 'number', description: 'Prix maximum' })
   @ApiQuery({ name: 'allProducts', required: false, type: 'boolean', description: 'Afficher tous les produits au lieu des meilleures ventes' })
@@ -74,6 +76,7 @@ export class PublicProductsController {
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('category') category?: string,
+    @Query('genre') genre?: string,
     @Query('minPrice') minPrice?: number,
     @Query('maxPrice') maxPrice?: number,
     @Query('allProducts') allProducts?: boolean,
@@ -84,11 +87,12 @@ export class PublicProductsController {
     try {
       // Construire les filtres
       const filters: any = {};
-      
+
       if (vendorId) filters.vendorId = parseInt(vendorId.toString());
       if (status) filters.status = status;
       if (search) filters.search = search;
       if (category) filters.category = category;
+      if (genre) filters.genre = genre;
       if (minPrice) filters.minPrice = minPrice;
       if (maxPrice) filters.maxPrice = maxPrice;
       

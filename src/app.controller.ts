@@ -1,4 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { ApiQuery } from '@nestjs/swagger';
 import { AppService } from './app.service';
 import { VendorPublishService } from './vendor-product/vendor-publish.service';
 
@@ -15,6 +16,16 @@ export class AppController {
   }
 
   @Get('public/vendor-products')
+  @ApiQuery({ name: 'limit', required: false, type: 'number', description: 'Nombre de produits (défaut: 20)' })
+  @ApiQuery({ name: 'offset', required: false, type: 'number', description: 'Pagination (défaut: 0)' })
+  @ApiQuery({ name: 'search', required: false, type: 'string', description: 'Recherche textuelle' })
+  @ApiQuery({ name: 'vendorId', required: false, type: 'number', description: 'Filtrer par vendeur' })
+  @ApiQuery({ name: 'category', required: false, type: 'string', description: 'Filtrer par catégorie' })
+  @ApiQuery({ name: 'adminProductName', required: false, type: 'string', description: 'Filtrer par nom de produit admin' })
+  @ApiQuery({ name: 'minPrice', required: false, type: 'number', description: 'Prix minimum' })
+  @ApiQuery({ name: 'maxPrice', required: false, type: 'number', description: 'Prix maximum' })
+  @ApiQuery({ name: 'allProducts', required: false, type: 'boolean', description: 'Inclure tous les produits (défaut: true)' })
+  @ApiQuery({ name: 'genre', required: false, enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE'], description: 'Filtrer par genre (public cible)' })
   async getAllVendorProducts(
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
@@ -25,6 +36,7 @@ export class AppController {
     @Query('minPrice') minPrice?: number,
     @Query('maxPrice') maxPrice?: number,
     @Query('allProducts') allProducts?: boolean,
+    @Query('genre') genre?: string,
   ) {
     try {
       // Construire les filtres
@@ -36,6 +48,7 @@ export class AppController {
       if (adminProductName) filters.adminProductName = adminProductName;
       if (minPrice) filters.minPrice = minPrice;
       if (maxPrice) filters.maxPrice = maxPrice;
+      if (genre) filters.genre = genre;
 
       // Par défaut on affiche tous les produits (pas seulement les best sellers)
       // Sauf si on veut explicitement filtrer par best sellers

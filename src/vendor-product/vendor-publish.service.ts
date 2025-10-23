@@ -358,10 +358,11 @@ export class VendorPublishService {
     offset?: number;
     status?: string;
     search?: string;
+    genre?: string;
     } = {}
   ) {
     try {
-      const { limit = 12, offset = 0, status, search } = options;
+      const { limit = 12, offset = 0, status, search, genre } = options;
       
       const where: any = {};
       if (vendorId) {
@@ -369,6 +370,34 @@ export class VendorPublishService {
       }
       if (status && status !== 'all') {
         where.status = status.toUpperCase();
+      }
+      if (genre) {
+        this.logger.log(`🎯 Filtre par genre pour vendeur: "${genre}"`);
+
+        // Chercher les produits de base avec le genre spécifié
+        const matchingBaseProducts = await this.prisma.product.findMany({
+          where: {
+            genre: genre as any,
+            isReadyProduct: false // Uniquement les produits admin/mockups
+          },
+          select: {
+            id: true,
+            name: true,
+            genre: true
+          }
+        });
+
+        if (matchingBaseProducts.length > 0) {
+          const baseProductIds = matchingBaseProducts.map(bp => bp.id);
+          this.logger.log(`✅ ${baseProductIds.length} produits de base trouvés pour genre "${genre}":`, matchingBaseProducts.map(bp => `${bp.name} (${bp.genre})`));
+
+          // Appliquer directement le filtre sur whereClause.baseProductId
+          where.baseProductId = { in: baseProductIds };
+        } else {
+          // Si aucun produit trouvé, retourner des résultats vides
+          where.baseProductId = { in: [-1] };
+          this.logger.log(`❌ Aucun produit de base trouvé pour genre "${genre}" - retour vide`);
+        }
       }
       if (search) {
         where.OR = [
@@ -2086,6 +2115,7 @@ export class VendorPublishService {
     minPrice?: number;
     maxPrice?: number;
     isBestSeller?: boolean;
+    genre?: string;
   } = {}) {
     this.logger.log(`🌐 Récupération produits publics avec options:`, options);
 
@@ -2109,6 +2139,49 @@ export class VendorPublishService {
 
       // 🆕 FILTRE PAR NOM DE PRODUIT ADMIN
       let adminProductFilters: any[] = [];
+
+      // 🆕 FILTRE PAR GENRE
+      if (options.genre) {
+        this.logger.log(`🎯 Filtre par genre: "${options.genre}"`);
+
+        // Chercher les produits de base avec le genre spécifié
+        const matchingBaseProducts = await this.prisma.product.findMany({
+          where: {
+            genre: options.genre as any,
+            isReadyProduct: false // Uniquement les produits admin/mockups
+          },
+          select: {
+            id: true,
+            name: true,
+            genre: true
+          }
+        });
+
+        if (matchingBaseProducts.length > 0) {
+          const baseProductIds = matchingBaseProducts.map(bp => bp.id);
+          this.logger.log(`✅ ${baseProductIds.length} produits de base trouvés pour genre "${options.genre}":`, matchingBaseProducts.map(bp => `${bp.name} (${bp.genre})`));
+
+          // Appliquer directement le filtre sur whereClause.baseProductId
+          if (whereClause.baseProductId) {
+            // S'il y a déjà un filtre sur baseProductId, combiner avec AND
+            if (whereClause.baseProductId.in && Array.isArray(whereClause.baseProductId.in)) {
+              // Intersection des deux arrays
+              const intersection = whereClause.baseProductId.in.filter(id => baseProductIds.includes(id));
+              whereClause.baseProductId.in = intersection;
+            } else {
+              // Sinon, remplacer par notre filtre
+              whereClause.baseProductId = { in: baseProductIds };
+            }
+          } else {
+            // Ajouter notre filtre
+            whereClause.baseProductId = { in: baseProductIds };
+          }
+        } else {
+          // Si aucun produit trouvé, retourner des résultats vides
+          whereClause.baseProductId = { in: [-1] };
+          this.logger.log(`❌ Aucun produit de base trouvé pour genre "${options.genre}" - retour vide`);
+        }
+      }
 
       if (options.adminProductName) {
         this.logger.log(`🎯 Filtre par nom de produit admin: "${options.adminProductName}"`);
@@ -2266,7 +2339,12 @@ export class VendorPublishService {
             }
           },
           baseProduct: {
-            include: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              price: true,
+              genre: true,
               colorVariations: {
                 include: {
                   images: {
@@ -2569,6 +2647,7 @@ export class VendorPublishService {
         name: product.baseProduct.name,
         description: product.baseProduct.description,
         price: product.baseProduct.price,
+        genre: product.baseProduct.genre,
         colorVariations: product.baseProduct.colorVariations || [],
         sizes: product.baseProduct.sizes || []
       };

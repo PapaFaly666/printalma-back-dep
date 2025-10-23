@@ -483,6 +483,7 @@ export class VendorPublishController {
   @ApiQuery({ name: 'offset', required: false, type: 'number', description: 'Décalage (défaut: 0)' })
   @ApiQuery({ name: 'status', required: false, type: 'string', enum: ['all', 'published', 'draft'], description: 'Filtrer par statut' })
   @ApiQuery({ name: 'search', required: false, type: 'string', description: 'Recherche textuelle' })
+  @ApiQuery({ name: 'genre', required: false, enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE'], description: 'Filtrer par genre (public cible)' })
   @ApiResponse({
     status: 200,
     description: 'Liste des produits (Architecture v2)',
@@ -494,6 +495,7 @@ export class VendorPublishController {
     @Query('offset') offset?: number,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('genre') genre?: string,
   ) {
     const vendorId = req.user.sub;
     
@@ -502,6 +504,7 @@ export class VendorPublishController {
       offset: offset || 0,
       status,
       search,
+      genre,
     });
     
     this.logger.log(`📋 [v2] ${result.data.products.length} produits récupérés pour vendeur ${vendorId}`);
