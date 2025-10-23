@@ -1,12 +1,26 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
-import { CloudinaryConfig } from './cloudinary.config';
 import { CloudinaryUploadResult } from './cloudinary.types'; // Importez l'interface
 
 @Injectable()
 export class CloudinaryService {
-  constructor() {
-    cloudinary.config(CloudinaryConfig);
+  constructor(private configService: ConfigService) {
+    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+
+    console.log('🔍 Cloudinary Config from ConfigService:', {
+      cloud_name: cloudName ? '✅ ' + cloudName : '❌ missing',
+      api_key: apiKey ? '✅ ' + apiKey.substring(0, 6) + '...' : '❌ missing',
+      api_secret: apiSecret ? '✅ ***' : '❌ missing',
+    });
+
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+    });
   }
 
   async uploadImage(file: Express.Multer.File, folder: string = 'printalma'): Promise<CloudinaryUploadResult> {
@@ -69,16 +83,18 @@ export class CloudinaryService {
         }, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary error:', error);
-            return reject(new Error(`Upload failed: ${error.message}`));
+            const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+            return reject(new Error(`Upload failed: ${errorMessage}`));
           }
-          
+
           console.log(`✅ Cloudinary success: ${result.secure_url}`);
           resolve(result as CloudinaryUploadResult);
         });
 
       } catch (error) {
         console.error('❌ Cloudinary base64 error:', error);
-        reject(new Error(`Upload base64 failed: ${error.message}`));
+        const errorMessage = error?.message || error?.error?.message || String(error);
+        reject(new Error(`Upload base64 failed: ${errorMessage}`));
       }
     });
   }
@@ -107,16 +123,18 @@ export class CloudinaryService {
         }, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary design error:', error);
-            return reject(new Error(`Design upload failed: ${error.message}`));
+            const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+            return reject(new Error(`Design upload failed: ${errorMessage}`));
           }
-          
+
           console.log(`✅ Design original uploadé: ${result.secure_url}`);
           resolve(result as CloudinaryUploadResult);
         });
 
       } catch (error) {
         console.error('❌ Cloudinary design base64 error:', error);
-        reject(new Error(`Design upload base64 failed: ${error.message}`));
+        const errorMessage = error?.message || error?.error?.message || String(error);
+        reject(new Error(`Design upload base64 failed: ${errorMessage}`));
       }
     });
   }

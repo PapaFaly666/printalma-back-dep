@@ -1640,16 +1640,28 @@ export class VendorPublishService {
 
       // ✅ UPLOAD vers Cloudinary
       this.logger.log('📤 Upload design vers Cloudinary...');
+      this.logger.log(`📊 Taille base64: ${Math.round(designData.imageBase64.length / 1024)}KB`);
+
+      // Validation du format pour les SVG
+      let uploadOptions: any = {
+        folder: 'vendor-designs',
+        resource_type: 'auto', // 'auto' pour gérer les SVG correctement
+        public_id: `vendor_${vendorId}_design_${Date.now()}`,
+        transformation: [
+          { quality: 'auto', fetch_format: 'auto' }
+        ]
+      };
+
+      // Pour les SVG, on désactive les transformations qui peuvent causer des problèmes
+      if (designData.imageBase64.includes('data:image/svg+xml')) {
+        this.logger.log('🎨 Détection SVG - ajustement des options');
+        uploadOptions.resource_type = 'raw';
+        delete uploadOptions.transformation; // Les transformations ne s'appliquent pas bien aux SVG
+      }
+
       const uploadResult = await this.cloudinaryService.uploadBase64(
         designData.imageBase64,
-        {
-          folder: 'vendor-designs',
-          resource_type: 'image',
-          public_id: `vendor_${vendorId}_design_${Date.now()}`,
-          transformation: [
-            { quality: 'auto', fetch_format: 'auto' }
-          ]
-        }
+        uploadOptions
       );
 
       this.logger.log(`✅ Design uploadé: ${uploadResult.secure_url}`);
@@ -1690,8 +1702,15 @@ export class VendorPublishService {
       };
 
     } catch (error) {
-      this.logger.error('❌ Erreur création design:', error);
-      throw new BadRequestException(`Erreur création design: ${error.message}`);
+      this.logger.error('❌ Erreur création design:', {
+        message: error?.message,
+        error: error,
+        stack: error?.stack,
+        name: error?.name
+      });
+
+      const errorMessage = error?.message || error?.error?.message || String(error);
+      throw new BadRequestException(`Erreur création design: ${errorMessage}`);
     }
   }
 
