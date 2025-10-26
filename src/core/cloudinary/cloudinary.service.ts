@@ -58,14 +58,18 @@ export class CloudinaryService {
   async uploadBase64(base64Data: string, options: any = {}): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       console.log(`🔄 Upload Cloudinary base64: ${Math.round(base64Data.length / 1024)}KB`);
-      
+
       try {
         // Vérifier le format base64
         if (!base64Data.startsWith('data:image/')) {
           throw new Error('Format base64 invalide - doit commencer par data:image/');
         }
 
-        const result = cloudinary.uploader.upload(base64Data, {
+        // Détecter si c'est un SVG
+        const isSVG = base64Data.includes('data:image/svg+xml');
+
+        // Configuration par défaut (pour images raster)
+        let defaultConfig: any = {
           folder: 'vendor-products',
           resource_type: 'image',
           quality: 'auto',
@@ -78,9 +82,27 @@ export class CloudinaryService {
               fetch_format: 'auto',
               flags: 'progressive'
             }
-          ],
+          ]
+        };
+
+        // Configuration spéciale pour SVG
+        if (isSVG) {
+          console.log('🎨 Détection SVG - upload sans transformations');
+          defaultConfig = {
+            folder: 'vendor-products',
+            resource_type: 'image', // Garder 'image' pour éviter les problèmes CORS avec /raw/
+            format: 'svg', // Forcer le format SVG
+            // Pas de transformations pour préserver le format vectoriel
+          };
+        }
+
+        // Les options passées en paramètre peuvent override les defaults
+        const uploadConfig = {
+          ...defaultConfig,
           ...options
-        }, (error, result) => {
+        };
+
+        const result = cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary error:', error);
             const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
@@ -107,20 +129,40 @@ export class CloudinaryService {
   async uploadHighQualityDesign(base64Data: string, options: any = {}): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       console.log(`🎨 Upload design haute qualité: ${Math.round(base64Data.length / 1024)}KB`);
-      
+
       try {
         if (!base64Data.startsWith('data:image/')) {
           throw new Error('Format base64 invalide - doit commencer par data:image/');
         }
 
-        const result = cloudinary.uploader.upload(base64Data, {
+        // Détecter si c'est un SVG
+        const isSVG = base64Data.includes('data:image/svg+xml');
+
+        let defaultConfig: any = {
           folder: 'designs-originals',
           resource_type: 'image',
           quality: 100,
           format: 'png',
           transformation: [], // Pas de transformation pour préserver la qualité originale
+        };
+
+        // Configuration spéciale pour SVG
+        if (isSVG) {
+          console.log('🎨 Design SVG détecté - upload sans transformations');
+          defaultConfig = {
+            folder: 'designs-originals',
+            resource_type: 'image', // Garder 'image' pour éviter les problèmes CORS avec /raw/
+            format: 'svg', // Forcer le format SVG
+            // Pas de transformation pour les SVG
+          };
+        }
+
+        const uploadConfig = {
+          ...defaultConfig,
           ...options
-        }, (error, result) => {
+        };
+
+        const result = cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary design error:', error);
             const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
@@ -147,13 +189,16 @@ export class CloudinaryService {
   async uploadProductImage(base64Data: string, options: any = {}): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       console.log(`🖼️ Upload image produit: ${Math.round(base64Data.length / 1024)}KB`);
-      
+
       try {
         if (!base64Data.startsWith('data:image/')) {
           throw new Error('Format base64 invalide - doit commencer par data:image/');
         }
 
-        const result = cloudinary.uploader.upload(base64Data, {
+        // Détecter si c'est un SVG
+        const isSVG = base64Data.includes('data:image/svg+xml');
+
+        let defaultConfig: any = {
           folder: 'vendor-products',
           resource_type: 'image',
           quality: 'auto:good',
@@ -168,14 +213,31 @@ export class CloudinaryService {
               flags: 'progressive',
               dpr: 'auto'
             }
-          ],
+          ]
+        };
+
+        // Configuration spéciale pour SVG
+        if (isSVG) {
+          console.log('🖼️ Image produit SVG détectée - upload sans transformations');
+          defaultConfig = {
+            folder: 'vendor-products',
+            resource_type: 'image', // Garder 'image' pour éviter les problèmes CORS avec /raw/
+            format: 'svg', // Forcer le format SVG
+            // Pas de transformations pour les SVG
+          };
+        }
+
+        const uploadConfig = {
+          ...defaultConfig,
           ...options
-        }, (error, result) => {
+        };
+
+        const result = cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary product error:', error);
             return reject(new Error(`Product upload failed: ${error.message}`));
           }
-          
+
           console.log(`✅ Image produit uploadée: ${result.secure_url}`);
           resolve(result as CloudinaryUploadResult);
         });
