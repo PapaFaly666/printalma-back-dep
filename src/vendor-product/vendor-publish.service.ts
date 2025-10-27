@@ -374,22 +374,30 @@ export class VendorPublishService {
       if (genre) {
         this.logger.log(`🎯 Filtre par genre pour vendeur: "${genre}"`);
 
-        // Chercher les produits de base avec le genre spécifié
+        // Chercher les produits de base (table Product) avec le genre spécifié
+        // Les produits de base sont dans la table Product et servent de templates aux VendorProducts
         const matchingBaseProducts = await this.prisma.product.findMany({
           where: {
             genre: genre as any,
-            isReadyProduct: false // Uniquement les produits admin/mockups
+            isDelete: false, // Uniquement les produits non supprimés
+            // isReadyProduct peut être true ou false selon le type de produit de base
           },
           select: {
             id: true,
             name: true,
-            genre: true
+            genre: true,
+            isReadyProduct: true
           }
         });
 
+        this.logger.log(`🔍 Recherche produits de base (Product) pour genre "${genre}": ${matchingBaseProducts.length} trouvés`);
+        if (matchingBaseProducts.length > 0) {
+          this.logger.log(`📋 Détails:`, matchingBaseProducts.map(bp => `${bp.name} (genre=${bp.genre}, isReady=${bp.isReadyProduct})`));
+        }
+
         if (matchingBaseProducts.length > 0) {
           const baseProductIds = matchingBaseProducts.map(bp => bp.id);
-          this.logger.log(`✅ ${baseProductIds.length} produits de base trouvés pour genre "${genre}":`, matchingBaseProducts.map(bp => `${bp.name} (${bp.genre})`));
+          this.logger.log(`✅ ${baseProductIds.length} produits de base trouvés pour genre "${genre}"`);
 
           // Appliquer directement le filtre sur whereClause.baseProductId
           where.baseProductId = { in: baseProductIds };
@@ -2163,22 +2171,30 @@ export class VendorPublishService {
       if (options.genre) {
         this.logger.log(`🎯 Filtre par genre: "${options.genre}"`);
 
-        // Chercher les produits de base avec le genre spécifié
+        // Chercher les produits de base (table Product) avec le genre spécifié
+        // Les produits de base sont dans la table Product et servent de templates aux VendorProducts
         const matchingBaseProducts = await this.prisma.product.findMany({
           where: {
             genre: options.genre as any,
-            isReadyProduct: false // Uniquement les produits admin/mockups
+            isDelete: false, // Uniquement les produits non supprimés
+            // isReadyProduct peut être true ou false selon le type de produit de base
           },
           select: {
             id: true,
             name: true,
-            genre: true
+            genre: true,
+            isReadyProduct: true
           }
         });
 
+        this.logger.log(`🔍 Recherche produits de base (Product) pour genre "${options.genre}": ${matchingBaseProducts.length} trouvés`);
+        if (matchingBaseProducts.length > 0) {
+          this.logger.log(`📋 Détails:`, matchingBaseProducts.map(bp => `${bp.name} (genre=${bp.genre}, isReady=${bp.isReadyProduct})`));
+        }
+
         if (matchingBaseProducts.length > 0) {
           const baseProductIds = matchingBaseProducts.map(bp => bp.id);
-          this.logger.log(`✅ ${baseProductIds.length} produits de base trouvés pour genre "${options.genre}":`, matchingBaseProducts.map(bp => `${bp.name} (${bp.genre})`));
+          this.logger.log(`✅ ${baseProductIds.length} produits de base trouvés pour genre "${options.genre}"`);
 
           // Appliquer directement le filtre sur whereClause.baseProductId
           if (whereClause.baseProductId) {
@@ -2439,6 +2455,8 @@ export class VendorPublishService {
     this.logger.log(`🔍 Récupération détails produit public ${productId}`);
 
     try {
+      this.logger.log(`🔍 Récupération produit public ID: ${productId}`);
+
       const product = await this.prisma.vendorProduct.findFirst({
         where: {
           id: productId,
@@ -2486,6 +2504,23 @@ export class VendorPublishService {
       });
 
       if (!product) {
+        // Vérifier si le produit existe mais ne remplit pas les conditions
+        const productExists = await this.prisma.vendorProduct.findUnique({
+          where: { id: productId },
+          select: {
+            id: true,
+            isDelete: true,
+            status: true,
+            vendor: { select: { status: true } }
+          }
+        });
+
+        if (productExists) {
+          this.logger.warn(`⚠️ Produit ${productId} existe mais ne remplit pas les conditions: isDelete=${productExists.isDelete}, status=${productExists.status}, vendorStatus=${productExists.vendor?.status}`);
+        } else {
+          this.logger.warn(`⚠️ Produit ${productId} n'existe pas dans la base de données`);
+        }
+
         throw new NotFoundException(`Produit ${productId} introuvable ou non publié`);
       }
 

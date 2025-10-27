@@ -55,7 +55,9 @@ export class ProductService {
           const uploadResult = await this.cloudinaryService.uploadImage(imageFile);
           uploadedImages.set(image.fileId, uploadResult);
         } catch (error) {
-          throw new BadRequestException(`Failed to upload image with fileId "${image.fileId}": ${error.message}`);
+          console.error(`❌ Erreur upload image ${image.fileId}:`, error);
+          const errorMessage = error?.message || error?.error?.message || JSON.stringify(error) || 'Unknown error';
+          throw new BadRequestException(`Failed to upload image with fileId "${image.fileId}": ${errorMessage}`);
         }
       }
     }
@@ -1817,7 +1819,9 @@ export class ProductService {
           const uploadResult = await this.cloudinaryService.uploadImage(imageFile);
           uploadedImages.set(image.fileId, uploadResult);
         } catch (error) {
-          throw new BadRequestException(`Failed to upload image with fileId "${image.fileId}": ${error.message}`);
+          console.error(`❌ Erreur upload image ${image.fileId}:`, error);
+          const errorMessage = error?.message || error?.error?.message || JSON.stringify(error) || 'Unknown error';
+          throw new BadRequestException(`Failed to upload image with fileId "${image.fileId}": ${errorMessage}`);
         }
       }
     }
