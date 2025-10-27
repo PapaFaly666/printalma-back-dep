@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Paytech - Correction URLs</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px;
+            font-size: 16px;
+        }
+        .button:hover {
+            background: #059669;
+        }
+        .button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #16a34a;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #fffbeb;
+            border: 1px solid #fed7aa;
+            color: #d97706;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+        .test-results {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Paytech - Correction URLs</h1>
+        <p>Cette page permet de tester la solution de correction d'URLs Paytech.</p>
+
+        <div class="test-section">
+            <h2>🔧 Test 1 : Service mis à jour</h2>
+            <button class="button" onclick="testUpdatedService()">Tester le service mis à jour</button>
+            <div id="service-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔗 Test 2 : Validation d'URLs</h2>
+            <button class="button" onclick="testURLValidation()">Valider différentes URLs</button>
+            <div id="validation-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>💳 Test 3 : Paiement simple</h2>
+            <button class="button" onclick="testSimplePayment()">Créer un paiement simple</button>
+            <div id="payment-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>⚡ Test 4 : Paiement rapide</h2>
+            <button class="button" onclick="testQuickPayment()">Paiement rapide (quickPaytech)</button>
+            <div id="quick-result"></div>
+        </div>
+    </div>
+
+    <!-- Script du service mis à jour -->
+    <script src="frontend-examples/paytech-service-updated.js"></script>
+
+    <script>
+        let testResults = [];
+
+        function addResult(type, title, content) {
+            testResults.push({ type, title, content, timestamp: new Date() });
+            displayResults();
+        }
+
+        function displayResults() {
+            const container = document.querySelector('.container');
+
+            // Supprimer les anciens résultats
+            const oldResults = container.querySelectorAll('.test-results');
+            oldResults.forEach(el => el.remove());
+
+            // Afficher les nouveaux résultats
+            testResults.slice(-3).forEach(result => {
+                const div = document.createElement('div');
+                div.className = 'test-results';
+                div.innerHTML = `
+                    <strong>[${result.type.toUpperCase()}] ${result.title}</strong>
+                    ${result.timestamp.toLocaleTimeString()}
+
+${result.content}
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function testUpdatedService() {
+            const resultDiv = document.getElementById('service-result');
+            resultDiv.innerHTML = '<div class="warning">⏳ Test en cours...</div>';
+
+            try {
+                const service = new PaytechService();
+
+                // Test de configuration
+                addResult('info', 'Test configuration', 'Test de la configuration Paytech...');
+                const config = await service.testConfiguration();
+                addResult('success', 'Configuration OK', JSON.stringify(config, null, 2));
+
+                // Test de validation d'URL
+                addResult('info', 'Test validation URL', 'Test de validation d\'URL...');
+                const paymentData = service.createValidPaymentData({
+                    item_name: 'Test Product',
+                    item_price: 5000,
+                    ref_command: 'TEST-URL',
+                    command_name: 'Test validation'
+                });
+                addResult('success', 'Validation OK', JSON.stringify(paymentData, null, 2));
+
+                resultDiv.innerHTML = '<div class="success">✅ Service mis à jour fonctionne parfaitement !</div>';
+
+            } catch (error) {
+                addResult('error', 'Erreur service', error.message);
+                resultDiv.innerHTML = `<div class="error">❌ Erreur: ${error.message}</div>`;
+            }
+        }
+
+        async function testURLValidation() {
+            const resultDiv = document.getElementById('validation-result');
+            resultDiv.innerHTML = '<div class="warning">⏳ Test en cours...</div>';
+
+            try {
+                const service = new PaytechService();
+
+                const testCases = [
+                    { name: 'URL complète', url: 'https://example.com/success' },
+                    { name: 'URL localhost', url: 'localhost:3000/success' },
+                    { name: 'URL sans protocole', url: 'example.com/success' },
+                    { name: 'URL invalide', url: 'not-a-url' },
+                    { name: 'URL avec port', url: 'localhost:5174/payment/cancel' }
+                ];
+
+                for (const testCase of testCases) {
+                    addResult('info', `Test: ${testCase.name}`, `URL: ${testCase.url}`);
+
+                    try {
+                        const cleaned = service.sanitizeURL(testCase.url);
+                        addResult('success', `✅ ${testCase.name}`, `Nettoyée: ${cleaned}`);
+                    } catch (error) {
+                        addResult('error', `❌ ${testCase.name}`, `Erreur: ${error.message}`);
+                    }
+                }
+
+                resultDiv.innerHTML = '<div class="success">✅ Tests d\'URL validés avec succès !</div>';
+
+            } catch (error) {
+                addResult('error', 'Erreur validation', error.message);
+                resultDiv.innerHTML = `<div class="error">❌ Erreur: ${error.message}</div>`;
+            }
+        }
+
+        async function testSimplePayment() {
+            const resultDiv = document.getElementById('payment-result');
+            resultDiv.innerHTML = '<div class="warning">⏳ Test en cours...</div>';
+
+            try {
+                const service = new PaytechService();
+
+                addResult('info', 'Paiement simple', 'Création d\'un paiement simple...');
+
+                const response = await service.createSimplePayment(
+                    'T-Shirt Test',
+                    1000, // Petit montant pour le test
+                    'SIMPLE-TEST'
+                );
+
+                addResult('success', 'Paiement créé', JSON.stringify(response, null, 2));
+                addResult('info', 'Redirection', `URL: ${response.data.redirect_url}`);
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        ✅ Paiement créé avec succès !<br>
+                        <button class="button" onclick="window.location.href='${response.data.redirect_url}'">
+                            Accéder à la page de paiement
+                        </button>
+                    </div>
+                `;
+
+            } catch (error) {
+                addResult('error', 'Erreur paiement', error.message);
+                resultDiv.innerHTML = `<div class="error">❌ Erreur: ${error.message}</div>`;
+            }
+        }
+
+        async function testQuickPayment() {
+            const resultDiv = document.getElementById('quick-result');
+            resultDiv.innerHTML = '<div class="warning">⏳ Test en cours...</div>';
+
+            try {
+                addResult('info', 'Paiement rapide', 'Utilisation de quickPaytech...');
+
+                await quickPaytech.pay('Test Rapide', 1500);
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        ✅ Paiement rapide initialisé !<br>
+                        Redirection vers la page de paiement...
+                    </div>
+                `;
+
+            } catch (error) {
+                addResult('error', 'Erreur paiement rapide', error.message);
+                resultDiv.innerHTML = `<div class="error">❌ Erreur: ${error.message}</div>`;
+            }
+        }
+
+        // Charger les résultats initiaux
+        window.addEventListener('load', () => {
+            addResult('info', 'Initialisation', 'Page de test Paytech chargée');
+            addResult('info', 'Service', 'Service mis à jour avec validation d\'URLs');
+            addResult('info', 'Prêt', 'Tests prêts à être exécutés');
+        });
+    </script>
+</body>
+</html>

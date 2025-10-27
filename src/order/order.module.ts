@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { OrderController } from './order.controller';
 import { OrderGateway } from './order.gateway';
@@ -7,6 +7,8 @@ import { NotificationService } from '../notification/notification.service';
 import { JwtModule } from '@nestjs/jwt';
 import { RealBestSellersService } from '../vendor-product/services/real-best-sellers.service';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
+import { PaytechService } from '../paytech/paytech.service';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -14,15 +16,17 @@ import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '24h' },
     }),
+    ConfigModule,
   ],
   controllers: [OrderController],
   providers: [
-    OrderService, 
-    OrderGateway, 
-    PrismaService, 
+    OrderService,
+    OrderGateway,
+    PrismaService,
     NotificationService,
     RealBestSellersService,
     SalesStatsUpdaterService,
+    PaytechService,
   ],
   exports: [OrderService, OrderGateway],
 })

@@ -1,21 +1,20 @@
 import { Controller, Post, UploadedFile, UseInterceptors, Get } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from './cloudinary.service';
-import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 
 @Controller('cloudinary')
 export class CloudinaryController {
   constructor(
     private readonly cloudinaryService: CloudinaryService,
-    private readonly configService: ConfigService,
   ) {}
 
   @Get('/config-check')
   async checkConfig() {
-    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
-    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
-    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+    // Direct values from environment
+    const cloudName = 'dsxab4qnu';
+    const apiKey = '267848335846173';
+    const apiSecret = 'WLhzU3riCxujR1DXRXyMmLPUCoU';
 
     return {
       cloudName: {

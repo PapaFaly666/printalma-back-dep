@@ -30,6 +30,7 @@ import { AdminUsersModule } from './admin-users/admin-users.module';
 import { RolesModule } from './roles/roles.module';
 import { SubCategoryModule } from './sub-category/sub-category.module';
 import { VariationModule } from './variation/variation.module';
+import { PaytechModule } from './paytech/paytech.module';
 
 @Module({
   imports: [
@@ -60,7 +61,8 @@ import { VariationModule } from './variation/variation.module';
     VendorFundsModule,
     VendorTypeModule,
     AdminUsersModule,
-    RolesModule
+    RolesModule,
+    PaytechModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

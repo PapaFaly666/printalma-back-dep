@@ -1,45 +1,68 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryUploadResult } from './cloudinary.types'; // Importez l'interface
 
+// Configure Cloudinary immediately when module is loaded
+cloudinary.config({
+  cloud_name: 'dsxab4qnu',
+  api_key: '267848335846173',
+  api_secret: 'WLhzU3riCxujR1DXRXyMmLPUCoU',
+});
+
+console.log('🔍 Cloudinary configured at module import: ✅ dsxab4qnu, ✅ 267848***, ✅ ***');
+
 @Injectable()
 export class CloudinaryService {
-  constructor(private configService: ConfigService) {
-    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
-    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
-    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+  private cloudName = 'dsxab4qnu';
+  private apiKey = '267848335846173';
+  private apiSecret = 'WLhzU3riCxujR1DXRXyMmLPUCoU';
 
-    console.log('🔍 Cloudinary Config from ConfigService:', {
-      cloud_name: cloudName ? '✅ ' + cloudName : '❌ missing',
-      api_key: apiKey ? '✅ ' + apiKey.substring(0, 6) + '...' : '❌ missing',
-      api_secret: apiSecret ? '✅ ***' : '❌ missing',
+  constructor() {
+    console.log('🔍 Cloudinary Config from environment variables:', {
+      cloud_name: this.cloudName ? '✅ ' + this.cloudName : '❌ missing',
+      api_key: this.apiKey ? '✅ ' + this.apiKey : '❌ missing',
+      api_secret: this.apiSecret ? '✅ ***' : '❌ missing',
     });
 
+    // Configuration globale comme backup
     cloudinary.config({
-      cloud_name: cloudName,
-      api_key: apiKey,
-      api_secret: apiSecret,
+      cloud_name: this.cloudName,
+      api_key: this.apiKey,
+      api_secret: this.apiSecret,
+    });
+  }
+
+  // Méthode helper pour s'assurer que la config est bien chargée avant chaque upload
+  private ensureConfigured() {
+    cloudinary.config({
+      cloud_name: this.cloudName,
+      api_key: this.apiKey,
+      api_secret: this.apiSecret,
     });
   }
 
   async uploadImage(file: Express.Multer.File, folder: string = 'printalma'): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       try {
+        // S'assurer que Cloudinary est configuré avant l'upload
+        this.ensureConfigured();
+
+        const uploadConfig = {
+          folder: folder,
+          resource_type: 'auto' as const,
+          public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
+          transformation: [
+            {
+              width: 1200,
+              crop: 'limit',
+              quality: 90,
+              fetch_format: 'auto'
+            }
+          ]
+        };
+
         const upload = cloudinary.uploader.upload_stream(
-          {
-            folder: folder,
-            resource_type: 'auto',
-            public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
-            transformation: [
-              {
-                width: 1200,
-                crop: 'limit',
-                quality: 90,
-                fetch_format: 'auto'
-              }
-            ]
-          },
+          uploadConfig,
           (error, result) => {
             if (error) {
               console.error('❌ Cloudinary uploadImage error:', error);
@@ -106,13 +129,16 @@ export class CloudinaryService {
           };
         }
 
+        // S'assurer que Cloudinary est configuré avant l'upload
+        this.ensureConfigured();
+
         // Les options passées en paramètre peuvent override les defaults
         const uploadConfig = {
           ...defaultConfig,
           ...options
         };
 
-        const result = cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
+        cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary error:', error);
             const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
@@ -167,12 +193,15 @@ export class CloudinaryService {
           };
         }
 
+        // S'assurer que Cloudinary est configuré avant l'upload
+        this.ensureConfigured();
+
         const uploadConfig = {
           ...defaultConfig,
           ...options
         };
 
-        const result = cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
+        cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary design error:', error);
             const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
@@ -237,12 +266,15 @@ export class CloudinaryService {
           };
         }
 
+        // S'assurer que Cloudinary est configuré avant l'upload
+        this.ensureConfigured();
+
         const uploadConfig = {
           ...defaultConfig,
           ...options
         };
 
-        const result = cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
+        cloudinary.uploader.upload(base64Data, uploadConfig, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary product error:', error);
             return reject(new Error(`Product upload failed: ${error.message}`));
@@ -262,9 +294,12 @@ export class CloudinaryService {
   async uploadImageWithOptions(file: Express.Multer.File, options: any = {}): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       try {
+        // S'assurer que Cloudinary est configuré avant l'upload
+        this.ensureConfigured();
+
         // Fusionner les options par défaut avec les options personnalisées
         const uploadOptions = {
-          resource_type: 'auto',
+          resource_type: 'auto' as const,
           public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
           ...options
         };
@@ -304,25 +339,30 @@ export class CloudinaryService {
         const uniqueId = vendorId ? `vendor_${vendorId}` : `vendor_${Date.now()}`;
         const publicId = `${uniqueId}_${Math.round(Math.random() * 1E9)}`;
 
+        // S'assurer que Cloudinary est configuré avant l'upload
+        this.ensureConfigured();
+
+        const uploadConfig = {
+          folder: 'profile-photos',
+          resource_type: 'image' as const,
+          public_id: publicId,
+          quality: 'auto:good',
+          fetch_format: 'auto',
+          transformation: [
+            {
+              width: 400,
+              height: 400,
+              crop: 'fill',
+              gravity: 'face',
+              quality: 'auto:good',
+              fetch_format: 'auto',
+              flags: 'progressive'
+            }
+          ]
+        };
+
         const upload = cloudinary.uploader.upload_stream(
-          {
-            folder: 'profile-photos',
-            resource_type: 'image',
-            public_id: publicId,
-            quality: 'auto:good',
-            fetch_format: 'auto',
-            transformation: [
-              {
-                width: 400,
-                height: 400,
-                crop: 'fill',
-                gravity: 'face',
-                quality: 'auto:good',
-                fetch_format: 'auto',
-                flags: 'progressive'
-              }
-            ]
-          },
+          uploadConfig,
           (error, result) => {
             if (error) {
               console.error('❌ Cloudinary profile photo error:', error);
@@ -386,15 +426,18 @@ export class CloudinaryService {
   async uploadFromUrl(imageUrl: string, options: any = {}): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       try {
-        const defaultOptions = {
+        // S'assurer que Cloudinary est configuré avant l'upload
+        this.ensureConfigured();
+
+        const uploadOptions = {
           folder: 'vendor-mockups',
-          resource_type: 'image',
+          resource_type: 'image' as const,
           quality: 'auto',
           fetch_format: 'auto',
           ...options,
         };
 
-        cloudinary.uploader.upload(imageUrl, defaultOptions, (error, result) => {
+        cloudinary.uploader.upload(imageUrl, uploadOptions, (error, result) => {
           if (error) {
             console.error('❌ Cloudinary uploadFromUrl error:', error);
             return reject(new Error(`Upload from URL failed: ${error.message}`));

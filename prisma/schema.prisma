@@ -330,6 +330,8 @@ model Order {
   confirmedAt         DateTime?
   deliveredAt         DateTime?
   paymentMethod       String?
+  paymentStatus       String?                   // PayTech payment status: PENDING, PAID, FAILED
+  transactionId       String?                   // PayTech transaction ID
   shippedAt           DateTime?
   shippingAmount      Float                     @default(0)
   subtotal            Float?
@@ -342,6 +344,8 @@ model Order {
   @@index([userId])
   @@index([status])
   @@index([orderNumber])
+  @@index([paymentStatus])
+  @@index([transactionId])
 }
 
 model OrderItem {

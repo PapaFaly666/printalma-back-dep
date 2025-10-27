@@ -4,8 +4,18 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import * as bodyParser from 'body-parser';
+import { v2 as cloudinary } from 'cloudinary';
 
 async function bootstrap() {
+  // Initialize Cloudinary configuration globally
+  cloudinary.config({
+    cloud_name: 'dsxab4qnu',
+    api_key: '267848335846173',
+    api_secret: 'WLhzU3riCxujR1DXRXyMmLPUCoU',
+  });
+
+  console.log('🔍 Global Cloudinary config initialized: ✅ dsxab4qnu, ✅ 267848***, ✅ ***');
+
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
 

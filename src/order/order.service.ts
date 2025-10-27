@@ -1,8 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrderDto, PaymentMethod } from './dto/create-order.dto';
 import { OrderStatus } from '@prisma/client';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
+import { PaytechService } from '../paytech/paytech.service';
+import { ConfigService } from '@nestjs/config';
+import { PayTechCurrency, PayTechEnvironment } from '../paytech/dto/payment-request.dto';
 
 @Injectable()
 export class OrderService {
@@ -10,7 +13,9 @@ export class OrderService {
 
   constructor(
     private prisma: PrismaService,
-    private salesStatsUpdaterService: SalesStatsUpdaterService
+    private salesStatsUpdaterService: SalesStatsUpdaterService,
+    private paytechService: PaytechService,
+    private configService: ConfigService
   ) {}
 
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
@@ -80,10 +85,95 @@ export class OrderService {
         // Ne pas faire échouer la création de commande pour cette erreur
       }
 
-      return this.formatOrderResponse(order);
+      // 💳 PayTech Payment Integration
+      let paymentData = null;
+      if (createOrderDto.paymentMethod === PaymentMethod.PAYTECH && createOrderDto.initiatePayment) {
+        try {
+          this.logger.log(`💳 Initializing PayTech payment for order: ${order.orderNumber}`);
+
+          const paymentResponse = await this.paytechService.requestPayment({
+            item_name: `Order ${order.orderNumber}`,
+            item_price: order.totalAmount,
+            ref_command: order.orderNumber,
+            command_name: `Printalma Order - ${order.orderNumber}`,
+            currency: PayTechCurrency.XOF,
+            env: (this.configService.get('PAYTECH_ENVIRONMENT') === 'test'
+              ? PayTechEnvironment.TEST
+              : PayTechEnvironment.PROD),
+            ipn_url: this.configService.get('PAYTECH_IPN_URL'),
+            success_url: this.configService.get('PAYTECH_SUCCESS_URL'),
+            cancel_url: this.configService.get('PAYTECH_CANCEL_URL'),
+            custom_field: JSON.stringify({ orderId: order.id, userId })
+          });
+
+          paymentData = {
+            token: paymentResponse.token,
+            redirect_url: paymentResponse.redirect_url || paymentResponse.redirectUrl
+          };
+
+          this.logger.log(`💳 Payment initialized successfully: ${paymentResponse.token}`);
+        } catch (error) {
+          this.logger.error(`❌ Failed to initialize PayTech payment: ${error.message}`, error.stack);
+          // Don't fail order creation if payment initialization fails
+          // The user can try to pay later
+        }
+      }
+
+      const formattedOrder = this.formatOrderResponse(order);
+
+      return paymentData
+        ? { ...formattedOrder, payment: paymentData }
+        : formattedOrder;
     } catch (error) {
       console.error('Erreur lors de la création de la commande:', error);
       throw new BadRequestException(`Erreur lors de la création de la commande: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update order payment status after PayTech IPN callback
+   * This should be called by the PayTech IPN handler
+   */
+  async updateOrderPaymentStatus(
+    orderNumber: string,
+    paymentStatus: 'PAID' | 'FAILED',
+    transactionId?: string
+  ) {
+    try {
+      this.logger.log(`💳 Updating payment status for order ${orderNumber}: ${paymentStatus}`);
+
+      const order = await this.prisma.order.findFirst({
+        where: { orderNumber }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderNumber} not found`);
+      }
+
+      const updatedOrder = await this.prisma.order.update({
+        where: { id: order.id },
+        data: {
+          paymentStatus,
+          transactionId,
+          // If payment is successful, update order status to CONFIRMED
+          ...(paymentStatus === 'PAID' && { status: OrderStatus.CONFIRMED })
+        },
+        include: {
+          orderItems: {
+            include: {
+              product: true,
+              colorVariation: true,
+            }
+          },
+          user: true
+        }
+      });
+
+      this.logger.log(`✅ Payment status updated for order ${orderNumber}`);
+      return this.formatOrderResponse(updatedOrder);
+    } catch (error) {
+      this.logger.error(`❌ Failed to update payment status: ${error.message}`, error.stack);
+      throw error;
     }
   }
 

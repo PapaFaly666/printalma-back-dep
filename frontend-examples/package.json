@@ -1,0 +1,45 @@
+{
+  "name": "paytech-frontend-examples",
+  "version": "1.0.0",
+  "description": "Exemples d'intégration Paytech pour frontend",
+  "main": "paytech-service.js",
+  "scripts": {
+    "test": "echo \"No tests specified\" && exit 1",
+    "start": "python -m http.server 3000",
+    "dev": "python -m http.server 3000"
+  },
+  "keywords": [
+    "paytech",
+    "payment",
+    "frontend",
+    "integration",
+    "react",
+    "vue",
+    "javascript"
+  ],
+  "author": "Printalma Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {},
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "vue": ">=3.0.0"
+  },
+  "files": [
+    "paytech-service.js",
+    "react-hook.js",
+    "vue-component.vue",
+    "html-example.html",
+    "payment-urls.js",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/printalma/paytech-frontend-examples.git"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
