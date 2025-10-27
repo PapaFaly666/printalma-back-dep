@@ -25,28 +25,38 @@ export class CloudinaryService {
 
   async uploadImage(file: Express.Multer.File, folder: string = 'printalma'): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
-      const upload = cloudinary.uploader.upload_stream(
-        {
-          folder: folder,
-          resource_type: 'auto',
-          public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
-          transformation: [
-            {
-              width: 1200,
-              crop: 'limit',
-              quality: 90,
-              fetch_format: 'auto'
+      try {
+        const upload = cloudinary.uploader.upload_stream(
+          {
+            folder: folder,
+            resource_type: 'auto',
+            public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
+            transformation: [
+              {
+                width: 1200,
+                crop: 'limit',
+                quality: 90,
+                fetch_format: 'auto'
+              }
+            ]
+          },
+          (error, result) => {
+            if (error) {
+              console.error('❌ Cloudinary uploadImage error:', error);
+              const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+              return reject(new Error(`Image upload failed: ${errorMessage}`));
             }
-          ]
-        },
-        (error, result) => {
-          if (error) return reject(error);
-          resolve(result as CloudinaryUploadResult); // Cast the result to the interface
-        }
-      );
+            resolve(result as CloudinaryUploadResult);
+          }
+        );
 
-      const bufferStream = require('stream').Readable.from(file.buffer);
-      bufferStream.pipe(upload);
+        const bufferStream = require('stream').Readable.from(file.buffer);
+        bufferStream.pipe(upload);
+      } catch (error) {
+        console.error('❌ Cloudinary uploadImage unexpected error:', error);
+        const errorMessage = error?.message || String(error);
+        reject(new Error(`Image upload failed: ${errorMessage}`));
+      }
     });
   }
 
@@ -251,23 +261,33 @@ export class CloudinaryService {
 
   async uploadImageWithOptions(file: Express.Multer.File, options: any = {}): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
-      // Fusionner les options par défaut avec les options personnalisées
-      const uploadOptions = {
-        resource_type: 'auto',
-        public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
-        ...options
-      };
+      try {
+        // Fusionner les options par défaut avec les options personnalisées
+        const uploadOptions = {
+          resource_type: 'auto',
+          public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
+          ...options
+        };
 
-      const upload = cloudinary.uploader.upload_stream(
-        uploadOptions,
-        (error, result) => {
-          if (error) return reject(error);
-          resolve(result as CloudinaryUploadResult);
-        }
-      );
+        const upload = cloudinary.uploader.upload_stream(
+          uploadOptions,
+          (error, result) => {
+            if (error) {
+              console.error('❌ Cloudinary uploadImageWithOptions error:', error);
+              const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+              return reject(new Error(`Image upload with options failed: ${errorMessage}`));
+            }
+            resolve(result as CloudinaryUploadResult);
+          }
+        );
 
-      const bufferStream = require('stream').Readable.from(file.buffer);
-      bufferStream.pipe(upload);
+        const bufferStream = require('stream').Readable.from(file.buffer);
+        bufferStream.pipe(upload);
+      } catch (error) {
+        console.error('❌ Cloudinary uploadImageWithOptions unexpected error:', error);
+        const errorMessage = error?.message || String(error);
+        reject(new Error(`Image upload with options failed: ${errorMessage}`));
+      }
     });
   }
 
@@ -278,43 +298,50 @@ export class CloudinaryService {
    */
   async uploadProfilePhoto(file: Express.Multer.File, vendorId?: number): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
-      console.log(`📸 Upload photo de profil: ${file.originalname} (${Math.round(file.size / 1024)}KB)`);
-      
-      const uniqueId = vendorId ? `vendor_${vendorId}` : `vendor_${Date.now()}`;
-      const publicId = `${uniqueId}_${Math.round(Math.random() * 1E9)}`;
+      try {
+        console.log(`📸 Upload photo de profil: ${file.originalname} (${Math.round(file.size / 1024)}KB)`);
 
-      const upload = cloudinary.uploader.upload_stream(
-        {
-          folder: 'profile-photos',
-          resource_type: 'image',
-          public_id: publicId,
-          quality: 'auto:good',
-          fetch_format: 'auto',
-          transformation: [
-            {
-              width: 400,
-              height: 400,
-              crop: 'fill',
-              gravity: 'face',
-              quality: 'auto:good',
-              fetch_format: 'auto',
-              flags: 'progressive'
+        const uniqueId = vendorId ? `vendor_${vendorId}` : `vendor_${Date.now()}`;
+        const publicId = `${uniqueId}_${Math.round(Math.random() * 1E9)}`;
+
+        const upload = cloudinary.uploader.upload_stream(
+          {
+            folder: 'profile-photos',
+            resource_type: 'image',
+            public_id: publicId,
+            quality: 'auto:good',
+            fetch_format: 'auto',
+            transformation: [
+              {
+                width: 400,
+                height: 400,
+                crop: 'fill',
+                gravity: 'face',
+                quality: 'auto:good',
+                fetch_format: 'auto',
+                flags: 'progressive'
+              }
+            ]
+          },
+          (error, result) => {
+            if (error) {
+              console.error('❌ Cloudinary profile photo error:', error);
+              const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+              return reject(new Error(`Profile photo upload failed: ${errorMessage}`));
             }
-          ]
-        },
-        (error, result) => {
-          if (error) {
-            console.error('❌ Cloudinary profile photo error:', error);
-            return reject(new Error(`Profile photo upload failed: ${error.message}`));
-          }
-          
-          console.log(`✅ Photo de profil uploadée: ${result.secure_url}`);
-          resolve(result as CloudinaryUploadResult);
-        }
-      );
 
-      const bufferStream = require('stream').Readable.from(file.buffer);
-      bufferStream.pipe(upload);
+            console.log(`✅ Photo de profil uploadée: ${result.secure_url}`);
+            resolve(result as CloudinaryUploadResult);
+          }
+        );
+
+        const bufferStream = require('stream').Readable.from(file.buffer);
+        bufferStream.pipe(upload);
+      } catch (error) {
+        console.error('❌ Cloudinary uploadProfilePhoto unexpected error:', error);
+        const errorMessage = error?.message || String(error);
+        reject(new Error(`Profile photo upload failed: ${errorMessage}`));
+      }
     });
   }
 
