@@ -1,0 +1,148 @@
+═══════════════════════════════════════════════════════════════
+  GUIDE RAPIDE POUR LE FRONTEND - PAIEMENTS PAYTECH
+═══════════════════════════════════════════════════════════════
+
+📚 FICHIERS D'AIDE DISPONIBLES:
+
+1. GUIDE_INTEGRATION_FRONTEND.md
+   → Guide complet avec exemples React, Vue, Angular
+   → Configuration, composants, gestion d'erreurs
+   → Pages de redirection success/cancel
+
+2. frontend-examples/INTEGRATION_RAPIDE.md
+   → Intégration en 5 minutes
+   → Code minimal copier-coller
+   → Exemples super simples
+
+3. frontend-examples/paytech-payment-status-component.tsx
+   → Composant React complet et prêt à l'emploi
+   → Badge de statut avec code couleur
+   → Polling automatique
+
+═══════════════════════════════════════════════════════════════
+
+🚀 INTÉGRATION EN 3 ÉTAPES:
+
+ÉTAPE 1: Créer une commande avec paiement
+───────────────────────────────────────────
+fetch('http://localhost:3004/orders', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    orderItems: [{productId: 1, quantity: 1, unitPrice: 10000}],
+    totalAmount: 10000,
+    phoneNumber: '+221771234567',
+    shippingName: 'Client',
+    shippingCity: 'Dakar',
+    shippingCountry: 'Sénégal',
+    paymentMethod: 'PAYTECH',      // ⭐ Important
+    initiatePayment: true          // ⭐ Important
+  })
+})
+
+ÉTAPE 2: Rediriger vers PayTech
+────────────────────────────────
+const data = await response.json();
+if (data.success && data.data.payment) {
+  window.location.href = data.data.payment.redirect_url;
+}
+
+ÉTAPE 3: Créer 2 pages de redirection
+──────────────────────────────────────
+- /payment/success  → Paiement réussi ✅
+- /payment/cancel   → Paiement annulé ⚠️
+
+═══════════════════════════════════════════════════════════════
+
+📊 STATUTS DE PAIEMENT:
+
+┌───────────┬──────────────────────────────────────┐
+│ Statut    │ Description                          │
+├───────────┼──────────────────────────────────────┤
+│ PENDING   │ ⏳ En attente de paiement            │
+│ PAID      │ ✅ Paiement confirmé (commande OK)   │
+│ FAILED    │ ❌ Transaction refusée                │
+│ REJECTED  │ 🚫 Rejeté par l'utilisateur           │
+│ CANCELLED │ ⛔ Paiement annulé                    │
+└───────────┴──────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+
+🎨 BADGE DE STATUT (COPIER-COLLER):
+
+function PaymentStatusBadge({ status }) {
+  const badges = {
+    PENDING: '⏳ En attente',
+    PAID: '✅ Payé',
+    FAILED: '❌ Échoué',
+    REJECTED: '🚫 Rejeté',
+    CANCELLED: '⛔ Annulé'
+  };
+  return <span>{badges[status] || 'Non payé'}</span>;
+}
+
+═══════════════════════════════════════════════════════════════
+
+🔗 ENDPOINTS BACKEND DISPONIBLES:
+
+POST   /orders                    → Créer commande + paiement
+GET    /orders/:id                → Détails d'une commande
+GET    /paytech/test-config       → Tester configuration
+GET    /paytech/diagnose          → Tester API PayTech
+POST   /paytech/ipn-callback      → Webhook PayTech (auto)
+
+═══════════════════════════════════════════════════════════════
+
+⚠️  POINTS IMPORTANTS:
+
+1. TOUJOURS mettre: paymentMethod: 'PAYTECH'
+2. TOUJOURS mettre: initiatePayment: true
+3. TOUJOURS inclure le token JWT dans Authorization
+4. Créer les pages /payment/success et /payment/cancel
+5. Les URLs de redirection sont dans le .env du backend
+
+═══════════════════════════════════════════════════════════════
+
+🧪 TESTER RAPIDEMENT:
+
+1. Vérifier que le backend tourne:
+   curl http://localhost:3004/paytech/test-config
+
+2. Créer une commande (remplacer YOUR_TOKEN):
+   curl -X POST http://localhost:3004/orders \
+     -H "Authorization: Bearer YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"orderItems":[{"productId":1,"quantity":1,"unitPrice":10000}],"totalAmount":10000,"phoneNumber":"+221771234567","shippingName":"Test","shippingCity":"Dakar","shippingCountry":"Sénégal","paymentMethod":"PAYTECH","initiatePayment":true}'
+
+3. Copier le redirect_url et l'ouvrir dans un navigateur
+
+═══════════════════════════════════════════════════════════════
+
+💡 EXEMPLES PAR FRAMEWORK:
+
+React       → GUIDE_INTEGRATION_FRONTEND.md (section React)
+Vue.js      → GUIDE_INTEGRATION_FRONTEND.md (section Vue)
+Angular     → GUIDE_INTEGRATION_FRONTEND.md (section Angular)
+Vanilla JS  → INTEGRATION_RAPIDE.md
+
+═══════════════════════════════════════════════════════════════
+
+📞 RESSOURCES:
+
+Backend API:        http://localhost:3004
+Doc PayTech:        https://doc.intech.sn/doc_paytech.php
+Guide complet:      GUIDE_INTEGRATION_FRONTEND.md
+Intégration rapide: frontend-examples/INTEGRATION_RAPIDE.md
+Composant React:    frontend-examples/paytech-payment-status-component.tsx
+
+═══════════════════════════════════════════════════════════════
+
+🎉 BON COURAGE!
+
+Pour toute question, consultez les guides complets ou testez
+les endpoints avec Postman/curl.
+
+═══════════════════════════════════════════════════════════════

@@ -330,8 +330,11 @@ model Order {
   confirmedAt         DateTime?
   deliveredAt         DateTime?
   paymentMethod       String?
-  paymentStatus       String?                   // PayTech payment status: PENDING, PAID, FAILED
+  paymentStatus       PaymentStatus?            // PayTech payment status
   transactionId       String?                   // PayTech transaction ID
+  paymentToken        String?                   // PayTech payment token
+  paymentDate         DateTime?                 // Date du paiement
+  paymentDetails      Json?                     // Détails additionnels du paiement (méthode, téléphone, etc.)
   shippedAt           DateTime?
   shippingAmount      Float                     @default(0)
   subtotal            Float?
@@ -851,6 +854,14 @@ enum FundsRequestStatus {
   APPROVED
   REJECTED
   PAID
+}
+
+enum PaymentStatus {
+  PENDING     // Paiement en cours de traitement
+  PAID        // Paiement complété avec succès
+  FAILED      // Transaction refusée
+  REJECTED    // Annulation par l'utilisateur
+  CANCELLED   // Paiement annulé
 }
 
 /// Table des types de vendeurs personnalisables

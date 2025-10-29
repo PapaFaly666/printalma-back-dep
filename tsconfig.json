@@ -19,6 +19,11 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false
   },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "frontend-examples"
+  ],
   "ts-node": {
     "transpileOnly": true,
     "files": true,

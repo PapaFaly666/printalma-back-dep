@@ -79,6 +79,12 @@ export class PaytechController {
    *
    * IMPORTANT: This endpoint should be publicly accessible (no auth guard)
    * as it receives callbacks from PayTech servers
+   *
+   * Types d'événements PayTech (selon la documentation officielle):
+   * - sale_complete: Paiement complété avec succès
+   * - sale_canceled: Paiement annulé par l'utilisateur
+   * - transfer_success: Transfert réussi (pour les remboursements)
+   * - transfer_failed: Transfert échoué
    */
   @Post('ipn-callback')
   @HttpCode(HttpStatus.OK)
@@ -87,33 +93,63 @@ export class PaytechController {
   @ApiResponse({ status: 400, description: 'Invalid IPN signature' })
   async handleIpnCallback(@Body() ipnData: IpnCallbackDto) {
     try {
-      this.logger.log(`IPN callback received for command: ${ipnData.ref_command}`);
+      this.logger.log(`📬 IPN callback received for command: ${ipnData.ref_command}`);
+      this.logger.log(`📬 Event type: ${ipnData.type_event}`);
       this.logger.debug(`IPN data: ${JSON.stringify(ipnData)}`);
 
       // Verify IPN signature
       const isValid = this.paytechService.verifyIpn(ipnData);
 
       if (!isValid) {
-        this.logger.error(`IPN verification failed for: ${ipnData.ref_command}`);
+        this.logger.error(`❌ IPN verification failed for: ${ipnData.ref_command}`);
         throw new BadRequestException('Invalid IPN signature');
       }
 
-      // Check if payment was successful
-      const isSuccess = this.paytechService.isPaymentSuccessful(ipnData);
+      this.logger.log(`✅ IPN signature verified for: ${ipnData.ref_command}`);
 
-      this.logger.log(
-        `IPN verified for ${ipnData.ref_command} - Status: ${isSuccess ? 'SUCCESS' : 'FAILED'}`
-      );
+      // Déterminer le statut de paiement basé sur l'événement PayTech
+      let paymentStatus: 'PAID' | 'PENDING' | 'FAILED' | 'REJECTED' | 'CANCELLED' = 'PENDING';
+
+      switch (ipnData.type_event) {
+        case 'sale_complete':
+          paymentStatus = 'PAID';
+          this.logger.log(`✅ Paiement complété pour: ${ipnData.ref_command}`);
+          break;
+
+        case 'sale_canceled':
+          paymentStatus = 'CANCELLED';
+          this.logger.warn(`🚫 Paiement annulé pour: ${ipnData.ref_command}`);
+          break;
+
+        default:
+          // Vérifier le champ success pour les autres cas
+          const isSuccess = this.paytechService.isPaymentSuccessful(ipnData);
+          if (isSuccess) {
+            paymentStatus = 'PAID';
+          } else {
+            // Si success est false/0, c'est un échec
+            paymentStatus = 'FAILED';
+          }
+          this.logger.log(`Event ${ipnData.type_event} → Status: ${paymentStatus}`);
+          break;
+      }
 
       // Update order payment status in database
       if (ipnData.ref_command) {
         try {
           await this.orderService.updateOrderPaymentStatus(
             ipnData.ref_command,
-            isSuccess ? 'PAID' : 'FAILED',
-            ipnData.transaction_id
+            paymentStatus as any,
+            {
+              transactionId: ipnData.transaction_id,
+              paymentToken: ipnData.token,
+              paymentMethod: ipnData.payment_method,
+              clientPhone: ipnData.client_phone,
+              amount: ipnData.item_price || ipnData.final_item_price,
+              currency: ipnData.currency || 'XOF',
+            }
           );
-          this.logger.log(`✅ Order ${ipnData.ref_command} payment status updated`);
+          this.logger.log(`✅ Order ${ipnData.ref_command} payment status updated to ${paymentStatus}`);
         } catch (error) {
           this.logger.error(
             `❌ Failed to update order payment status: ${error.message}`,
@@ -128,12 +164,13 @@ export class PaytechController {
         message: 'IPN processed successfully',
         data: {
           ref_command: ipnData.ref_command,
-          payment_status: isSuccess ? 'success' : 'failed',
+          payment_status: paymentStatus,
+          event_type: ipnData.type_event,
           verified: true,
         }
       };
     } catch (error) {
-      this.logger.error(`IPN processing failed: ${error.message}`, error.stack);
+      this.logger.error(`❌ IPN processing failed: ${error.message}`, error.stack);
       throw error;
     }
   }

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateOrderDto, PaymentMethod } from './dto/create-order.dto';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus } from '@prisma/client';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
 import { PaytechService } from '../paytech/paytech.service';
 import { ConfigService } from '@nestjs/config';
@@ -133,11 +133,25 @@ export class OrderService {
   /**
    * Update order payment status after PayTech IPN callback
    * This should be called by the PayTech IPN handler
+   *
+   * Statuts supportés (basés sur la documentation officielle PayTech):
+   * - PENDING: Paiement en cours de traitement
+   * - PAID: Paiement complété avec succès
+   * - FAILED: Transaction refusée
+   * - REJECTED: Annulation par l'utilisateur
+   * - CANCELLED: Paiement annulé
    */
   async updateOrderPaymentStatus(
     orderNumber: string,
-    paymentStatus: 'PAID' | 'FAILED',
-    transactionId?: string
+    paymentStatus: PaymentStatus,
+    paymentDetails?: {
+      transactionId?: string;
+      paymentToken?: string;
+      paymentMethod?: string;
+      clientPhone?: string;
+      amount?: number;
+      currency?: string;
+    }
   ) {
     try {
       this.logger.log(`💳 Updating payment status for order ${orderNumber}: ${paymentStatus}`);
@@ -150,13 +164,52 @@ export class OrderService {
         throw new NotFoundException(`Order ${orderNumber} not found`);
       }
 
+      // Déterminer le statut de commande en fonction du statut de paiement
+      let newOrderStatus = order.status;
+
+      switch (paymentStatus) {
+        case PaymentStatus.PAID:
+          // Si le paiement est confirmé, passer la commande en CONFIRMED
+          newOrderStatus = OrderStatus.CONFIRMED;
+          this.logger.log(`✅ Paiement confirmé - Commande ${orderNumber} passée en CONFIRMED`);
+          break;
+
+        case PaymentStatus.PENDING:
+          // Le paiement est en attente, garder la commande en PENDING
+          if (order.status === OrderStatus.PENDING) {
+            newOrderStatus = OrderStatus.PENDING;
+          }
+          this.logger.log(`⏳ Paiement en attente - Commande ${orderNumber} reste en ${newOrderStatus}`);
+          break;
+
+        case PaymentStatus.FAILED:
+        case PaymentStatus.REJECTED:
+        case PaymentStatus.CANCELLED:
+          // Paiement échoué/rejeté/annulé - ne pas modifier le statut de commande
+          // L'admin pourra décider quoi faire avec la commande
+          this.logger.warn(`❌ Paiement ${paymentStatus} - Commande ${orderNumber} reste en ${order.status}`);
+          break;
+      }
+
       const updatedOrder = await this.prisma.order.update({
         where: { id: order.id },
         data: {
           paymentStatus,
-          transactionId,
-          // If payment is successful, update order status to CONFIRMED
-          ...(paymentStatus === 'PAID' && { status: OrderStatus.CONFIRMED })
+          transactionId: paymentDetails?.transactionId,
+          paymentToken: paymentDetails?.paymentToken,
+          paymentDate: paymentStatus === PaymentStatus.PAID ? new Date() : null,
+          paymentDetails: paymentDetails ? {
+            method: paymentDetails.paymentMethod,
+            phone: paymentDetails.clientPhone,
+            amount: paymentDetails.amount,
+            currency: paymentDetails.currency,
+            updatedAt: new Date().toISOString()
+          } : undefined,
+          status: newOrderStatus,
+          // Si le paiement est confirmé, définir confirmedAt
+          ...(paymentStatus === PaymentStatus.PAID && !order.confirmedAt && {
+            confirmedAt: new Date()
+          })
         },
         include: {
           orderItems: {
@@ -169,7 +222,7 @@ export class OrderService {
         }
       });
 
-      this.logger.log(`✅ Payment status updated for order ${orderNumber}`);
+      this.logger.log(`✅ Payment status updated for order ${orderNumber} - Status: ${paymentStatus}`);
       return this.formatOrderResponse(updatedOrder);
     } catch (error) {
       this.logger.error(`❌ Failed to update payment status: ${error.message}`, error.stack);
