@@ -18,6 +18,10 @@ export class OrderService {
     private configService: ConfigService
   ) {}
 
+  async createGuestOrder(createOrderDto: CreateOrderDto) {
+    return this.createOrder(null, createOrderDto);
+  }
+
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
     try {
       console.log('📦 Données reçues pour orderItems:', createOrderDto.orderItems?.map(item => ({
@@ -28,43 +32,79 @@ export class OrderService {
         quantity: item.quantity
       })));
 
-      const order = await this.prisma.order.create({
-        data: {
-          orderNumber: `ORD-${Date.now()}`,
-          userId: userId,
-          totalAmount: (createOrderDto as any).totalAmount || 0,
-          phoneNumber: createOrderDto.phoneNumber || '',
-          notes: createOrderDto.notes,
-          status: OrderStatus.PENDING,
-          shippingName: (createOrderDto as any).shippingName,
-          shippingStreet: (createOrderDto as any).shippingStreet,
-          shippingCity: (createOrderDto as any).shippingCity,
-          shippingRegion: (createOrderDto as any).shippingRegion,
-          shippingPostalCode: (createOrderDto as any).shippingPostalCode,
-          shippingCountry: (createOrderDto as any).shippingCountry,
-          shippingAddressFull: (createOrderDto as any).shippingAddressFull,
-          orderItems: {
-            create: ((createOrderDto as any).orderItems || []).map((item: any) => {
-              console.log(`📦 Création orderItem:`, {
-                productId: item.productId,
-                colorId: item.colorId,
-                color: item.color,
-                size: item.size,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice || 0
-              });
-              
-              return {
-                productId: item.productId,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice || 0,
-                size: item.size,
-                color: item.color,
-                colorId: item.colorId
-              };
-            })
+      // 🎯 Calculer le totalAmount avec les prix par défaut si nécessaire
+      const orderItems = (createOrderDto as any).orderItems || [];
+      let calculatedTotal = (createOrderDto as any).totalAmount || 0;
+
+      // Si le totalAmount est 0 ou non fourni, le calculer avec les prix par défaut
+      if (calculatedTotal <= 0 && orderItems.length > 0) {
+        calculatedTotal = orderItems.reduce((sum: number, item: any) => {
+          let unitPrice = item.unitPrice || 0;
+          if (unitPrice <= 0) {
+            unitPrice = 100; // Prix par défaut de 100 FCFA
           }
-        },
+          return sum + (unitPrice * item.quantity);
+        }, 0);
+
+        // Ajouter les frais de port si applicable
+        if (calculatedTotal > 0) {
+          calculatedTotal += 1500; // Frais de par défaut
+        }
+
+        console.log(`💰 Calcul du totalAmount avec prix par défaut: ${calculatedTotal} FCFA`);
+      }
+
+      const orderData: any = {
+        orderNumber: `ORD-${Date.now()}`,
+        totalAmount: calculatedTotal,
+        phoneNumber: createOrderDto.phoneNumber || '',
+        notes: createOrderDto.notes,
+        status: OrderStatus.PENDING,
+        // Transformer shippingDetails vers les champs d'expédition
+        shippingName: `${createOrderDto.shippingDetails.firstName || ''} ${createOrderDto.shippingDetails.lastName || ''}`.trim() || undefined,
+        shippingStreet: createOrderDto.shippingDetails.street || undefined,
+        shippingCity: createOrderDto.shippingDetails.city || undefined,
+        shippingRegion: createOrderDto.shippingDetails.region || undefined,
+        shippingPostalCode: createOrderDto.shippingDetails.postalCode || undefined,
+        shippingCountry: createOrderDto.shippingDetails.country || undefined,
+        shippingAddressFull: `${createOrderDto.shippingDetails.street || ''}, ${createOrderDto.shippingDetails.city || ''}, ${createOrderDto.shippingDetails.country || ''}`.trim() || undefined,
+        orderItems: {
+          create: ((createOrderDto as any).orderItems || []).map((item: any) => {
+            // 🎯 Gérer le prix par défaut de 100 FCFA comme demandé
+            let unitPrice = item.unitPrice || 0;
+            if (unitPrice <= 0) {
+              unitPrice = 100; // Prix par défaut de 100 FCFA
+              console.log(`⚠️ Prix unitaire invalide (${item.unitPrice}), utilisation du prix par défaut: 100 FCFA`);
+            }
+
+            console.log(`📦 Création orderItem:`, {
+              productId: item.productId,
+              colorId: item.colorId,
+              color: item.color,
+              size: item.size,
+              quantity: item.quantity,
+              unitPrice: unitPrice
+            });
+
+            return {
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPrice: unitPrice,
+              size: item.size,
+              color: item.color,
+              colorId: item.colorId
+            };
+          })
+        }
+      };
+
+      // Ajouter userId seulement s'il existe (commandes connectées)
+      if (userId) {
+        orderData.userId = userId;
+      }
+
+      const order = await this.prisma.order.create({
+        data: orderData,
         include: {
           orderItems: {
             include: {

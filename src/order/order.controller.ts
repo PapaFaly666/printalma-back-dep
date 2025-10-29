@@ -23,15 +23,26 @@ import { RolesGuard } from '../core/guards/roles.guard';
 import { Roles } from '../core/guards/roles.decorator';
 
 @Controller('orders')
-@UseGuards(JwtAuthGuard)
 export class OrderController {
   constructor(
     private readonly orderService: OrderService,
     private readonly orderGateway: OrderGateway
   ) {}
 
+  // Créer une commande pour un invité (sans authentification)
+  @Post('guest')
+  @HttpCode(HttpStatus.CREATED)
+  async createGuestOrder(@Body() createOrderDto: CreateOrderDto) {
+    return {
+      success: true,
+      message: 'Commande invité créée avec succès',
+      data: await this.orderService.createGuestOrder(createOrderDto)
+    };
+  }
+
   // Créer une nouvelle commande (utilisateurs)
   @Post()
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
   async createOrder(@Request() req, @Body() createOrderDto: CreateOrderDto) {
     return {
@@ -70,6 +81,7 @@ export class OrderController {
 
   // Obtenir les commandes de l'utilisateur connecté
   @Get('my-orders')
+  @UseGuards(JwtAuthGuard)
   async getUserOrders(@Request() req) {
     // Si l'utilisateur est un VENDEUR, récupérer les commandes de ses produits
     if (req.user.role === 'VENDEUR') {
@@ -90,6 +102,7 @@ export class OrderController {
 
   // Obtenir une commande spécifique
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   async getOrderById(@Param('id', ParseIntPipe) id: number, @Request() req) {
     // Les utilisateurs normaux ne peuvent voir que leurs propres commandes
     // Les admins peuvent voir toutes les commandes
@@ -122,6 +135,7 @@ export class OrderController {
 
   // Annuler une commande (utilisateur propriétaire seulement)
   @Delete(':id/cancel')
+  @UseGuards(JwtAuthGuard)
   async cancelOrder(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return {
       success: true,
@@ -156,6 +170,7 @@ export class OrderController {
 
   // Endpoint de test pour vérifier l'authentification et les rôles
   @Get('test-auth')
+  @UseGuards(JwtAuthGuard)
   async testAuth(@Request() req) {
     return {
       success: true,
