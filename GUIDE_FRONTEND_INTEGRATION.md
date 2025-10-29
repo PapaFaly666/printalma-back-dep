@@ -1,1115 +1,854 @@
-# Guide d'Intégration Frontend - Système RBAC et Gestion des Stocks
+# Guide d'Intégration Frontend - Saisie des Commandes Printalma
 
-## Table des Matières
-1. [Vue d'ensemble](#vue-densemble)
-2. [Authentification](#authentification)
-3. [Gestion des Utilisateurs](#gestion-des-utilisateurs)
-4. [Gestion des Rôles et Permissions](#gestion-des-rôles-et-permissions)
-5. [Gestion des Mouvements de Stock](#gestion-des-mouvements-de-stock)
-6. [Gestion des Erreurs](#gestion-des-erreurs)
+## 🎯 Objectif
+Guide complet pour intégrer le système de commandes dans le frontend Printalma, incluant la saisie des données, la validation et l'utilisation des routes API du backend.
 
----
+## 📋 Configuration requise
 
-## Vue d'ensemble
-
-### Base URL
-```
-http://localhost:3004
+### 1. Variables d'environnement
+Assurez-vous que votre fichier `.env` du frontend contient:
+```env
+VITE_API_URL=http://localhost:3004
 ```
 
-### Headers requis
-Tous les endpoints nécessitent un token JWT :
+### 2. Route API endpoint
+La route pour les commandes invitées est maintenant disponible:
+```
+POST /orders/guest
+```
+
+## 🛠️ Implémentation dans le Frontend
+
+### 📝 Structure des données à envoyer
+
+#### Interface TypeScript complète
+
 ```typescript
-headers: {
-  'Authorization': `Bearer ${token}`,
-  'Content-Type': 'application/json'
+interface CreateOrderRequest {
+  // Détails de livraison (OBLIGATOIRE - objet imbriqué)
+  shippingDetails: {
+    // Identité (au moins un des deux requis)
+    firstName?: string;          // Prénom (max 100 caractères)
+    lastName?: string;           // Nom de famille (max 100 caractères)
+    company?: string;            // Nom de société (optionnel, max 150 caractères)
+
+    // Adresse (OBLIGATOIRE)
+    street: string;              // Rue/adresse complète (max 200 caractères)
+    apartment?: string;          // Appartement/bâtiment (optionnel, max 100 caractères)
+    city: string;                // Ville (OBLIGATOIRE, max 100 caractères)
+    region?: string;             // Région/État/Province (optionnel, max 100 caractères)
+    postalCode?: string;         // Code postal (optionnel, max 20 caractères)
+    country: string;             // Pays (OBLIGATOIRE, max 100 caractères)
+  };
+
+  // Contact (OBLIGATOIRE)
+  phoneNumber: string;           // Numéro de téléphone
+
+  // Produits (OBLIGATOIRE - au moins 1 article)
+  orderItems: {
+    productId: number;           // ID du produit (OBLIGATOIRE)
+    quantity: number;            // Quantité (min: 1, OBLIGATOIRE)
+    color?: string;              // Nom de la couleur (optionnel)
+    colorId?: number;            // ID de la variation de couleur (optionnel)
+    size?: string;               // Taille (optionnel)
+  }[];
+
+  // Options de paiement
+  paymentMethod?: 'PAYTECH' | 'CASH_ON_DELIVERY' | 'OTHER';  // Défaut: CASH_ON_DELIVERY
+  initiatePayment?: boolean;     // Pour déclencher paiement PayTech (défaut: false)
+
+  // Notes additionnelles (optionnel)
+  notes?: string;                // Commentaires sur la commande
 }
 ```
 
----
+### ⚠️ Champs requis et validations
 
-## Authentification
+#### Validation des champs obligatoires
 
-### Login
-**Endpoint:** `POST /auth/login`
+| Champ | Requis | Type | Validation |
+|-------|--------|------|------------|
+| `shippingDetails` | ✅ Oui | Object | Objet non vide |
+| `shippingDetails.street` | ✅ Oui | String | Max 200 caractères |
+| `shippingDetails.city` | ✅ Oui | String | Max 100 caractères |
+| `shippingDetails.country` | ✅ Oui | String | Max 100 caractères |
+| `phoneNumber` | ✅ Oui | String | Format téléphone valide |
+| `orderItems` | ✅ Oui | Array | Au moins 1 article |
+| `orderItems[].productId` | ✅ Oui | Number | Doit exister en BDD |
+| `orderItems[].quantity` | ✅ Oui | Number | Minimum 1 |
 
-**Body:**
-```json
-{
-  "email": "admin@example.com",
-  "password": "password123"
-}
+#### Champs optionnels avec limites
+
+| Champ | Type | Limite |
+|-------|------|--------|
+| `shippingDetails.firstName` | String | Max 100 caractères |
+| `shippingDetails.lastName` | String | Max 100 caractères |
+| `shippingDetails.company` | String | Max 150 caractères |
+| `shippingDetails.apartment` | String | Max 100 caractères |
+| `shippingDetails.region` | String | Max 100 caractères |
+| `shippingDetails.postalCode` | String | Max 20 caractères |
+| `orderItems[].color` | String | Aucune |
+| `orderItems[].colorId` | Number | Doit exister en BDD |
+| `orderItems[].size` | String | Aucune |
+| `notes` | String | Aucune |
+
+### 📋 Exemples de formulaire de saisie
+
+#### Exemple 1: Formulaire HTML basique
+
+```html
+<form id="orderForm">
+  <!-- Informations de livraison -->
+  <fieldset>
+    <legend>Adresse de livraison</legend>
+
+    <label>
+      Prénom:
+      <input type="text" name="firstName" maxlength="100" />
+    </label>
+
+    <label>
+      Nom:
+      <input type="text" name="lastName" maxlength="100" />
+    </label>
+
+    <label>
+      Adresse: <span class="required">*</span>
+      <input type="text" name="street" maxlength="200" required />
+    </label>
+
+    <label>
+      Appartement/Bâtiment:
+      <input type="text" name="apartment" maxlength="100" />
+    </label>
+
+    <label>
+      Ville: <span class="required">*</span>
+      <input type="text" name="city" maxlength="100" required />
+    </label>
+
+    <label>
+      Région:
+      <input type="text" name="region" maxlength="100" />
+    </label>
+
+    <label>
+      Code postal:
+      <input type="text" name="postalCode" maxlength="20" />
+    </label>
+
+    <label>
+      Pays: <span class="required">*</span>
+      <input type="text" name="country" value="Sénégal" maxlength="100" required />
+    </label>
+  </fieldset>
+
+  <!-- Contact -->
+  <fieldset>
+    <legend>Contact</legend>
+    <label>
+      Téléphone: <span class="required">*</span>
+      <input type="tel" name="phoneNumber" placeholder="77 123 45 67" required />
+    </label>
+  </fieldset>
+
+  <!-- Produits (dynamique) -->
+  <fieldset id="orderItems">
+    <legend>Articles</legend>
+    <div class="order-item">
+      <select name="productId" required>
+        <option value="">Choisir un produit</option>
+        <!-- Options chargées dynamiquement -->
+      </select>
+      <input type="number" name="quantity" min="1" value="1" required />
+      <input type="text" name="size" placeholder="Taille (optionnel)" />
+      <input type="text" name="color" placeholder="Couleur (optionnel)" />
+    </div>
+  </fieldset>
+
+  <!-- Options de paiement -->
+  <fieldset>
+    <legend>Paiement</legend>
+    <label>
+      <input type="radio" name="paymentMethod" value="CASH_ON_DELIVERY" checked />
+      Paiement à la livraison
+    </label>
+    <label>
+      <input type="radio" name="paymentMethod" value="PAYTECH" />
+      PayTech (carte bancaire)
+    </label>
+    <label>
+      <input type="radio" name="paymentMethod" value="OTHER" />
+      Autre
+    </label>
+  </fieldset>
+
+  <!-- Notes -->
+  <label>
+    Notes (optionnel):
+    <textarea name="notes" rows="3"></textarea>
+  </label>
+
+  <button type="submit">Passer la commande</button>
+</form>
 ```
 
-**Réponse:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": 1,
-    "email": "admin@example.com",
-    "name": "Admin User",
-    "role": "admin"
-  }
-}
-```
+#### Exemple 2: Fonction de soumission avec validation
 
----
-
-## Gestion des Utilisateurs
-
-### 1. Récupérer tous les utilisateurs (exclut automatiquement les vendeurs)
-
-**Endpoint:** `GET /admin/users`
-
-**Query Parameters:**
-- `page` (optionnel): Numéro de page (défaut: 1)
-- `limit` (optionnel): Nombre d'éléments par page (défaut: 10)
-- `search` (optionnel): Recherche dans nom et email
-- `status` (optionnel): Filtrer par statut (active, inactive, suspended)
-- `roleId` (optionnel): Filtrer par ID de rôle
-
-**Exemple:**
 ```typescript
-const response = await fetch(
-  `/admin/users?page=1&limit=10&search=john&status=active`,
-  {
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  }
-);
-
-const data = await response.json();
-```
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "name": "John Doe",
-      "email": "john@example.com",
-      "phone": "+33 6 12 34 56 78",
-      "status": "ACTIVE",
-      "role": {
-        "id": 2,
-        "name": "Admin",
-        "slug": "admin"
-      },
-      "email_verified": true,
-      "created_at": "2024-01-15T10:00:00.000Z",
-      "created_by": {
-        "id": 1,
-        "name": "Super Admin"
-      }
-    }
-  ],
-  "meta": {
-    "total": 45,
-    "page": 1,
-    "limit": 10,
-    "totalPages": 5
-  }
-}
-```
-
-### 2. Récupérer un utilisateur par ID
-
-**Endpoint:** `GET /admin/users/:id`
-
-**Exemple:**
-```typescript
-const response = await fetch(`/admin/users/1`, {
-  headers: { 'Authorization': `Bearer ${token}` }
-});
-```
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "name": "John Doe",
-    "email": "john@example.com",
-    "phone": "+33 6 12 34 56 78",
-    "status": "ACTIVE",
-    "role": {
-      "id": 2,
-      "name": "Admin",
-      "slug": "admin",
-      "permissions": [
-        {
-          "id": 1,
-          "name": "Voir utilisateurs",
-          "slug": "users.view",
-          "module": "users"
-        }
-      ]
-    }
-  }
-}
-```
-
-### 3. Créer un utilisateur
-
-**Endpoint:** `POST /admin/users`
-
-**Body:**
-```json
-{
-  "name": "Jane Smith",
-  "email": "jane@example.com",
-  "password": "SecurePass123!",
-  "phone": "+33 6 98 76 54 32",
-  "roleId": 3,
-  "status": "active"
-}
-```
-
-**Notes importantes:**
-- Le `status` peut être en minuscules (`active`, `inactive`, `suspended`) ou majuscules (`ACTIVE`, `INACTIVE`, `SUSPENDED`)
-- Le backend convertit automatiquement en majuscules
-- Le `roleId` doit correspondre à un rôle existant (obtenu via `/admin/roles/available-for-users`)
-- Le mot de passe doit contenir au moins 8 caractères
-
-**Exemple avec React:**
-```typescript
-const createUser = async (userData) => {
+const createGuestOrder = async (orderData: CreateOrderRequest) => {
   try {
-    const response = await fetch('/admin/users', {
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/orders/guest`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(userData)
+      body: JSON.stringify(orderData)
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message);
-    }
+    const result = await response.json();
 
-    return await response.json();
+    if (result.success) {
+      console.log('✅ Commande créée:', result.data);
+      return result.data;
+    } else {
+      throw new Error(result.message || 'Erreur lors de la création');
+    }
   } catch (error) {
-    console.error('Erreur création utilisateur:', error);
+    console.error('❌ Erreur API:', error);
     throw error;
   }
 };
-```
 
-**Réponse:**
-```json
-{
-  "success": true,
-  "message": "Utilisateur créé avec succès",
-  "data": {
-    "id": 15,
-    "name": "Jane Smith",
-    "email": "jane@example.com",
-    "status": "ACTIVE",
-    "role": {
-      "id": 3,
-      "name": "Marketing",
-      "slug": "marketing"
-    }
-  }
-}
-```
+// Gestionnaire de soumission du formulaire
+document.getElementById('orderForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
 
-### 4. Mettre à jour un utilisateur
+  const formData = new FormData(e.target as HTMLFormElement);
 
-**Endpoint:** `PATCH /admin/users/:id`
-
-**Body (tous les champs optionnels):**
-```json
-{
-  "name": "Jane Doe",
-  "email": "jane.doe@example.com",
-  "phone": "+33 6 11 22 33 44",
-  "roleId": 4,
-  "status": "inactive"
-}
-```
-
-**Exemple:**
-```typescript
-const updateUser = async (userId, updates) => {
-  const response = await fetch(`/admin/users/${userId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+  // Construction de l'objet de commande
+  const orderData: CreateOrderRequest = {
+    shippingDetails: {
+      firstName: formData.get('firstName') as string || undefined,
+      lastName: formData.get('lastName') as string || undefined,
+      street: formData.get('street') as string,
+      apartment: formData.get('apartment') as string || undefined,
+      city: formData.get('city') as string,
+      region: formData.get('region') as string || undefined,
+      postalCode: formData.get('postalCode') as string || undefined,
+      country: formData.get('country') as string,
     },
-    body: JSON.stringify(updates)
-  });
-
-  return await response.json();
-};
-```
-
-### 5. Supprimer un utilisateur (soft delete)
-
-**Endpoint:** `DELETE /admin/users/:id`
-
-**Exemple:**
-```typescript
-const deleteUser = async (userId) => {
-  const response = await fetch(`/admin/users/${userId}`, {
-    method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-
-  return await response.json();
-};
-```
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "message": "Utilisateur supprimé avec succès"
-}
-```
-
-### 6. Réinitialiser le mot de passe
-
-**Endpoint:** `POST /admin/users/:id/reset-password`
-
-**Body:**
-```json
-{
-  "newPassword": "NewSecurePass456!"
-}
-```
-
-### 7. Mettre à jour le statut
-
-**Endpoint:** `PATCH /admin/users/:id/status`
-
-**Body:**
-```json
-{
-  "status": "suspended"
-}
-```
-
-### 8. Statistiques utilisateurs
-
-**Endpoint:** `GET /admin/users/stats`
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": {
-    "total": 45,
-    "active": 38,
-    "inactive": 5,
-    "suspended": 2,
-    "byRole": [
-      { "role": "Admin", "count": 5 },
-      { "role": "Marketing", "count": 12 },
-      { "role": "Production", "count": 20 }
-    ]
-  }
-}
-```
-
----
-
-## Gestion des Rôles et Permissions
-
-### 1. Récupérer tous les rôles
-
-**Endpoint:** `GET /admin/roles`
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "name": "Super Admin",
-      "slug": "superadmin",
-      "description": "Accès complet au système",
-      "isSystem": true,
-      "permissions": [
-        {
-          "id": 1,
-          "name": "Voir utilisateurs",
-          "slug": "users.view",
-          "module": "users"
-        }
-      ],
-      "_count": {
-        "users": 2
-      }
-    }
-  ]
-}
-```
-
-### 2. Récupérer les rôles disponibles pour créer des utilisateurs (exclut vendor)
-
-**Endpoint:** `GET /admin/roles/available-for-users`
-
-**Important:** Utilisez cet endpoint pour alimenter le dropdown de sélection de rôle lors de la création d'utilisateur.
-
-**Exemple avec React:**
-```typescript
-const [availableRoles, setAvailableRoles] = useState([]);
-
-useEffect(() => {
-  const fetchRoles = async () => {
-    const response = await fetch('/admin/roles/available-for-users', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    setAvailableRoles(data.data);
-  };
-
-  fetchRoles();
-}, []);
-
-// Dans le formulaire
-<select name="roleId">
-  {availableRoles.map(role => (
-    <option key={role.id} value={role.id}>
-      {role.name}
-    </option>
-  ))}
-</select>
-```
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "name": "Super Admin",
-      "slug": "superadmin",
-      "description": "Accès complet au système"
-    },
-    {
-      "id": 2,
-      "name": "Admin",
-      "slug": "admin",
-      "description": "Gestion complète sauf configuration système"
-    }
-  ]
-}
-```
-
-### 3. Récupérer un rôle par ID
-
-**Endpoint:** `GET /admin/roles/:id`
-
-### 4. Récupérer toutes les permissions
-
-**Endpoint:** `GET /admin/permissions`
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "name": "Voir utilisateurs",
-      "slug": "users.view",
-      "module": "users",
-      "description": "Voir la liste des utilisateurs"
-    }
-  ]
-}
-```
-
-### 5. Récupérer les permissions groupées par module
-
-**Endpoint:** `GET /admin/permissions/by-module`
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": {
-    "users": [
+    phoneNumber: formData.get('phoneNumber') as string,
+    orderItems: [
       {
-        "id": 1,
-        "name": "Voir utilisateurs",
-        "slug": "users.view"
-      },
-      {
-        "id": 2,
-        "name": "Créer utilisateurs",
-        "slug": "users.create"
+        productId: parseInt(formData.get('productId') as string),
+        quantity: parseInt(formData.get('quantity') as string),
+        size: formData.get('size') as string || undefined,
+        color: formData.get('color') as string || undefined,
       }
     ],
-    "products": [
+    paymentMethod: formData.get('paymentMethod') as any,
+    notes: formData.get('notes') as string || undefined,
+  };
+
+  try {
+    const order = await createGuestOrder(orderData);
+    alert(`Commande #${order.orderNumber} créée avec succès!`);
+
+    // Redirection si paiement PayTech
+    if (order.payment?.redirect_url) {
+      window.location.href = order.payment.redirect_url;
+    }
+  } catch (error) {
+    alert('Erreur lors de la création de la commande');
+  }
+});
+```
+
+### ✅ Exemple de données valides
+
+```typescript
+// Exemple 1: Commande complète avec tous les champs
+const commandeComplete = {
+  shippingDetails: {
+    firstName: "Marie",
+    lastName: "Diop",
+    street: "45 Rue de la République, Appt 12B",
+    apartment: "12B",
+    city: "Dakar",
+    region: "Dakar",
+    postalCode: "12345",
+    country: "Sénégal"
+  },
+  phoneNumber: "771234567",
+  orderItems: [
+    {
+      productId: 1,
+      quantity: 2,
+      color: "Noir",
+      colorId: 5,
+      size: "L"
+    },
+    {
+      productId: 3,
+      quantity: 1,
+      color: "Blanc",
+      size: "M"
+    }
+  ],
+  paymentMethod: "CASH_ON_DELIVERY",
+  notes: "Livraison après 18h SVP"
+};
+
+// Exemple 2: Commande minimale (uniquement champs requis)
+const commandeMinimale = {
+  shippingDetails: {
+    street: "123 Avenue Léopold Sédar Senghor",
+    city: "Dakar",
+    country: "Sénégal"
+  },
+  phoneNumber: "771234567",
+  orderItems: [
+    {
+      productId: 1,
+      quantity: 1
+    }
+  ]
+};
+
+// Exemple 3: Commande avec paiement PayTech
+const commandePayTech = {
+  shippingDetails: {
+    firstName: "Amadou",
+    lastName: "Ba",
+    street: "Zone B, Villa 45",
+    city: "Thiès",
+    country: "Sénégal"
+  },
+  phoneNumber: "775551234",
+  orderItems: [
+    {
+      productId: 7,
+      quantity: 3,
+      size: "XL"
+    }
+  ],
+  paymentMethod: "PAYTECH",
+  initiatePayment: true  // Déclenche redirection vers page de paiement
+};
+```
+
+## ⚠️ Erreurs de validation courantes
+
+### Messages d'erreur possibles
+
+```typescript
+// Erreur si shippingDetails manquant
+{
+  "statusCode": 400,
+  "message": [
+    "shippingDetails must be a non-empty object"
+  ],
+  "error": "Bad Request"
+}
+
+// Erreur si champ obligatoire manquant
+{
+  "statusCode": 400,
+  "message": [
+    "street should not be empty",
+    "city should not be empty",
+    "country should not be empty"
+  ],
+  "error": "Bad Request"
+}
+
+// Erreur si dépassement de longueur
+{
+  "statusCode": 400,
+  "message": [
+    "street must be shorter than or equal to 200 characters"
+  ],
+  "error": "Bad Request"
+}
+
+// Erreur si quantité invalide
+{
+  "statusCode": 400,
+  "message": [
+    "quantity must not be less than 1"
+  ],
+  "error": "Bad Request"
+}
+
+// Erreur si orderItems vide
+{
+  "statusCode": 400,
+  "message": [
+    "orderItems must be an array",
+    "orderItems should not be empty"
+  ],
+  "error": "Bad Request"
+}
+```
+
+### Gestion des erreurs dans le frontend
+
+```typescript
+const handleOrderSubmit = async (orderData: CreateOrderRequest) => {
+  try {
+    const response = await fetch(`${API_URL}/orders/guest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderData)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      // Gestion des erreurs de validation
+      if (result.message && Array.isArray(result.message)) {
+        const errors = result.message.join('\n');
+        alert(`Erreurs de validation:\n${errors}`);
+      } else {
+        alert(result.message || 'Erreur lors de la création');
+      }
+      return;
+    }
+
+    // Succès
+    if (result.success) {
+      console.log('✅ Commande créée:', result.data);
+
+      // Redirection PayTech si nécessaire
+      if (result.data.payment?.redirect_url) {
+        window.location.href = result.data.payment.redirect_url;
+      } else {
+        alert(`Commande #${result.data.orderNumber} créée!`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Erreur réseau:', error);
+    alert('Impossible de contacter le serveur');
+  }
+};
+```
+
+## 📨 Format de réponse du backend
+
+### Structure de réponse réussie
+
+```typescript
+interface OrderResponse {
+  success: boolean;
+  message: string;
+  data: {
+    id: number;
+    orderNumber: string;                    // Ex: "ORD-20251029-ABC123"
+    status: "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+    paymentStatus?: "PAID" | "FAILED";
+    totalAmount: number;
+    phoneNumber: string;
+    notes?: string;
+
+    // Adresse de livraison (champs individuels)
+    shippingFirstName?: string;
+    shippingLastName?: string;
+    shippingCompany?: string;
+    shippingStreet: string;
+    shippingApartment?: string;
+    shippingCity: string;
+    shippingRegion?: string;
+    shippingPostalCode?: string;
+    shippingCountry: string;
+
+    // Dates
+    createdAt: string;                      // Format ISO 8601
+    updatedAt: string;
+
+    // Articles commandés
+    orderItems: {
+      id: number;
+      productId: number;
+      quantity: number;
+      unitPrice: number;
+      size?: string;
+      color?: string;
+      colorId?: number;
+      product: {
+        id: number;
+        name: string;
+        orderedColorName?: string;
+        orderedColorHexCode?: string;
+        orderedColorImageUrl?: string;
+      };
+    }[];
+
+    // Informations de paiement (si PayTech)
+    payment?: {
+      token: string;
+      redirect_url: string;                 // URL de redirection pour paiement
+    };
+  };
+}
+```
+
+### Exemple de réponse concrète
+
+```json
+{
+  "success": true,
+  "message": "Commande invité créée avec succès",
+  "data": {
+    "id": 42,
+    "orderNumber": "ORD-20251029-XY7K9",
+    "status": "PENDING",
+    "totalAmount": 50000,
+    "phoneNumber": "771234567",
+    "notes": "Livraison après 18h SVP",
+    "shippingFirstName": "Marie",
+    "shippingLastName": "Diop",
+    "shippingStreet": "45 Rue de la République",
+    "shippingApartment": "12B",
+    "shippingCity": "Dakar",
+    "shippingRegion": "Dakar",
+    "shippingPostalCode": "12345",
+    "shippingCountry": "Sénégal",
+    "createdAt": "2025-10-29T14:30:00.000Z",
+    "updatedAt": "2025-10-29T14:30:00.000Z",
+    "orderItems": [
       {
-        "id": 10,
-        "name": "Voir produits",
-        "slug": "products.view"
+        "id": 101,
+        "productId": 1,
+        "quantity": 2,
+        "unitPrice": 25000,
+        "size": "L",
+        "color": "Noir",
+        "colorId": 5,
+        "product": {
+          "id": 1,
+          "name": "T-shirt Premium",
+          "orderedColorName": "Noir",
+          "orderedColorHexCode": "#000000"
+        }
       }
     ]
   }
 }
 ```
 
-### 6. Créer un rôle personnalisé
+## 💡 Intégration PayTech
 
-**Endpoint:** `POST /admin/roles`
+### Configuration du paiement en ligne
 
-**Body:**
-```json
-{
-  "name": "Chef de Production",
-  "slug": "production-manager",
-  "description": "Gestion de la production et des stocks",
-  "permissionIds": [10, 11, 12, 20, 21]
-}
-```
-
-**Exemple complet:**
 ```typescript
-const createRole = async (roleData) => {
-  const response = await fetch('/admin/roles', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      name: roleData.name,
-      slug: roleData.slug,
-      description: roleData.description,
-      permissionIds: roleData.selectedPermissions // Array of permission IDs
-    })
-  });
-
-  return await response.json();
-};
-```
-
-### 7. Mettre à jour un rôle
-
-**Endpoint:** `PATCH /admin/roles/:id`
-
-**Body:**
-```json
-{
-  "name": "Chef de Production Senior",
-  "description": "Gestion avancée de la production",
-  "permissionIds": [10, 11, 12, 13, 20, 21, 22]
-}
-```
-
-**Note:** Les rôles système (isSystem: true) ne peuvent pas être modifiés.
-
-### 8. Supprimer un rôle
-
-**Endpoint:** `DELETE /admin/roles/:id`
-
-**Note:** Un rôle ne peut pas être supprimé s'il est assigné à des utilisateurs.
-
----
-
-## Gestion des Mouvements de Stock
-
-### 1. Créer un mouvement de stock (entrée ou sortie)
-
-**Endpoint:** `POST /products/:id/stocks/movement`
-
-**Body pour entrée de stock:**
-```json
-{
-  "type": "IN",
-  "colorId": 5,
-  "sizeName": "M",
-  "quantity": 50,
-  "reason": "Réapprovisionnement fournisseur"
-}
-```
-
-**Body pour sortie de stock:**
-```json
-{
-  "type": "OUT",
-  "colorId": 5,
-  "sizeName": "M",
-  "quantity": 10,
-  "reason": "Commande client #1234"
-}
-```
-
-**Exemple avec React:**
-```typescript
-const addStockMovement = async (productId, movementData) => {
-  try {
-    const response = await fetch(`/products/${productId}/stocks/movement`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(movementData)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Erreur mouvement stock:', error);
-    throw error;
-  }
-};
-
-// Utilisation
-await addStockMovement(123, {
-  type: 'IN',
-  colorId: 5,
-  sizeName: 'M',
-  quantity: 50,
-  reason: 'Réapprovisionnement'
-});
-```
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "message": "Mouvement de stock enregistré",
-  "data": {
-    "movement": {
-      "id": 456,
-      "productId": 123,
-      "colorId": 5,
-      "sizeName": "M",
-      "type": "IN",
-      "quantity": 50,
-      "reason": "Réapprovisionnement fournisseur",
-      "createdAt": "2024-01-20T14:30:00.000Z",
-      "createdBy": 1
-    },
-    "currentStock": 150
-  }
-}
-```
-
-### 2. Récupérer l'historique des mouvements
-
-**Endpoint:** `GET /products/:id/stocks/history`
-
-**Query Parameters:**
-- `page` (optionnel): Numéro de page (défaut: 1)
-- `limit` (optionnel): Nombre d'éléments par page (défaut: 20)
-- `type` (optionnel): Filtrer par type (IN ou OUT)
-- `colorId` (optionnel): Filtrer par couleur
-- `sizeName` (optionnel): Filtrer par taille
-- `startDate` (optionnel): Date de début (ISO format)
-- `endDate` (optionnel): Date de fin (ISO format)
-
-**Exemple:**
-```typescript
-const getStockHistory = async (productId, filters = {}) => {
-  const params = new URLSearchParams({
-    page: filters.page || 1,
-    limit: filters.limit || 20,
-    ...(filters.type && { type: filters.type }),
-    ...(filters.colorId && { colorId: filters.colorId }),
-    ...(filters.sizeName && { sizeName: filters.sizeName }),
-    ...(filters.startDate && { startDate: filters.startDate }),
-    ...(filters.endDate && { endDate: filters.endDate })
-  });
-
-  const response = await fetch(
-    `/products/${productId}/stocks/history?${params}`,
+const createOrderWithPayTech = {
+  shippingDetails: {
+    firstName: "Amadou",
+    lastName: "Sow",
+    street: "Cité Keur Gorgui, Villa 89",
+    city: "Dakar",
+    country: "Sénégal"
+  },
+  phoneNumber: "775551234",
+  orderItems: [
     {
-      headers: { 'Authorization': `Bearer ${token}` }
-    }
-  );
-
-  return await response.json();
-};
-
-// Utilisation
-const history = await getStockHistory(123, {
-  type: 'IN',
-  colorId: 5,
-  startDate: '2024-01-01T00:00:00.000Z'
-});
-```
-
-**Réponse:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 456,
-      "productId": 123,
-      "type": "IN",
-      "quantity": 50,
-      "reason": "Réapprovisionnement fournisseur",
-      "createdAt": "2024-01-20T14:30:00.000Z",
-      "color": {
-        "id": 5,
-        "name": "Bleu Marine",
-        "hex": "#001f3f"
-      },
-      "sizeName": "M",
-      "createdBy": {
-        "id": 1,
-        "name": "Admin User"
-      }
+      productId: 5,
+      quantity: 2,
+      size: "M"
     }
   ],
-  "meta": {
-    "total": 150,
-    "page": 1,
-    "limit": 20,
-    "totalPages": 8
-  }
-}
-```
-
----
-
-## Gestion des Erreurs
-
-### Codes d'erreur HTTP communs
-
-| Code | Signification | Action recommandée |
-|------|---------------|-------------------|
-| 400 | Données invalides | Vérifier les validations du formulaire |
-| 401 | Non authentifié | Rediriger vers la page de login |
-| 403 | Permission refusée | Afficher un message d'erreur approprié |
-| 404 | Ressource non trouvée | Vérifier l'ID de la ressource |
-| 409 | Conflit (ex: email déjà utilisé) | Afficher un message d'erreur spécifique |
-| 500 | Erreur serveur | Afficher un message d'erreur générique |
-
-### Format de réponse d'erreur
-
-```json
-{
-  "success": false,
-  "message": "Email déjà utilisé",
-  "error": "Conflict",
-  "statusCode": 409
-}
-```
-
-### Gestion des erreurs avec React
-
-```typescript
-const handleApiError = (error) => {
-  if (error.response) {
-    // Erreur avec réponse du serveur
-    const { status, data } = error.response;
-
-    switch (status) {
-      case 400:
-        toast.error(data.message || 'Données invalides');
-        break;
-      case 401:
-        localStorage.removeItem('token');
-        navigate('/login');
-        break;
-      case 403:
-        toast.error('Vous n\'avez pas la permission pour cette action');
-        break;
-      case 404:
-        toast.error('Ressource non trouvée');
-        break;
-      case 409:
-        toast.error(data.message || 'Conflit de données');
-        break;
-      default:
-        toast.error('Une erreur est survenue');
-    }
-  } else {
-    // Erreur réseau
-    toast.error('Erreur de connexion au serveur');
-  }
+  paymentMethod: "PAYTECH",
+  initiatePayment: true  // IMPORTANT: Active la redirection
 };
 
-// Utilisation
-try {
-  await createUser(userData);
-  toast.success('Utilisateur créé avec succès');
-} catch (error) {
-  handleApiError(error);
+// Soumettre la commande
+const response = await createGuestOrder(createOrderWithPayTech);
+
+// Redirection automatique vers PayTech
+if (response.payment?.redirect_url) {
+  window.location.href = response.payment.redirect_url;
 }
 ```
 
----
+### Flux de paiement PayTech
 
-## Exemples Complets
+1. **Client remplit le formulaire** → Sélectionne "PayTech" comme mode de paiement
+2. **Frontend envoie la commande** → Avec `initiatePayment: true`
+3. **Backend crée la commande** → Retourne `payment.redirect_url`
+4. **Redirection automatique** → Client redirigé vers page de paiement PayTech
+5. **Paiement effectué** → Client revient sur votre site
+6. **Webhook PayTech** → Backend reçoit confirmation du paiement
 
-### Composant React - Liste des Utilisateurs
+## 🎨 Composant React exemple
 
-```typescript
-import React, { useState, useEffect } from 'react';
+```tsx
+import { useState } from 'react';
 
-const UsersPage = () => {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [filters, setFilters] = useState({
-    search: '',
-    status: '',
-    roleId: ''
+interface OrderFormData {
+  firstName: string;
+  lastName: string;
+  street: string;
+  city: string;
+  country: string;
+  phoneNumber: string;
+  paymentMethod: 'CASH_ON_DELIVERY' | 'PAYTECH' | 'OTHER';
+}
+
+export function OrderForm() {
+  const [formData, setFormData] = useState<OrderFormData>({
+    firstName: '',
+    lastName: '',
+    street: '',
+    city: '',
+    country: 'Sénégal',
+    phoneNumber: '',
+    paymentMethod: 'CASH_ON_DELIVERY'
   });
-
-  const token = localStorage.getItem('token');
-
-  useEffect(() => {
-    fetchUsers();
-  }, [page, filters]);
-
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: '10',
-        ...(filters.search && { search: filters.search }),
-        ...(filters.status && { status: filters.status }),
-        ...(filters.roleId && { roleId: filters.roleId })
-      });
-
-      const response = await fetch(`/admin/users?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setUsers(data.data);
-        setTotalPages(data.meta.totalPages);
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStatusChange = async (userId, newStatus) => {
-    try {
-      const response = await fetch(`/admin/users/${userId}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      if (response.ok) {
-        fetchUsers(); // Refresh list
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-    }
-  };
-
-  return (
-    <div>
-      <h1>Gestion des Utilisateurs</h1>
-
-      {/* Filtres */}
-      <div className="filters">
-        <input
-          type="text"
-          placeholder="Rechercher..."
-          value={filters.search}
-          onChange={(e) => setFilters({...filters, search: e.target.value})}
-        />
-
-        <select
-          value={filters.status}
-          onChange={(e) => setFilters({...filters, status: e.target.value})}
-        >
-          <option value="">Tous les statuts</option>
-          <option value="active">Actif</option>
-          <option value="inactive">Inactif</option>
-          <option value="suspended">Suspendu</option>
-        </select>
-      </div>
-
-      {/* Liste */}
-      {loading ? (
-        <p>Chargement...</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Nom</th>
-              <th>Email</th>
-              <th>Rôle</th>
-              <th>Statut</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(user => (
-              <tr key={user.id}>
-                <td>{user.name}</td>
-                <td>{user.email}</td>
-                <td>{user.role?.name || 'N/A'}</td>
-                <td>{user.status}</td>
-                <td>
-                  <button onClick={() => handleStatusChange(user.id, 'suspended')}>
-                    Suspendre
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {/* Pagination */}
-      <div className="pagination">
-        <button
-          disabled={page === 1}
-          onClick={() => setPage(page - 1)}
-        >
-          Précédent
-        </button>
-        <span>Page {page} sur {totalPages}</span>
-        <button
-          disabled={page === totalPages}
-          onClick={() => setPage(page + 1)}
-        >
-          Suivant
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export default UsersPage;
-```
-
-### Composant React - Formulaire de Création d'Utilisateur
-
-```typescript
-import React, { useState, useEffect } from 'react';
-
-const CreateUserForm = ({ onSuccess }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    phone: '',
-    roleId: '',
-    status: 'active'
-  });
-  const [availableRoles, setAvailableRoles] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [error, setError] = useState('');
 
-  const token = localStorage.getItem('token');
-
-  useEffect(() => {
-    fetchAvailableRoles();
-  }, []);
-
-  const fetchAvailableRoles = async () => {
-    try {
-      const response = await fetch('/admin/roles/available-for-users', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        setAvailableRoles(data.data);
-      }
-    } catch (error) {
-      console.error('Erreur chargement rôles:', error);
-    }
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrors({});
     setLoading(true);
+    setError('');
 
     try {
-      const response = await fetch('/admin/users', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      const orderData = {
+        shippingDetails: {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          street: formData.street,
+          city: formData.city,
+          country: formData.country
         },
-        body: JSON.stringify({
-          ...formData,
-          roleId: parseInt(formData.roleId)
-        })
+        phoneNumber: formData.phoneNumber,
+        orderItems: [
+          // Récupérer depuis votre panier
+          { productId: 1, quantity: 1 }
+        ],
+        paymentMethod: formData.paymentMethod,
+        initiatePayment: formData.paymentMethod === 'PAYTECH'
+      };
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/orders/guest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
       });
 
-      const data = await response.json();
+      const result = await response.json();
 
-      if (response.ok) {
-        alert('Utilisateur créé avec succès');
-        onSuccess?.();
-      } else {
-        setErrors({ general: data.message });
+      if (!response.ok) {
+        throw new Error(result.message?.join(', ') || 'Erreur');
       }
-    } catch (error) {
-      setErrors({ general: 'Erreur lors de la création' });
+
+      // Redirection PayTech ou affichage confirmation
+      if (result.data.payment?.redirect_url) {
+        window.location.href = result.data.payment.redirect_url;
+      } else {
+        alert(`Commande ${result.data.orderNumber} créée!`);
+      }
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h2>Créer un Utilisateur</h2>
+    <form onSubmit={handleSubmit} className="order-form">
+      <h2>Passer une commande</h2>
 
-      {errors.general && (
-        <div className="error">{errors.general}</div>
-      )}
+      {error && <div className="error">{error}</div>}
 
-      <div>
-        <label>Nom complet *</label>
+      <div className="form-group">
+        <label>Prénom</label>
         <input
           type="text"
-          value={formData.name}
-          onChange={(e) => setFormData({...formData, name: e.target.value})}
-          required
+          value={formData.firstName}
+          onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+          maxLength={100}
         />
       </div>
 
-      <div>
-        <label>Email *</label>
+      <div className="form-group">
+        <label>Nom</label>
         <input
-          type="email"
-          value={formData.email}
-          onChange={(e) => setFormData({...formData, email: e.target.value})}
-          required
+          type="text"
+          value={formData.lastName}
+          onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+          maxLength={100}
         />
       </div>
 
-      <div>
-        <label>Mot de passe * (min 8 caractères)</label>
+      <div className="form-group">
+        <label>Adresse *</label>
         <input
-          type="password"
-          value={formData.password}
-          onChange={(e) => setFormData({...formData, password: e.target.value})}
-          minLength={8}
+          type="text"
+          value={formData.street}
+          onChange={(e) => setFormData({...formData, street: e.target.value})}
           required
+          maxLength={200}
         />
       </div>
 
-      <div>
-        <label>Téléphone</label>
+      <div className="form-group">
+        <label>Ville *</label>
+        <input
+          type="text"
+          value={formData.city}
+          onChange={(e) => setFormData({...formData, city: e.target.value})}
+          required
+          maxLength={100}
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Pays *</label>
+        <input
+          type="text"
+          value={formData.country}
+          onChange={(e) => setFormData({...formData, country: e.target.value})}
+          required
+          maxLength={100}
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Téléphone *</label>
         <input
           type="tel"
-          value={formData.phone}
-          onChange={(e) => setFormData({...formData, phone: e.target.value})}
+          value={formData.phoneNumber}
+          onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
+          required
+          placeholder="77 123 45 67"
         />
       </div>
 
-      <div>
-        <label>Rôle *</label>
+      <div className="form-group">
+        <label>Mode de paiement</label>
         <select
-          value={formData.roleId}
-          onChange={(e) => setFormData({...formData, roleId: e.target.value})}
-          required
+          value={formData.paymentMethod}
+          onChange={(e) => setFormData({...formData, paymentMethod: e.target.value as any})}
         >
-          <option value="">Sélectionnez un rôle</option>
-          {availableRoles.map(role => (
-            <option key={role.id} value={role.id}>
-              {role.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label>Statut *</label>
-        <select
-          value={formData.status}
-          onChange={(e) => setFormData({...formData, status: e.target.value})}
-        >
-          <option value="active">Actif</option>
-          <option value="inactive">Inactif</option>
-          <option value="suspended">Suspendu</option>
+          <option value="CASH_ON_DELIVERY">Paiement à la livraison</option>
+          <option value="PAYTECH">PayTech (en ligne)</option>
+          <option value="OTHER">Autre</option>
         </select>
       </div>
 
       <button type="submit" disabled={loading}>
-        {loading ? 'Création...' : 'Créer l\'utilisateur'}
+        {loading ? 'Traitement...' : 'Valider la commande'}
       </button>
     </form>
   );
-};
-
-export default CreateUserForm;
+}
 ```
 
----
+## ✅ Checklist d'intégration
 
-## Points Importants à Retenir
+### Configuration initiale
+- [ ] Configurer `VITE_API_URL` dans `.env`
+- [ ] Installer les dépendances (fetch ou axios)
+- [ ] Créer les interfaces TypeScript
 
-### ✅ À FAIRE
-- Toujours utiliser `/admin/roles/available-for-users` pour le dropdown de sélection de rôle
-- Accepter les statuts en minuscules ou majuscules (le backend les convertit)
-- Gérer les erreurs 401 en redirigeant vers la page de login
-- Utiliser la pagination pour les listes longues
-- Vérifier que `user.role` n'est pas null avant d'accéder à `user.role.name`
+### Formulaire de commande
+- [ ] Créer le formulaire avec tous les champs obligatoires
+- [ ] Ajouter les validations côté client (longueurs max, formats)
+- [ ] Implémenter la sélection de produits
+- [ ] Gérer les quantités, tailles et couleurs
+- [ ] Ajouter le sélecteur de mode de paiement
 
-### ❌ À NE PAS FAIRE
-- Ne jamais utiliser `/admin/roles` pour le formulaire de création d'utilisateur (inclut le rôle vendor)
-- Ne pas envoyer le statut sans la transformation en majuscules côté frontend si vous gérez manuellement
-- Ne pas oublier le token JWT dans les headers
-- Ne pas supposer que tous les utilisateurs ont un rôle (vérifier null)
+### Intégration API
+- [ ] Créer la fonction d'appel à `/orders/guest`
+- [ ] Gérer les réponses succès
+- [ ] Gérer les erreurs de validation
+- [ ] Implémenter la redirection PayTech
+- [ ] Afficher les confirmations à l'utilisateur
 
-### 🔐 Permissions
-Pour implémenter la gestion des permissions côté frontend, vérifiez les permissions retournées lors du login et stockez-les :
+### Tests
+- [ ] Tester avec commande minimale (champs requis uniquement)
+- [ ] Tester avec commande complète (tous les champs)
+- [ ] Tester les erreurs de validation
+- [ ] Tester le paiement PayTech
+- [ ] Tester le paiement à la livraison
 
-```typescript
-// Après login
-const permissions = response.user.role.permissions.map(p => p.slug);
-localStorage.setItem('permissions', JSON.stringify(permissions));
+## 🚨 Points d'attention
 
-// Vérifier une permission
-const hasPermission = (slug) => {
-  const permissions = JSON.parse(localStorage.getItem('permissions') || '[]');
-  return permissions.includes(slug);
-};
+### Validation des données
+1. **Champs obligatoires**: `street`, `city`, `country`, `phoneNumber`, `orderItems`
+2. **Longueurs maximales**: Respecter les limites (voir tableaux ci-dessus)
+3. **Quantités**: Minimum 1 pour chaque article
+4. **ProductId**: Doit exister en base de données
 
-// Utilisation
-{hasPermission('users.create') && (
-  <button onClick={openCreateForm}>Créer un utilisateur</button>
-)}
+### Sécurité
+- Ne jamais exposer de données sensibles côté client
+- Valider également côté backend (déjà fait)
+- Utiliser HTTPS en production
+
+### UX/UI
+- Indiquer clairement les champs obligatoires (*)
+- Afficher les erreurs de validation de manière claire
+- Confirmer la création de commande
+- Montrer un loader pendant la soumission
+
+### PayTech
+- `initiatePayment` doit être `true` pour déclencher le paiement
+- Redirection automatique après création de commande
+- Gérer le retour après paiement
+
+## 📞 Support et debugging
+
+### En cas d'erreur
+
+1. **Erreur 400** → Problème de validation
+   - Vérifier que tous les champs requis sont remplis
+   - Vérifier les longueurs max
+   - Vérifier que `orderItems` n'est pas vide
+
+2. **Erreur 404** → Route incorrecte
+   - Vérifier `VITE_API_URL` dans `.env`
+   - Vérifier que la route est `/orders/guest`
+
+3. **Erreur 500** → Problème serveur
+   - Vérifier les logs backend
+   - Vérifier que les `productId` existent
+
+### Outils de test
+
+```bash
+# Test avec curl
+curl -X POST http://localhost:3004/orders/guest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "shippingDetails": {
+      "street": "123 Test Street",
+      "city": "Dakar",
+      "country": "Sénégal"
+    },
+    "phoneNumber": "771234567",
+    "orderItems": [
+      {"productId": 1, "quantity": 1}
+    ]
+  }'
 ```
 
----
-
-## Support
-
-Pour toute question ou problème, référez-vous aux fichiers de documentation techniques :
-- `RBAC_IMPLEMENTATION.md` - Détails techniques du système RBAC
-- `GESTION_ROLES_DYNAMIQUES.md` - Explication du système de rôles dynamiques
-- `CORRECTIONS_ADMIN_USERS.md` - Corrections appliquées au système
+### Logs et monitoring
+- Consulter les logs backend: `npm run start:dev`
+- Vérifier la console navigateur pour les erreurs
+- Utiliser les DevTools Network pour inspecter les requêtes
 
 ---
 
-**Version:** 1.0
-**Dernière mise à jour:** 2024-01-20
+## 📚 Ressources supplémentaires
+
+- **Backend API**: Port 3004
+- **Route principale**: `POST /orders/guest`
+- **Documentation Swagger**: `http://localhost:3004/api` (si activé)
+
+---
+
+**Dernière mise à jour**: 29/10/2025
+**Version**: 2.0
+**Backend API**: Compatible avec CreateOrderDto v2
