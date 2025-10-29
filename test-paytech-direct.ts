@@ -15,8 +15,8 @@ async function testPayTech() {
       currency: "XOF",
       env: "test",
       ipn_url: "https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69",
-      success_url: "https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69?status=success",
-      cancel_url: "https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69?status=cancel",
+      successRedirectUrl: "https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69?status=success",
+      cancelRedirectUrl: "https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69?status=cancel",
       custom_field: JSON.stringify({ test: true })
     };
 
