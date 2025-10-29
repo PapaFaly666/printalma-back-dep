@@ -1,61 +1,33 @@
-# Guide d'intégration PayTech - Printalma Backend
+# PayTech Payment Gateway Integration Guide
 
-Ce guide est basé **EXCLUSIVEMENT** sur la documentation officielle PayTech:
-- Documentation : https://doc.intech.sn/doc_paytech.php
-- Collection Postman : https://doc.intech.sn/PayTech%20x%20DOC.postman_collection.json
+This guide provides comprehensive documentation for the PayTech payment gateway integration in the Printalma backend application.
 
-## Table des matières
+## Table of Contents
 
-1. [Statuts de paiement](#statuts-de-paiement)
+1. [Overview](#overview)
 2. [Installation & Setup](#installation--setup)
 3. [Configuration](#configuration)
-4. [Workflow de paiement](#workflow-de-paiement)
-5. [Gestion des webhooks IPN](#gestion-des-webhooks-ipn)
-6. [API Endpoints](#api-endpoints)
-7. [Intégration Frontend](#intégration-frontend)
-8. [Migration de la base de données](#migration-de-la-base-de-données)
-9. [Tests](#tests)
-10. [Sécurité](#sécurité)
-11. [Troubleshooting](#troubleshooting)
-
----
-
-## Statuts de paiement
-
-Selon la documentation officielle PayTech, voici les statuts disponibles :
-
-| Statut | Description | Action système |
-|--------|-------------|----------------|
-| `PENDING` | Paiement en cours de traitement | Commande reste en PENDING |
-| `PAID` | Paiement complété avec succès | Commande passe en CONFIRMED |
-| `FAILED` | Transaction refusée | Commande reste inchangée |
-| `REJECTED` | Annulation par l'utilisateur | Commande reste inchangée |
-| `CANCELLED` | Paiement annulé | Commande reste inchangée |
-
-### Événements IPN PayTech
-
-PayTech envoie des webhooks avec les `type_event` suivants :
-
-- `sale_complete` → Statut `PAID`
-- `sale_canceled` → Statut `CANCELLED`
-- `transfer_success` → Pour les remboursements
-- `transfer_failed` → Échec de transfert
+4. [API Endpoints](#api-endpoints)
+5. [Payment Flow](#payment-flow)
+6. [Frontend Integration](#frontend-integration)
+7. [Webhook/IPN Handling](#webhookipn-handling)
+8. [Testing](#testing)
+9. [Security Best Practices](#security-best-practices)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-PayTech est une passerelle de paiement ouest-africaine supportant :
-- Orange Money (Sénégal, Côte d'Ivoire, Mali, Bénin)
-- MTN Money (Côte d'Ivoire, Bénin)
-- Moov Money (Côte d'Ivoire, Mali, Bénin)
-- Wave (Sénégal, Côte d'Ivoire)
-- Free Money
-- Wizall
-- Tigo Cash
+PayTech is a West African payment gateway supporting multiple payment methods including:
+- Orange Money (Senegal, Côte d'Ivoire, Mali)
+- MTN Money (Côte d'Ivoire, Benin)
+- Moov Money (Côte d'Ivoire, Mali, Benin)
+- Wave (Senegal, Côte d'Ivoire)
 - Carte Bancaire (Credit/Debit Cards)
+- And more...
 
-**Documentation officielle:** https://doc.intech.sn/doc_paytech.php
+**Official Documentation:** https://doc.intech.sn/doc_paytech.php
 
 ---
 

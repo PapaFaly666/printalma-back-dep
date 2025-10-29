@@ -72,14 +72,6 @@ export class IpnCallbackDto {
   @IsString()
   paid_at?: string;
 
-  @IsOptional()
-  @IsString()
-  client_phone?: string; // Numéro de téléphone du client
-
-  @IsOptional()
-  @IsNumber()
-  final_item_price?: number; // Prix final après éventuelles modifications
-
   // Additional fields
   [key: string]: any;
 }
