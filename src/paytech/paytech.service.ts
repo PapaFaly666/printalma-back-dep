@@ -68,8 +68,9 @@ export class PaytechService {
         env: paymentData.env || 'prod',
         ...(paymentData.target_payment && { target_payment: paymentData.target_payment }),
         ...(paymentData.ipn_url && { ipn_url: paymentData.ipn_url }),
-        ...(paymentData.success_url && { success_url: paymentData.success_url }),
-        ...(paymentData.cancel_url && { cancel_url: paymentData.cancel_url }),
+        // PayTech expects camelCase for these fields
+        ...(paymentData.success_url && { successRedirectUrl: paymentData.success_url }),
+        ...(paymentData.cancel_url && { cancelRedirectUrl: paymentData.cancel_url }),
         ...(paymentData.custom_field && { custom_field: paymentData.custom_field }),
       };
 
