@@ -50,24 +50,24 @@ model User {
   validatedOrders         Order[]                 @relation("OrderValidator")
   passwordResets          PasswordReset[]
   validatedProducts       Product[]               @relation("ProductValidator")
-  createdByUser           User?                   @relation("UserCreatedBy", fields: [created_by], references: [id])
-  createdUsers            User[]                  @relation("UserCreatedBy")
-  deletedByUser           User?                   @relation("DeletedByUser", fields: [deleted_by], references: [id])
-  deletedUsers            User[]                  @relation("DeletedByUser")
-  customRole              CustomRole?             @relation("UserCustomRole", fields: [roleId], references: [id])
-  vendorType              VendorType?             @relation("UserVendorType", fields: [vendorTypeId], references: [id])
+  stockMovements          StockMovement[]         @relation("StockMovementCreator")
   vendorDesignTransforms  VendorDesignTransform[]
   validatedVendorProducts VendorProduct[]         @relation("VendorProductValidator")
   vendorProducts          VendorProduct[]
-  auditLogs               AuditLog[]              @relation("AuditLogUser")
   commissionChanges       CommissionAuditLog[]    @relation("CommissionAuditChanger")
   commissionAuditLogs     CommissionAuditLog[]    @relation("CommissionAuditVendorUser")
-  stockMovements          StockMovement[]         @relation("StockMovementCreator")
   createdCommissions      VendorCommission[]      @relation("CommissionCreatedByUser")
   vendorCommission        VendorCommission?       @relation("VendorCommissionToUser")
   vendorEarnings          VendorEarnings?         @relation("VendorEarnings")
   processedFundsRequests  VendorFundsRequest[]    @relation("ProcessedFundsRequests")
   vendorFundsRequests     VendorFundsRequest[]    @relation("VendorFundsRequests")
+  customRole              CustomRole?             @relation("UserCustomRole", fields: [roleId], references: [id])
+  vendorType              VendorType?             @relation("UserVendorType", fields: [vendorTypeId], references: [id])
+  createdByUser           User?                   @relation("UserCreatedBy", fields: [created_by], references: [id], onDelete: SetNull)
+  createdUsers            User[]                  @relation("UserCreatedBy")
+  deletedByUser           User?                   @relation("DeletedByUser", fields: [deleted_by], references: [id], onDelete: SetNull)
+  deletedUsers            User[]                  @relation("DeletedByUser")
+  auditLogs               AuditLog[]              @relation("AuditLogUser")
 
   @@index([country])
   @@index([shop_name])
@@ -94,40 +94,43 @@ model PasswordReset {
 }
 
 model Product {
-  id                       Int                 @id @default(autoincrement())
+  id                       Int               @id @default(autoincrement())
   name                     String
   description              String
   price                    Float
   stock                    Int
-  status                   PublicationStatus   @default(DRAFT)
-  createdAt                DateTime            @default(now())
-  updatedAt                DateTime            @updatedAt
-  designsMetadata          Json?               @default("{\"lastUpdated\": null, \"totalDesigns\": 0}")
-  genre                    ProductGenre        @default(UNISEXE)
-  hasCustomDesigns         Boolean             @default(false)
-  isDelete                 Boolean             @default(false)
-  isReadyProduct           Boolean             @default(false)
-  isValidated              Boolean             @default(true)
+  status                   PublicationStatus @default(DRAFT)
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  designsMetadata          Json?             @default("{\"lastUpdated\": null, \"totalDesigns\": 0}")
+  genre                    ProductGenre      @default(UNISEXE)
+  hasCustomDesigns         Boolean           @default(false)
+  isDelete                 Boolean           @default(false)
+  isReadyProduct           Boolean           @default(false)
+  isValidated              Boolean           @default(true)
   rejectionReason          String?
   submittedForValidationAt DateTime?
   validatedAt              DateTime?
   validatedBy              Int?
-  suggestedPrice           Float?              @map("suggested_price")
-  categoryId               Int?                @map("category_id")
-  subCategoryId            Int?                @map("sub_category_id")
-  variationId              Int?                @map("variation_id")
+  suggestedPrice           Float?            @map("suggested_price")
+
+  // Hiérarchie de catégories à 3 niveaux
+  categoryId               Int?              @map("category_id")
+  subCategoryId            Int?              @map("sub_category_id")
+  variationId              Int?              @map("variation_id")
+
   colorVariations          ColorVariation[]
   orderItems               OrderItem[]
-  category                 Category?           @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  subCategory              SubCategory?        @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
-  validator                User?               @relation("ProductValidator", fields: [validatedBy], references: [id])
-  variation                Variation?          @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
+  validator                User?             @relation("ProductValidator", fields: [validatedBy], references: [id])
   sizes                    ProductSize[]
   stocks                   ProductStock[]
+  stockMovements           StockMovement[]
   themeProducts            ThemeProduct[]
   vendorProducts           VendorProduct[]
-  CategoryToProduct        CategoryToProduct[]
-  stockMovements           StockMovement[]
+  categories               Category[]        @relation("CategoryToProduct")
+  category                 Category?         @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  subCategory              SubCategory?      @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
+  variation                Variation?        @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
 
   @@index([isValidated])
   @@index([submittedForValidationAt])
@@ -162,44 +165,46 @@ model ProductStock {
 }
 
 model StockMovement {
-  id             Int               @id @default(autoincrement())
-  productId      Int               @map("product_id")
-  colorId        Int               @map("color_id")
-  sizeName       String            @map("size_name")
-  type           StockMovementType
-  quantity       Int
-  reason         String?
-  createdAt      DateTime          @default(now()) @map("created_at")
-  createdBy      Int?              @map("created_by")
-  colorVariation ColorVariation    @relation(fields: [colorId], references: [id], onDelete: Cascade)
-  user           User?             @relation("StockMovementCreator", fields: [createdBy], references: [id])
-  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        Int                 @id @default(autoincrement())
+  productId Int                 @map("product_id")
+  colorId   Int                 @map("color_id")
+  sizeName  String              @map("size_name")
+  type      StockMovementType
+  quantity  Int
+  reason    String?
+  createdAt DateTime            @default(now()) @map("created_at")
+  createdBy Int?                @map("created_by")
+  product   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  colorVariation ColorVariation  @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  user      User?               @relation("StockMovementCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([productId])
   @@index([createdAt(sort: Desc)])
   @@map("stock_movements")
 }
 
+// Niveau 0 - Catégorie principale (ex: Vêtements, Accessoires)
 model Category {
-  id                 Int                 @id @default(autoincrement())
-  name               String              @unique
-  slug               String              @unique
+  id                 Int            @id @default(autoincrement())
+  name               String         @unique
+  slug               String         @unique
   description        String?
-  displayOrder       Int                 @default(0) @map("display_order")
-  coverImageUrl      String?             @map("cover_image_url")
-  coverImagePublicId String?             @map("cover_image_public_id")
-  isActive           Boolean             @default(true) @map("is_active")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
-  directProducts     Product[]           @relation("ProductCategory")
-  CategoryToProduct  CategoryToProduct[]
-  subCategories      SubCategory[]       @relation("CategorySubCategories")
+  displayOrder       Int            @default(0) @map("display_order")
+  coverImageUrl      String?        @map("cover_image_url")
+  coverImagePublicId String?        @map("cover_image_public_id")
+  isActive           Boolean        @default(true) @map("is_active")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  subCategories      SubCategory[]  @relation("CategorySubCategories")
+  products           Product[]      @relation("CategoryToProduct")
+  directProducts     Product[]      @relation("ProductCategory")
 
   @@index([isActive])
   @@index([displayOrder])
   @@map("categories")
 }
 
+// Niveau 1 - Sous-catégorie (ex: T-Shirts, Sweats, Hoodies)
 model SubCategory {
   id           Int         @id @default(autoincrement())
   name         String
@@ -210,9 +215,9 @@ model SubCategory {
   isActive     Boolean     @default(true) @map("is_active")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
-  products     Product[]   @relation("ProductSubCategory")
   category     Category    @relation("CategorySubCategories", fields: [categoryId], references: [id], onDelete: Cascade)
   variations   Variation[] @relation("SubCategoryVariations")
+  products     Product[]   @relation("ProductSubCategory")
 
   @@unique([name, categoryId], name: "unique_subcategory_per_category")
   @@index([categoryId])
@@ -221,6 +226,7 @@ model SubCategory {
   @@map("sub_categories")
 }
 
+// Niveau 2 - Variation (ex: Col V, Col Rond, Manches Longues)
 model Variation {
   id            Int         @id @default(autoincrement())
   name          String
@@ -231,8 +237,8 @@ model Variation {
   isActive      Boolean     @default(true) @map("is_active")
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
+  subCategory   SubCategory @relation("SubCategoryVariations", fields: [subCategoryId], references: [id], onDelete: Restrict)
   products      Product[]   @relation("ProductVariation")
-  subCategory   SubCategory @relation("SubCategoryVariations", fields: [subCategoryId], references: [id])
 
   @@unique([name, subCategoryId], name: "unique_variation_per_subcategory")
   @@index([subCategoryId])
@@ -249,8 +255,8 @@ model ColorVariation {
   product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItems          OrderItem[]
   images              ProductImage[]
-  vendorProductImages VendorProductImage[]
   stockMovements      StockMovement[]
+  vendorProductImages VendorProductImage[]
 }
 
 model ProductImage {
@@ -305,7 +311,7 @@ model Delimitation {
 model Order {
   id                  Int                       @id @default(autoincrement())
   orderNumber         String                    @unique
-  userId              Int?
+  userId              Int
   status              OrderStatus               @default(PENDING)
   totalAmount         Float
   phoneNumber         String
@@ -324,13 +330,13 @@ model Order {
   confirmedAt         DateTime?
   deliveredAt         DateTime?
   paymentMethod       String?
-  transactionId       String?
+  paymentStatus       String?                   // PayTech payment status: PENDING, PAID, FAILED
+  transactionId       String?                   // PayTech transaction ID
   shippedAt           DateTime?
   shippingAmount      Float                     @default(0)
   subtotal            Float?
   taxAmount           Float                     @default(0)
-  paymentStatus       String?
-  user                User?                     @relation(fields: [userId], references: [id])
+  user                User                      @relation(fields: [userId], references: [id])
   validator           User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
   orderItems          OrderItem[]
   fundsRequestLinks   VendorFundsRequestOrder[]
@@ -672,8 +678,8 @@ model CommissionAuditLog {
   ipAddress     String?          @map("ip_address")
   userAgent     String?          @map("user_agent")
   changedByUser User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
-  vendorUser    VendorCommission @relation("CommissionAuditVendorUser", fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_vendor_commission_fkey")
-  vendorAsUser  User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
+  vendorCommission VendorCommission @relation("CommissionAuditVendorUser", fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_vendor_commission_fkey")
+  vendorUser    User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
 
   @@index([vendorId])
   @@index([changedBy])
@@ -744,93 +750,6 @@ model VendorEarnings {
 
   @@index([vendorId], map: "idx_vendor")
   @@map("vendor_earnings")
-}
-
-/// Table des types de vendeurs personnalisables
-model VendorType {
-  id          Int      @id @default(autoincrement())
-  label       String   @unique
-  description String
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  users       User[]   @relation("UserVendorType")
-
-  @@map("vendor_types")
-}
-
-/// Système de rôles personnalisables (RBAC)
-model CustomRole {
-  id          Int              @id @default(autoincrement())
-  name        String
-  slug        String           @unique
-  description String?
-  isSystem    Boolean          @default(false) @map("is_system")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  users       User[]           @relation("UserCustomRole")
-  permissions RolePermission[] @relation("RolePermissions")
-
-  @@index([slug])
-  @@index([isSystem])
-  @@map("custom_roles")
-}
-
-/// Permissions granulaires
-model Permission {
-  id          Int              @id @default(autoincrement())
-  key         String           @unique
-  name        String
-  description String?
-  module      String
-  createdAt   DateTime         @default(now()) @map("created_at")
-  roles       RolePermission[] @relation("PermissionRoles")
-
-  @@index([module])
-  @@index([key])
-  @@map("permissions")
-}
-
-/// Table pivot pour les permissions des rôles
-model RolePermission {
-  roleId       Int        @map("role_id")
-  permissionId Int        @map("permission_id")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  permission   Permission @relation("PermissionRoles", fields: [permissionId], references: [id], onDelete: Cascade)
-  role         CustomRole @relation("RolePermissions", fields: [roleId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
-  @@map("role_permissions")
-}
-
-/// Logs d'audit pour traçabilité
-model AuditLog {
-  id         Int      @id @default(autoincrement())
-  userId     Int?     @map("user_id")
-  action     String
-  entityType String   @map("entity_type")
-  entityId   Int?     @map("entity_id")
-  oldValues  Json?    @map("old_values")
-  newValues  Json?    @map("new_values")
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  createdAt  DateTime @default(now()) @map("created_at")
-  user       User?    @relation("AuditLogUser", fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([entityType, entityId])
-  @@index([createdAt(sort: Desc)])
-  @@map("audit_logs")
-}
-
-model CategoryToProduct {
-  A          Int
-  B          Int
-  categories Category @relation(fields: [A], references: [id], onDelete: Cascade)
-  Product    Product  @relation(fields: [B], references: [id], onDelete: Cascade)
-
-  @@id([A, B], map: "_CategoryToProduct_AB_pkey")
-  @@index([B], map: "_CategoryToProduct_B_index")
-  @@map("_CategoryToProduct")
 }
 
 enum PublicationStatus {
@@ -934,6 +853,18 @@ enum FundsRequestStatus {
   PAID
 }
 
+/// Table des types de vendeurs personnalisables
+model VendorType {
+  id          Int      @id @default(autoincrement())
+  label       String   @unique
+  description String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  users       User[]   @relation("UserVendorType")
+
+  @@map("vendor_types")
+}
+
 enum StockMovementType {
   IN
   OUT
@@ -943,4 +874,68 @@ enum UserStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+/// Système de rôles personnalisables (RBAC)
+model CustomRole {
+  id          Int                   @id @default(autoincrement())
+  name        String
+  slug        String                @unique
+  description String?
+  isSystem    Boolean               @default(false) @map("is_system")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  users       User[]                @relation("UserCustomRole")
+  permissions RolePermission[]      @relation("RolePermissions")
+
+  @@index([slug])
+  @@index([isSystem])
+  @@map("custom_roles")
+}
+
+/// Permissions granulaires
+model Permission {
+  id          Int              @id @default(autoincrement())
+  key         String           @unique
+  name        String
+  description String?
+  module      String
+  createdAt   DateTime         @default(now()) @map("created_at")
+  roles       RolePermission[] @relation("PermissionRoles")
+
+  @@index([module])
+  @@index([key])
+  @@map("permissions")
+}
+
+/// Table pivot pour les permissions des rôles
+model RolePermission {
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  role         CustomRole @relation("RolePermissions", fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation("PermissionRoles", fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Logs d'audit pour traçabilité
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   Int?     @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
 }
