@@ -307,4 +307,148 @@ export class PaytechService {
 
     return false;
   }
+
+  /**
+   * Get payment failure reason from IPN data
+   *
+   * @param ipnData IPN callback data
+   * @returns Detailed failure reason object
+   */
+  getPaymentFailureReason(ipnData: IpnCallbackDto): {
+    reason: string;
+    code?: string;
+    message?: string;
+    processorResponse?: string;
+    category: 'insufficient_funds' | 'technical_error' | 'user_action' | 'fraud' | 'timeout' | 'other';
+  } {
+    const reason = ipnData.cancel_reason?.toLowerCase() || '';
+    const errorCode = ipnData.error_code?.toLowerCase() || '';
+    const errorMessage = ipnData.error_message || '';
+
+    // Categorize the failure reason
+    if (reason.includes('insufficient') || reason.includes('funds') || reason.includes('balance')) {
+      return {
+        reason: reason || 'insufficient_funds',
+        code: ipnData.error_code,
+        message: errorMessage || 'Fonds insuffisants dans le compte',
+        processorResponse: ipnData.processor_response,
+        category: 'insufficient_funds'
+      };
+    }
+
+    if (reason.includes('session') && reason.includes('expire')) {
+      return {
+        reason: reason || 'session_expired',
+        code: ipnData.error_code,
+        message: errorMessage || 'La session de paiement a expiré',
+        processorResponse: ipnData.processor_response,
+        category: 'timeout'
+      };
+    }
+
+    if (reason.includes('cancel') || reason.includes('abandon')) {
+      return {
+        reason: reason || 'user_cancelled',
+        code: ipnData.error_code,
+        message: errorMessage || 'Le client a annulé le paiement',
+        processorResponse: ipnData.processor_response,
+        category: 'user_action'
+      };
+    }
+
+    if (reason.includes('card') && (reason.includes('declin') || reason.includes('refus'))) {
+      return {
+        reason: reason || 'card_declined',
+        code: ipnData.error_code,
+        message: errorMessage || 'Carte bancaire refusée',
+        processorResponse: ipnData.processor_response,
+        category: 'technical_error'
+      };
+    }
+
+    if (reason.includes('fraud') || reason.includes('suspect') || reason.includes('sécurité')) {
+      return {
+        reason: reason || 'fraud_detected',
+        code: ipnData.error_code,
+        message: errorMessage || 'Transaction suspectée - Fraude',
+        processorResponse: ipnData.processor_response,
+        category: 'fraud'
+      };
+    }
+
+    if (reason.includes('network') || reason.includes('timeout') || reason.includes('technical')) {
+      return {
+        reason: reason || 'technical_error',
+        code: ipnData.error_code,
+        message: errorMessage || 'Erreur technique lors du paiement',
+        processorResponse: ipnData.processor_response,
+        category: 'technical_error'
+      };
+    }
+
+    // Default fallback
+    return {
+      reason: reason || 'unknown_error',
+      code: ipnData.error_code,
+      message: errorMessage || 'Erreur de paiement inconnue',
+      processorResponse: ipnData.processor_response,
+      category: 'other'
+    };
+  }
+
+  /**
+   * Get user-friendly message based on failure reason
+   *
+   * @param failureReason Failure reason object
+   * @returns User-friendly message in French
+   */
+  getFailureUserMessage(failureReason: ReturnType<typeof this.getPaymentFailureReason>): string {
+    switch (failureReason.category) {
+      case 'insufficient_funds':
+        return '❌ Fonds insuffisants. Veuillez vérifier votre solde ou utiliser une autre carte bancaire.';
+
+      case 'timeout':
+        return '⏰ Session expirée. Veuillez réessayer le paiement.';
+
+      case 'user_action':
+        return '🚫 Paiement annulé. Vous pouvez réessayer si vous le souhaitez.';
+
+      case 'fraud':
+        return '🚨 Paiement bloqué pour des raisons de sécurité. Veuillez contacter votre banque.';
+
+      case 'technical_error':
+        return '⚠️ Erreur technique. Veuillez réessayer dans quelques instants.';
+
+      default:
+        return '❌ Paiement échoué. Veuillez réessayer ou contacter le support.';
+    }
+  }
+
+  /**
+   * Get support message based on failure reason
+   *
+   * @param failureReason Failure reason object
+   * @returns Support message with technical details
+   */
+  getFailureSupportMessage(failureReason: ReturnType<typeof this.getPaymentFailureReason>): string {
+    const details = [];
+
+    if (failureReason.code) {
+      details.push(`Code erreur: ${failureReason.code}`);
+    }
+
+    if (failureReason.reason !== failureReason.message) {
+      details.push(`Raison: ${failureReason.reason}`);
+    }
+
+    if (failureReason.processorResponse) {
+      details.push(`Réponse processeur: ${failureReason.processorResponse}`);
+    }
+
+    const baseMessage = `Catégorie: ${failureReason.category} | Message: ${failureReason.message}`;
+
+    return details.length > 0
+      ? `${baseMessage} | ${details.join(' | ')}`
+      : baseMessage;
+  }
 }

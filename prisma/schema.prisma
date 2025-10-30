@@ -309,43 +309,53 @@ model Delimitation {
 }
 
 model Order {
-  id                  Int                       @id @default(autoincrement())
-  orderNumber         String                    @unique
-  userId              Int
-  status              OrderStatus               @default(PENDING)
-  totalAmount         Float
-  phoneNumber         String
-  notes               String?
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  validatedAt         DateTime?
-  validatedBy         Int?
-  shippingName        String?
-  shippingStreet      String?
-  shippingCity        String?
-  shippingRegion      String?
-  shippingPostalCode  String?
-  shippingCountry     String?
-  shippingAddressFull String?
-  confirmedAt         DateTime?
-  deliveredAt         DateTime?
-  paymentMethod       String?
-  paymentStatus       String?                   // PayTech payment status: PENDING, PAID, FAILED
-  transactionId       String?                   // PayTech transaction ID
-  shippedAt           DateTime?
-  shippingAmount      Float                     @default(0)
-  subtotal            Float?
-  taxAmount           Float                     @default(0)
-  user                User                      @relation(fields: [userId], references: [id])
-  validator           User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
-  orderItems          OrderItem[]
-  fundsRequestLinks   VendorFundsRequestOrder[]
+  id                     Int                       @id @default(autoincrement())
+  orderNumber            String                    @unique
+  userId                 Int
+  status                 OrderStatus               @default(PENDING)
+  totalAmount            Float
+  phoneNumber            String
+  notes                  String?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  validatedAt            DateTime?
+  validatedBy            Int?
+  shippingName           String?
+  shippingStreet         String?
+  shippingCity           String?
+  shippingRegion         String?
+  shippingPostalCode     String?
+  shippingCountry        String?
+  shippingAddressFull    String?
+  confirmedAt            DateTime?
+  deliveredAt            DateTime?
+  paymentMethod          String?
+  paymentStatus          String?                   // PayTech payment status: PENDING, PAID, FAILED
+  transactionId          String?                   // PayTech transaction ID
+  shippedAt              DateTime?
+  shippingAmount         Float                     @default(0)
+  subtotal               Float?
+  taxAmount              Float                     @default(0)
+
+  // 🆕 Champs pour gestion des fonds insuffisants
+  paymentAttempts        Int                       @default(0) @map("payment_attempts") // Nombre de tentatives
+  lastPaymentAttemptAt   DateTime?                 @map("last_payment_attempt_at") // Dernière tentative
+  lastPaymentFailureReason String?                 @map("last_payment_failure_reason") // Dernière raison d'échec
+  hasInsufficientFunds   Boolean                   @default(false) @map("has_insufficient_funds") // Flag pour fonds insuffisants
+
+  user                   User                      @relation(fields: [userId], references: [id])
+  validator              User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
+  orderItems             OrderItem[]
+  fundsRequestLinks      VendorFundsRequestOrder[]
+  paymentAttemptsHistory PaymentAttempt[]          // 🆕 Historique des tentatives
 
   @@index([userId])
   @@index([status])
   @@index([orderNumber])
   @@index([paymentStatus])
   @@index([transactionId])
+  @@index([hasInsufficientFunds]) // 🆕 Index pour requêtes rapides
+  @@index([lastPaymentAttemptAt]) // 🆕 Index pour analytics
 }
 
 model OrderItem {
@@ -874,6 +884,59 @@ enum UserStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+/// 🆕 Table pour tracker toutes les tentatives de paiement
+/// Permet un suivi détaillé de chaque tentative et des raisons d'échec
+model PaymentAttempt {
+  id                   Int                  @id @default(autoincrement())
+  orderId              Int                  @map("order_id")
+  orderNumber          String               @map("order_number")
+  amount               Float                // Montant de la tentative
+  currency             String               @default("XOF") // XOF, EUR, USD, etc.
+  paymentMethod        String?              @map("payment_method") // Orange Money, Wave, etc.
+  status               PaymentAttemptStatus @default(PENDING)
+
+  // Informations PayTech
+  paytechToken         String?              @map("paytech_token") // Token PayTech
+  paytechTransactionId String?              @map("paytech_transaction_id") // ID transaction
+
+  // Détails d'échec
+  failureReason        String?              @map("failure_reason") // Raison brute
+  failureCategory      String?              @map("failure_category") // insufficient_funds, timeout, etc.
+  failureCode          String?              @map("failure_code") // Code erreur
+  failureMessage       String?              @map("failure_message") // Message détaillé
+  processorResponse    String?              @map("processor_response") // Réponse du processeur
+
+  // Métadonnées
+  ipnData              Json?                @map("ipn_data") // Données IPN complètes (pour debug)
+  isRetry              Boolean              @default(false) @map("is_retry") // Est-ce une tentative de retry?
+  attemptNumber        Int                  @default(1) @map("attempt_number") // Numéro de la tentative
+
+  // Horodatage
+  attemptedAt          DateTime             @default(now()) @map("attempted_at")
+  completedAt          DateTime?            @map("completed_at")
+  failedAt             DateTime?            @map("failed_at")
+
+  order                Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([failureCategory])
+  @@index([attemptedAt(sort: Desc)])
+  @@index([paytechToken])
+  @@map("payment_attempts")
+}
+
+/// 🆕 Statut des tentatives de paiement
+enum PaymentAttemptStatus {
+  PENDING      // En attente
+  PROCESSING   // En cours de traitement
+  SUCCESS      // Succès
+  FAILED       // Échec
+  CANCELLED    // Annulé par l'utilisateur
+  EXPIRED      // Session expirée
 }
 
 /// Système de rôles personnalisables (RBAC)

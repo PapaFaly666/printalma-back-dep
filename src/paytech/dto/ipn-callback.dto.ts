@@ -31,7 +31,7 @@ export class IpnCallbackDto {
 
   @IsOptional()
   @IsString()
-  currency?: string;
+  currency?: string; // XOF, EUR, USD, CAD, GBP, MAD
 
   @IsOptional()
   @IsString()
@@ -39,7 +39,11 @@ export class IpnCallbackDto {
 
   @IsOptional()
   @IsString()
-  payment_method?: string;
+  payment_method?: string; // Orange Money, Wave, etc.
+
+  @IsOptional()
+  @IsString()
+  client_phone?: string; // Customer phone number
 
   @IsOptional()
   @IsString()
@@ -71,6 +75,23 @@ export class IpnCallbackDto {
   @IsOptional()
   @IsString()
   paid_at?: string;
+
+  // Payment failure reasons
+  @IsOptional()
+  @IsString()
+  cancel_reason?: string; // 'insufficient_funds', 'session_expired', 'user_cancelled', 'card_declined', etc.
+
+  @IsOptional()
+  @IsString()
+  error_code?: string; // Error code from PayTech
+
+  @IsOptional()
+  @IsString()
+  error_message?: string; // Detailed error message
+
+  @IsOptional()
+  @IsString()
+  processor_response?: string; // Payment processor response
 
   // Additional fields
   [key: string]: any;

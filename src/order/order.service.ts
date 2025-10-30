@@ -137,11 +137,21 @@ export class OrderService {
   /**
    * Update order payment status after PayTech IPN callback
    * This should be called by the PayTech IPN handler
+   *
+   * 🆕 Enhanced with automatic insufficient funds tracking
    */
   async updateOrderPaymentStatus(
     orderNumber: string,
     paymentStatus: 'PAID' | 'FAILED',
-    transactionId?: string
+    transactionId?: string,
+    failureDetails?: {
+      reason: string;
+      code?: string;
+      message?: string;
+      processorResponse?: string;
+      category: string;
+    },
+    attemptNumber?: number
   ) {
     try {
       this.logger.log(`💳 Updating payment status for order ${orderNumber}: ${paymentStatus}`);
@@ -154,14 +164,60 @@ export class OrderService {
         throw new NotFoundException(`Order ${orderNumber} not found`);
       }
 
+      // Prepare update data
+      const updateData: any = {
+        paymentStatus,
+        transactionId,
+        // If payment is successful, update order status to CONFIRMED
+        ...(paymentStatus === 'PAID' && { status: OrderStatus.CONFIRMED }),
+        // 🆕 Update payment attempts counter
+        ...(attemptNumber && { paymentAttempts: attemptNumber }),
+        // 🆕 Update last payment attempt timestamp
+        lastPaymentAttemptAt: new Date(),
+      };
+
+      // Store failure details if payment failed
+      if (paymentStatus === 'FAILED' && failureDetails) {
+        // Store as JSON string in notes field or add custom fields
+        const failureInfo = {
+          reason: failureDetails.reason,
+          category: failureDetails.category,
+          code: failureDetails.code,
+          message: failureDetails.message,
+          processorResponse: failureDetails.processorResponse,
+          timestamp: new Date().toISOString(),
+          attemptNumber: attemptNumber || 1
+        };
+
+        // 🆕 Update insufficient funds flag
+        if (failureDetails.category === 'insufficient_funds') {
+          updateData.hasInsufficientFunds = true;
+          updateData.lastPaymentFailureReason = failureDetails.reason;
+          this.logger.log(`💰 Insufficient funds detected for order ${orderNumber}`);
+        } else {
+          updateData.lastPaymentFailureReason = failureDetails.reason;
+        }
+
+        // Add failure info to notes field (or you could add new fields to the schema)
+        updateData.notes = order.notes
+          ? `${order.notes}\n\n💳 PAYMENT FAILED (Attempt #${attemptNumber || 1}): ${JSON.stringify(failureInfo, null, 2)}`
+          : `💳 PAYMENT FAILED (Attempt #${attemptNumber || 1}): ${JSON.stringify(failureInfo, null, 2)}`;
+
+        this.logger.log(
+          `💳 Payment failure details stored for order ${orderNumber}: ${failureDetails.reason} (${failureDetails.category})`
+        );
+      }
+
+      // 🆕 Reset insufficient funds flag if payment succeeds
+      if (paymentStatus === 'PAID' && order.hasInsufficientFunds) {
+        updateData.hasInsufficientFunds = false;
+        updateData.lastPaymentFailureReason = null;
+        this.logger.log(`✅ Payment succeeded - insufficient funds flag reset for order ${orderNumber}`);
+      }
+
       const updatedOrder = await this.prisma.order.update({
         where: { id: order.id },
-        data: {
-          paymentStatus,
-          transactionId,
-          // If payment is successful, update order status to CONFIRMED
-          ...(paymentStatus === 'PAID' && { status: OrderStatus.CONFIRMED })
-        },
+        data: updateData,
         include: {
           orderItems: {
             include: {
@@ -197,6 +253,13 @@ export class OrderService {
           },
           user: true,
           validator: true,
+          // 🆕 Inclure l'historique des tentatives de paiement
+          paymentAttemptsHistory: {
+            orderBy: {
+              attemptedAt: 'desc',
+            },
+            take: 3, // Dernières 3 tentatives
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -229,6 +292,13 @@ export class OrderService {
             product: true,
             colorVariation: true,
           },
+        },
+        // 🆕 Inclure l'historique des tentatives de paiement
+        paymentAttemptsHistory: {
+          orderBy: {
+            attemptedAt: 'desc',
+          },
+          take: 3, // Dernières 3 tentatives
         },
       },
       orderBy: {
@@ -287,6 +357,13 @@ export class OrderService {
         },
         user: true,
         validator: true,
+        // 🆕 Inclure l'historique des tentatives de paiement
+        paymentAttemptsHistory: {
+          orderBy: {
+            attemptedAt: 'desc',
+          },
+          take: 3,
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -326,6 +403,12 @@ export class OrderService {
         },
         user: true,
         validator: true,
+        // 🆕 Inclure TOUTES les tentatives de paiement pour la vue détaillée
+        paymentAttemptsHistory: {
+          orderBy: {
+            attemptedAt: 'desc',
+          },
+        },
       },
     });
 
@@ -337,7 +420,7 @@ export class OrderService {
   }
 
   private formatOrderResponse(order: any) {
-    return {
+    const baseOrder = {
       ...order,
       orderItems: order.orderItems.map((item: any) => {
         console.log('🎨 Données de couleur récupérées:', {
@@ -350,7 +433,7 @@ export class OrderService {
           ...item,
           colorId: item.colorId,
           color: item.color,
-          
+
           product: {
             ...item.product,
             orderedColorName: item.colorVariation?.name || null,
@@ -359,6 +442,44 @@ export class OrderService {
           }
         };
       })
+    };
+
+    // 🆕 Ajouter les informations de paiement enrichies
+    const paymentInfo: any = {
+      status: order.paymentStatus,
+      method: order.paymentMethod,
+      transaction_id: order.transactionId,
+      attempts_count: order.paymentAttempts || 0,
+      last_attempt_at: order.lastPaymentAttemptAt,
+    };
+
+    // 🆕 Ajouter détails sur les fonds insuffisants si applicable
+    if (order.hasInsufficientFunds) {
+      paymentInfo.insufficient_funds = {
+        detected: true,
+        last_failure_reason: order.lastPaymentFailureReason,
+        message: '💰 Paiement échoué - Fonds insuffisants',
+        user_message: '❌ Fonds insuffisants. Veuillez vérifier votre solde ou utiliser une autre méthode de paiement.',
+        can_retry: true,
+        retry_available: true,
+      };
+    }
+
+    // 🆕 Inclure historique des tentatives si disponible
+    if (order.paymentAttemptsHistory && order.paymentAttemptsHistory.length > 0) {
+      paymentInfo.recent_attempts = order.paymentAttemptsHistory.slice(0, 3).map((attempt: any) => ({
+        attempt_number: attempt.attemptNumber,
+        status: attempt.status,
+        attempted_at: attempt.attemptedAt,
+        failure_reason: attempt.failureReason,
+        failure_category: attempt.failureCategory,
+        payment_method: attempt.paymentMethod,
+      }));
+    }
+
+    return {
+      ...baseOrder,
+      payment_info: paymentInfo,
     };
   }
 
@@ -520,5 +641,272 @@ export class OrderService {
 
   async updateStatus(id: number, status: OrderStatus, validatedBy?: number) {
     return this.updateOrderStatus(id, { status }, validatedBy);
+  }
+
+  /**
+   * Retry payment for a failed order
+   * This method allows customers to retry payment after a failed attempt
+   * Particularly useful for insufficient funds scenarios
+   *
+   * @param orderNumber Order number to retry payment for
+   * @param paymentMethod Optional new payment method
+   * @returns Payment data with new token and redirect URL
+   */
+  async retryPayment(orderNumber: string, paymentMethod?: string) {
+    try {
+      this.logger.log(`💳 Retry payment requested for order: ${orderNumber}`);
+
+      // Find the order
+      const order = await this.prisma.order.findFirst({
+        where: { orderNumber },
+        include: { user: true }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderNumber} not found`);
+      }
+
+      // Verify order is in a state that allows payment retry
+      if (order.paymentStatus === 'PAID') {
+        throw new BadRequestException('Order has already been paid');
+      }
+
+      if (order.status === OrderStatus.CANCELLED) {
+        throw new BadRequestException('Cannot retry payment for cancelled order');
+      }
+
+      // Initialize new payment with PayTech
+      this.logger.log(`💳 Initializing retry payment for order: ${orderNumber}`);
+
+      const paymentResponse = await this.paytechService.requestPayment({
+        item_name: `Order ${order.orderNumber} (Retry)`,
+        item_price: order.totalAmount,
+        ref_command: order.orderNumber,
+        command_name: `Printalma Order - ${order.orderNumber} (Retry Payment)`,
+        currency: PayTechCurrency.XOF,
+        env: (this.configService.get('PAYTECH_ENVIRONMENT') === 'test'
+          ? PayTechEnvironment.TEST
+          : PayTechEnvironment.PROD),
+        ipn_url: this.configService.get('PAYTECH_IPN_URL'),
+        success_url: this.configService.get('PAYTECH_SUCCESS_URL'),
+        cancel_url: this.configService.get('PAYTECH_CANCEL_URL'),
+        custom_field: JSON.stringify({
+          orderId: order.id,
+          userId: order.userId,
+          retryAttempt: true,
+          previousFailure: order.notes?.includes('INSUFFICIENT FUNDS') ? 'insufficient_funds' : 'unknown'
+        }),
+        ...(paymentMethod && { target_payment: paymentMethod })
+      });
+
+      // Update order notes with retry attempt
+      const retryNote = `\n\n🔄 Payment retry initiated at ${new Date().toISOString()}\nNew token: ${paymentResponse.token}`;
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: {
+          notes: order.notes ? order.notes + retryNote : retryNote
+        }
+      });
+
+      this.logger.log(`✅ Retry payment initialized successfully: ${paymentResponse.token}`);
+
+      return {
+        success: true,
+        message: 'Payment retry initialized successfully',
+        data: {
+          order_id: order.id,
+          order_number: order.orderNumber,
+          amount: order.totalAmount,
+          currency: 'XOF',
+          payment: {
+            token: paymentResponse.token,
+            redirect_url: paymentResponse.redirect_url || paymentResponse.redirectUrl,
+            is_retry: true
+          }
+        }
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to retry payment: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Get orders with insufficient funds failures for analytics
+   * 🆕 Enhanced with hasInsufficientFunds flag
+   */
+  async getInsufficientFundsOrders(page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where: {
+          // 🆕 Use the new flag for faster queries
+          hasInsufficientFunds: true
+        },
+        include: {
+          orderItems: {
+            include: {
+              product: true,
+              colorVariation: true,
+            }
+          },
+          user: true,
+          paymentAttemptsHistory: {
+            orderBy: {
+              attemptedAt: 'desc'
+            },
+            take: 5 // Show last 5 attempts
+          }
+        },
+        orderBy: {
+          lastPaymentAttemptAt: 'desc' // Most recent attempts first
+        },
+        skip,
+        take: limit
+      }),
+      this.prisma.order.count({
+        where: {
+          hasInsufficientFunds: true
+        }
+      })
+    ]);
+
+    return {
+      orders: orders.map(order => ({
+        ...this.formatOrderResponse(order),
+        payment_attempts_count: order.paymentAttempts,
+        last_payment_attempt: order.lastPaymentAttemptAt,
+        last_failure_reason: order.lastPaymentFailureReason,
+        recent_attempts: order.paymentAttemptsHistory
+      })),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  /**
+   * 🆕 Get payment attempts history for an order
+   * Shows all payment attempts with detailed information
+   */
+  async getPaymentAttempts(orderNumber: string) {
+    try {
+      const order = await this.prisma.order.findFirst({
+        where: { orderNumber },
+        include: {
+          paymentAttemptsHistory: {
+            orderBy: {
+              attemptedAt: 'desc'
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderNumber} not found`);
+      }
+
+      return {
+        success: true,
+        message: 'Payment attempts retrieved successfully',
+        data: {
+          order_id: order.id,
+          order_number: order.orderNumber,
+          total_amount: order.totalAmount,
+          payment_status: order.paymentStatus,
+          total_attempts: order.paymentAttempts,
+          has_insufficient_funds: order.hasInsufficientFunds,
+          last_payment_attempt: order.lastPaymentAttemptAt,
+          last_failure_reason: order.lastPaymentFailureReason,
+          customer: order.user,
+          attempts: order.paymentAttemptsHistory.map(attempt => ({
+            id: attempt.id,
+            attempt_number: attempt.attemptNumber,
+            status: attempt.status,
+            amount: attempt.amount,
+            currency: attempt.currency,
+            payment_method: attempt.paymentMethod,
+            is_retry: attempt.isRetry,
+            failure: attempt.failureCategory ? {
+              category: attempt.failureCategory,
+              reason: attempt.failureReason,
+              code: attempt.failureCode,
+              message: attempt.failureMessage,
+              processor_response: attempt.processorResponse
+            } : null,
+            attempted_at: attempt.attemptedAt,
+            completed_at: attempt.completedAt,
+            failed_at: attempt.failedAt,
+            paytech_token: attempt.paytechToken,
+            paytech_transaction_id: attempt.paytechTransactionId
+          }))
+        }
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to get payment attempts: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 🆕 Get detailed information about a specific payment attempt
+   * Admin only - includes complete IPN data for debugging
+   */
+  async getPaymentAttemptDetails(attemptId: number) {
+    try {
+      const attempt = await this.prisma.paymentAttempt.findUnique({
+        where: { id: attemptId },
+        include: {
+          order: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  phone: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!attempt) {
+        throw new NotFoundException(`Payment attempt ${attemptId} not found`);
+      }
+
+      return {
+        success: true,
+        message: 'Payment attempt details retrieved',
+        data: {
+          ...attempt,
+          order: {
+            id: attempt.order.id,
+            order_number: attempt.order.orderNumber,
+            total_amount: attempt.order.totalAmount,
+            status: attempt.order.status,
+            payment_status: attempt.order.paymentStatus,
+            customer: attempt.order.user
+          }
+        }
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to get payment attempt details: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 } 

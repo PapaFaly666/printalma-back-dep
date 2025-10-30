@@ -54,7 +54,7 @@ export class OrderController {
 
   // Obtenir toutes les commandes (admin seulement)
   @Get('admin/all')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(['ADMIN', 'SUPERADMIN'])
   async getAllOrders(
     @Query('page') page: string = '1',
@@ -150,7 +150,7 @@ export class OrderController {
 
   // Mettre à jour le statut d'une commande (admin seulement)
   @Patch(':id/status')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(['ADMIN', 'SUPERADMIN'])
   async updateOrderStatus(
     @Param('id', ParseIntPipe) id: number,
@@ -177,7 +177,7 @@ export class OrderController {
 
   // Statistiques des commandes (admin seulement)
   @Get('admin/statistics')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(['ADMIN', 'SUPERADMIN'])
   async getOrderStatistics() {
     return {
@@ -189,7 +189,7 @@ export class OrderController {
 
   // Statistiques au format frontend (admin seulement)
   @Get('admin/frontend-statistics')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(['ADMIN', 'SUPERADMIN'])
   async getFrontendOrderStatistics() {
     return {
@@ -201,7 +201,7 @@ export class OrderController {
 
   // Statistiques des connexions WebSocket (admin seulement)
   @Get('admin/websocket-stats')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(['ADMIN', 'SUPERADMIN'])
   async getWebSocketStats() {
     return {
@@ -209,5 +209,69 @@ export class OrderController {
       message: 'Statistiques WebSocket récupérées',
       data: this.orderGateway.getConnectionStats()
     };
+  }
+
+  /**
+   * Retry payment for a failed order
+   * Public endpoint - can be accessed by customers with order number
+   */
+  @Post(':orderNumber/retry-payment')
+  @HttpCode(HttpStatus.OK)
+  async retryPayment(
+    @Param('orderNumber') orderNumber: string,
+    @Body() body?: { paymentMethod?: string }
+  ) {
+    return await this.orderService.retryPayment(
+      orderNumber,
+      body?.paymentMethod
+    );
+  }
+
+  /**
+   * Get orders with insufficient funds failures (Admin only - for analytics)
+   */
+  @Get('admin/insufficient-funds')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(['ADMIN', 'SUPERADMIN'])
+  async getInsufficientFundsOrders(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10'
+  ) {
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+
+    if (pageNum < 1) {
+      throw new BadRequestException('La page doit être supérieure à 0');
+    }
+    if (limitNum < 1 || limitNum > 100) {
+      throw new BadRequestException('La limite doit être entre 1 et 100');
+    }
+
+    return {
+      success: true,
+      message: 'Commandes avec fonds insuffisants récupérées',
+      data: await this.orderService.getInsufficientFundsOrders(pageNum, limitNum)
+    };
+  }
+
+  /**
+   * Get payment attempts history for an order
+   * Public endpoint - can be accessed by customers with order number
+   */
+  @Get(':orderNumber/payment-attempts')
+  @HttpCode(HttpStatus.OK)
+  async getPaymentAttempts(@Param('orderNumber') orderNumber: string) {
+    return await this.orderService.getPaymentAttempts(orderNumber);
+  }
+
+  /**
+   * Get detailed information about a specific payment attempt
+   * Admin only - for debugging and support
+   */
+  @Get('admin/payment-attempt/:attemptId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(['ADMIN', 'SUPERADMIN'])
+  async getPaymentAttemptDetails(@Param('attemptId', ParseIntPipe) attemptId: number) {
+    return await this.orderService.getPaymentAttemptDetails(attemptId);
   }
 } 
