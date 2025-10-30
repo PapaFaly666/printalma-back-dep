@@ -100,14 +100,45 @@ export class OrderController {
     };
   }
 
+  // Endpoint de test pour vérifier l'authentification et les rôles
+  @Get('test-auth')
+  @UseGuards(JwtAuthGuard)
+  async testAuth(@Request() req) {
+    return {
+      success: true,
+      message: 'Authentification testée',
+      data: {
+        user: req.user,
+        hasUser: !!req.user,
+        userRole: req.user?.role,
+        userId: req.user?.sub
+      }
+    };
+  }
+
+  // Endpoint de test pour vérifier les rôles admin
+  @Get('test-admin')
+  @UseGuards(RolesGuard)
+  @Roles(['ADMIN', 'SUPERADMIN'])
+  async testAdmin(@Request() req) {
+    return {
+      success: true,
+      message: 'Accès admin confirmé',
+      data: {
+        user: req.user,
+        role: req.user?.role
+      }
+    };
+  }
+
   // Obtenir une commande spécifique
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async getOrderById(@Param('id', ParseIntPipe) id: number, @Request() req) {
     // Les utilisateurs normaux ne peuvent voir que leurs propres commandes
     // Les admins peuvent voir toutes les commandes
-    const userId = req.user.role === 'ADMIN' || req.user.role === 'SUPERADMIN' 
-      ? undefined 
+    const userId = req.user.role === 'ADMIN' || req.user.role === 'SUPERADMIN'
+      ? undefined
       : req.user.sub;
 
     return {
@@ -165,37 +196,6 @@ export class OrderController {
       success: true,
       message: 'Statistiques frontend récupérées avec succès',
       data: await this.orderService.getFrontendStatistics()
-    };
-  }
-
-  // Endpoint de test pour vérifier l'authentification et les rôles
-  @Get('test-auth')
-  @UseGuards(JwtAuthGuard)
-  async testAuth(@Request() req) {
-    return {
-      success: true,
-      message: 'Authentification testée',
-      data: {
-        user: req.user,
-        hasUser: !!req.user,
-        userRole: req.user?.role,
-        userId: req.user?.sub
-      }
-    };
-  }
-
-  // Endpoint de test pour vérifier les rôles admin
-  @Get('test-admin')
-  @UseGuards(RolesGuard)
-  @Roles(['ADMIN', 'SUPERADMIN'])
-  async testAdmin(@Request() req) {
-    return {
-      success: true,
-      message: 'Accès admin confirmé',
-      data: {
-        user: req.user,
-        role: req.user?.role
-      }
     };
   }
 
