@@ -136,6 +136,8 @@ export class DesignCategoryService {
         isActive: category.isActive,
         sortOrder: category.sortOrder,
         designCount: category._count.designs,
+        isFeatured: category.isFeatured,
+        featuredOrder: category.featuredOrder,
         createdAt: category.createdAt,
         updatedAt: category.updatedAt,
         creator: category.creator,
@@ -228,6 +230,8 @@ export class DesignCategoryService {
         isActive: category.isActive,
         sortOrder: category.sortOrder,
         designCount: category._count.designs,
+        isFeatured: category.isFeatured,
+        featuredOrder: category.featuredOrder,
         createdAt: category.createdAt,
         updatedAt: category.updatedAt,
         creator: category.creator,
@@ -286,6 +290,8 @@ export class DesignCategoryService {
         isActive: category.isActive,
         sortOrder: category.sortOrder,
         designCount: category._count.designs,
+        isFeatured: category.isFeatured,
+        featuredOrder: category.featuredOrder,
         createdAt: category.createdAt,
         updatedAt: category.updatedAt,
         creator: category.creator,
@@ -517,6 +523,8 @@ export class DesignCategoryService {
         isActive: category.isActive,
         sortOrder: category.sortOrder,
         designCount: category._count.designs,
+        isFeatured: category.isFeatured,
+        featuredOrder: category.featuredOrder,
         createdAt: category.createdAt,
         updatedAt: category.updatedAt,
         creator: category.creator,
@@ -568,6 +576,8 @@ export class DesignCategoryService {
         isActive: category.isActive,
         sortOrder: category.sortOrder,
         designCount: category._count.designs,
+        isFeatured: category.isFeatured,
+        featuredOrder: category.featuredOrder,
         createdAt: category.createdAt,
         updatedAt: category.updatedAt,
         creator: category.creator,
@@ -575,6 +585,166 @@ export class DesignCategoryService {
     } catch (error) {
       console.error('Erreur lors de la récupération des catégories actives:', error);
       throw new BadRequestException('Erreur lors de la récupération des catégories actives');
+    }
+  }
+
+  /**
+   * Récupérer les thèmes marqués comme "en vedette" (featured/trending)
+   * Endpoint public pour le landing page
+   */
+  async getFeaturedCategories(): Promise<DesignCategoryResponseDto[]> {
+    try {
+      const categories = await this.prisma.designCategory.findMany({
+        where: {
+          isFeatured: true,
+          isActive: true,
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          _count: {
+            select: {
+              designs: true,
+            },
+          },
+        },
+        orderBy: {
+          featuredOrder: 'asc',
+        },
+        take: 5,
+      });
+
+      return categories.map(category => ({
+        id: category.id,
+        name: category.name,
+        description: category.description || '',
+        slug: category.slug,
+        coverImageUrl: category.coverImageUrl || null,
+        isActive: category.isActive,
+        sortOrder: category.sortOrder,
+        designCount: category._count.designs,
+        isFeatured: category.isFeatured,
+        featuredOrder: category.featuredOrder,
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt,
+        creator: category.creator,
+      }));
+    } catch (error) {
+      console.error('Erreur lors de la récupération des thèmes en vedette:', error);
+      throw new BadRequestException('Erreur lors de la récupération des thèmes en vedette');
+    }
+  }
+
+  /**
+   * Mettre à jour la configuration des thèmes en vedette
+   * Admin uniquement - avec transaction pour assurer l'atomicité
+   */
+  async updateFeaturedCategories(categoryIds: number[]): Promise<DesignCategoryResponseDto[]> {
+    try {
+      // Validation: Vérifier que tous les IDs existent et sont actifs
+      const categories = await this.prisma.designCategory.findMany({
+        where: {
+          id: { in: categoryIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+        },
+      });
+
+      // Vérifier que tous les IDs ont été trouvés
+      if (categories.length !== categoryIds.length) {
+        const foundIds = categories.map(cat => cat.id);
+        const missingIds = categoryIds.filter(id => !foundIds.includes(id));
+        throw new BadRequestException(
+          `Les catégories suivantes n'existent pas: ${missingIds.join(', ')}`
+        );
+      }
+
+      // Vérifier qu'aucune catégorie n'est inactive
+      const inactiveCategories = categories.filter(cat => !cat.isActive);
+      if (inactiveCategories.length > 0) {
+        const inactiveNames = inactiveCategories.map(cat => cat.name).join(', ');
+        throw new BadRequestException(
+          `Les catégories suivantes sont inactives et ne peuvent pas être en vedette: ${inactiveNames}`
+        );
+      }
+
+      // Transaction pour mise à jour atomique
+      const result = await this.prisma.$transaction(async (tx) => {
+        // 1. Réinitialiser tous les thèmes actuellement en vedette
+        await tx.designCategory.updateMany({
+          where: { isFeatured: true },
+          data: {
+            isFeatured: false,
+            featuredOrder: null,
+          },
+        });
+
+        // 2. Marquer les nouveaux thèmes avec leur ordre
+        // Faire les mises à jour une par une pour garantir l'ordre
+        for (let i = 0; i < categoryIds.length; i++) {
+          await tx.designCategory.update({
+            where: { id: categoryIds[i] },
+            data: {
+              isFeatured: true,
+              featuredOrder: i + 1,
+            },
+          });
+        }
+
+        // 3. Récupérer et retourner les thèmes mis à jour
+        return await tx.designCategory.findMany({
+          where: { isFeatured: true },
+          include: {
+            creator: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            _count: {
+              select: {
+                designs: true,
+              },
+            },
+          },
+          orderBy: {
+            featuredOrder: 'asc',
+          },
+        });
+      });
+
+      return result.map(category => ({
+        id: category.id,
+        name: category.name,
+        description: category.description || '',
+        slug: category.slug,
+        coverImageUrl: category.coverImageUrl || null,
+        isActive: category.isActive,
+        sortOrder: category.sortOrder,
+        designCount: category._count.designs,
+        isFeatured: category.isFeatured,
+        featuredOrder: category.featuredOrder,
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt,
+        creator: category.creator,
+      }));
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour des thèmes en vedette:', error);
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new BadRequestException('Erreur lors de la mise à jour des thèmes en vedette');
     }
   }
 }

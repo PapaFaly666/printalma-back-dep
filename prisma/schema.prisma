@@ -44,6 +44,7 @@ model User {
   validatedDesigns        Design[]                @relation("DesignValidator")
   designs                 Design[]
   createdDesignCategories DesignCategory[]        @relation("DesignCategoryCreator")
+  createdDesigners        Designer[]              @relation("DesignerCreator")
   emailChangeRequests     EmailChangeRequest[]
   notifications           Notification[]
   orders                  Order[]
@@ -408,12 +409,15 @@ model DesignCategory {
   createdBy          Int
   coverImagePublicId String?
   coverImageUrl      String?
+  isFeatured         Boolean  @default(false) @map("is_featured")
+  featuredOrder      Int?     @map("featured_order")
   designs            Design[] @relation("DesignToCategory")
   creator            User     @relation("DesignCategoryCreator", fields: [createdBy], references: [id])
 
   @@index([isActive])
   @@index([sortOrder])
   @@index([slug])
+  @@index([isFeatured, featuredOrder], name: "idx_featured")
 }
 
 model Design {
@@ -980,7 +984,7 @@ model RolePermission {
   permission   Permission @relation("PermissionRoles", fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
-  @@map("role_permissions")
+  @@map("role_permissions") 
 }
 
 /// Logs d'audit pour traçabilité
@@ -1001,4 +1005,28 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+/// Designers - Créateurs qui apparaissent sur la page d'accueil
+model Designer {
+  id             Int      @id @default(autoincrement())
+  name           String   @db.VarChar(255)
+  displayName    String?  @map("display_name") @db.VarChar(255)
+  bio            String?  @db.Text
+  avatarUrl      String?  @map("avatar_url") @db.VarChar(500)
+  avatarPublicId String?  @map("avatar_public_id") @db.VarChar(255)
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  featuredOrder  Int?     @map("featured_order")
+  isFeatured     Boolean  @default(false) @map("is_featured")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdBy      Int      @map("created_by")
+  creator        User     @relation("DesignerCreator", fields: [createdBy], references: [id])
+
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([sortOrder])
+  @@index([featuredOrder])
+  @@map("designers")
 }

@@ -13,6 +13,9 @@ import {
   HttpStatus,
   UseInterceptors,
   UploadedFile,
+  UsePipes,
+  ValidationPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -34,6 +37,7 @@ import {
   ListDesignCategoriesQueryDto,
   DesignCategoryResponseDto,
 } from './dto/create-design-category.dto';
+import { ParseArrayIntPipe } from './pipes/parse-array-int.pipe';
 
 @ApiTags('Design Categories')
 @Controller('design-categories')
@@ -126,6 +130,65 @@ export class DesignCategoryController {
   })
   async getCategories(@Query() queryDto: ListDesignCategoriesQueryDto) {
     return this.designCategoryService.getCategories(queryDto);
+  }
+
+  /**
+   * 👑 ADMIN - Mettre à jour la configuration des thèmes en vedette
+   */
+  @Put('featured/update')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[ADMIN] Mettre à jour les thèmes en vedette',
+    description: 'Met à jour la liste et l\'ordre des thèmes marqués comme "en vedette". Maximum 5 thèmes. L\'ordre dans le tableau détermine l\'ordre d\'affichage.',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Thèmes en vedette mis à jour avec succès',
+    type: [DesignCategoryResponseDto],
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Validation échouée (max 5 thèmes, IDs invalides, catégories inactives, etc.)',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Token admin requis',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Droits administrateur requis',
+  })
+  async updateFeaturedCategories(
+    @Body() body: any,
+  ): Promise<DesignCategoryResponseDto[]> {
+    // Validate body structure
+    if (!body || !body.categoryIds) {
+      throw new BadRequestException('La liste des IDs de catégories est requise');
+    }
+
+    if (!Array.isArray(body.categoryIds)) {
+      throw new BadRequestException('categoryIds doit être un tableau');
+    }
+
+    if (body.categoryIds.length === 0) {
+      throw new BadRequestException('Au moins 1 catégorie doit être sélectionnée');
+    }
+
+    if (body.categoryIds.length > 5) {
+      throw new BadRequestException('Maximum 5 thèmes autorisés');
+    }
+
+    // Convert string IDs to numbers
+    const categoryIds = body.categoryIds.map((id, index) => {
+      const num = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+      if (isNaN(num) || !Number.isInteger(num)) {
+        throw new BadRequestException(`ID invalide à l'index ${index}: "${id}" n'est pas un nombre valide`);
+      }
+      return num;
+    });
+
+    return this.designCategoryService.updateFeaturedCategories(categoryIds);
   }
 
   /**
@@ -226,5 +289,22 @@ export class DesignCategoryController {
   async getCategoryBySlug(@Param('slug') slug: string): Promise<DesignCategoryResponseDto> {
     // Pour cette méthode, nous devons ajouter une fonction au service
     return this.designCategoryService.getCategoryBySlug(slug);
+  }
+
+  /**
+   * 🌐 PUBLIC - Récupérer les thèmes en vedette (featured/trending)
+   */
+  @Get('featured')
+  @ApiOperation({
+    summary: 'Récupérer les thèmes tendances',
+    description: 'Endpoint public pour récupérer les thèmes marqués comme "en vedette" pour affichage sur le landing page (max 5)',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Liste des thèmes en vedette récupérée avec succès',
+    type: [DesignCategoryResponseDto],
+  })
+  async getFeaturedCategories(): Promise<DesignCategoryResponseDto[]> {
+    return this.designCategoryService.getFeaturedCategories();
   }
 }

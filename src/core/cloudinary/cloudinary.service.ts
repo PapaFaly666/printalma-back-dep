@@ -385,6 +385,85 @@ export class CloudinaryService {
     });
   }
 
+  /**
+   * Upload d'avatar pour les designers
+   * Support: jpg, jpeg, png, gif, webp, SVG
+   * Taille max: 10MB
+   * @param file - Fichier image de l'avatar
+   */
+  async uploadDesignerAvatar(file: Express.Multer.File): Promise<CloudinaryUploadResult> {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log(`🎨 Upload avatar designer: ${file.originalname} (${Math.round(file.size / 1024)}KB)`);
+
+        // Vérifier la taille (10MB max)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+          throw new Error('La taille du fichier ne doit pas dépasser 10MB');
+        }
+
+        // Détecter si c'est un SVG
+        const isSVG = file.mimetype === 'image/svg+xml' || file.originalname.toLowerCase().endsWith('.svg');
+
+        // S'assurer que Cloudinary est configuré
+        this.ensureConfigured();
+
+        let uploadConfig: any;
+
+        if (isSVG) {
+          // Configuration spéciale pour SVG
+          console.log('🎨 Détection SVG - upload sans transformations');
+          uploadConfig = {
+            folder: 'designers',
+            resource_type: 'image',
+            format: 'svg',
+            public_id: `avatar_${Date.now()}`,
+            // Pas de transformation pour préserver le SVG
+          };
+        } else {
+          // Configuration pour images raster (jpg, png, gif, webp)
+          uploadConfig = {
+            folder: 'designers',
+            resource_type: 'image',
+            public_id: `avatar_${Date.now()}`,
+            transformation: [
+              {
+                width: 400,
+                height: 400,
+                crop: 'fill',
+                gravity: 'face',
+                quality: 'auto:good',
+                fetch_format: 'auto',
+                flags: 'progressive'
+              }
+            ]
+          };
+        }
+
+        const upload = cloudinary.uploader.upload_stream(
+          uploadConfig,
+          (error, result) => {
+            if (error) {
+              console.error('❌ Cloudinary avatar error:', error);
+              const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+              return reject(new Error(`Upload avatar failed: ${errorMessage}`));
+            }
+
+            console.log(`✅ Avatar designer uploadé: ${result.secure_url}`);
+            resolve(result as CloudinaryUploadResult);
+          }
+        );
+
+        const bufferStream = require('stream').Readable.from(file.buffer);
+        bufferStream.pipe(upload);
+      } catch (error) {
+        console.error('❌ Cloudinary uploadDesignerAvatar unexpected error:', error);
+        const errorMessage = error?.message || String(error);
+        reject(new Error(`Upload avatar failed: ${errorMessage}`));
+      }
+    });
+  }
+
   async deleteImage(publicId: string) {
     return await cloudinary.uploader.destroy(publicId, { invalidate: true });
   }

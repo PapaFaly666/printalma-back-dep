@@ -21,6 +21,7 @@ import { DesignModule } from './design/design.module';
 import { ThemeModule } from './theme/theme.module';
 import { CommissionModule } from './commission/commission.module';
 import { DesignCategoryModule } from './design-category/design-category.module';
+import { DesignerModule } from './designer/designer.module';
 import { VendorOrdersModule } from './vendor-orders/vendor-orders.module';
 import { VendorFundsModule } from './vendor-funds/vendor-funds.module';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -31,6 +32,7 @@ import { RolesModule } from './roles/roles.module';
 import { SubCategoryModule } from './sub-category/sub-category.module';
 import { VariationModule } from './variation/variation.module';
 import { PaytechModule } from './paytech/paytech.module';
+import { PaydunyaModule } from './paydunya/paydunya.module';
 
 @Module({
   imports: [
@@ -57,12 +59,14 @@ import { PaytechModule } from './paytech/paytech.module';
     ThemeModule,
     CommissionModule,
     DesignCategoryModule,
+    DesignerModule,
     VendorOrdersModule,
     VendorFundsModule,
     VendorTypeModule,
     AdminUsersModule,
     RolesModule,
-    PaytechModule
+    PaytechModule,
+    PaydunyaModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

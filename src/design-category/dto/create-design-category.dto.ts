@@ -1,5 +1,6 @@
-import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsInt, IsHexColor, Length, Matches, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsInt, IsHexColor, Length, Matches, Min, Max, IsArray, ArrayMaxSize, ArrayMinSize } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Type, Transform } from 'class-transformer';
 
 export class CreateDesignCategoryDto {
   @ApiProperty({ 
@@ -149,18 +150,24 @@ export class DesignCategoryResponseDto {
   @ApiProperty({ example: 5 })
   designCount: number;
 
+  @ApiProperty({ example: false })
+  isFeatured?: boolean;
+
+  @ApiProperty({ example: 1 })
+  featuredOrder?: number | null;
+
   @ApiProperty({ example: '2024-01-15T10:30:00Z' })
   createdAt: Date;
 
   @ApiProperty({ example: '2024-01-15T10:30:00Z' })
   updatedAt: Date;
 
-  @ApiProperty({ 
-    example: { 
-      id: 1, 
-      firstName: 'Admin', 
-      lastName: 'User' 
-    } 
+  @ApiProperty({
+    example: {
+      id: 1,
+      firstName: 'Admin',
+      lastName: 'User'
+    }
   })
   creator: {
     id: number;
@@ -212,3 +219,6 @@ export class ListDesignCategoriesQueryDto {
   @Max(100, { message: 'La limite ne peut pas dépasser 100' })
   limit?: number = 20;
 }
+
+// UpdateFeaturedCategoriesDto removed - validation is now done manually in the controller
+// to support string-to-number conversion from frontend
