@@ -66,4 +66,13 @@ export class OrderResponseDto {
     lastName: string;
   };
   orderItems: OrderItemResponseDto[];
+
+  // 🆕 Champs de paiement pour le frontend
+  paymentMethod?: string;
+  paymentStatus?: string;
+  transactionId?: string;
+  paymentAttempts?: number;
+  lastPaymentAttemptAt?: Date;
+  lastPaymentFailureReason?: string;
+  hasInsufficientFunds?: boolean;
 } 

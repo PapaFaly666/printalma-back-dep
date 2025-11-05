@@ -614,6 +614,15 @@ export class OrderService {
 
     return {
       ...baseOrder,
+      // 🆕 Inclure les champs de paiement directement pour le frontend
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      transactionId: order.transactionId,
+      paymentAttempts: order.paymentAttempts || 0,
+      lastPaymentAttemptAt: order.lastPaymentAttemptAt,
+      lastPaymentFailureReason: order.lastPaymentFailureReason,
+      hasInsufficientFunds: order.hasInsufficientFunds || false,
+      // Garder payment_info pour compatibilité
       payment_info: paymentInfo,
     };
   }
