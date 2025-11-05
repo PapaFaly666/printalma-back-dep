@@ -8,10 +8,18 @@ export class CreateOrderItemDto {
   @IsNumber()
   productId: number;
 
+  @IsOptional()
+  @IsNumber()
+  vendorProductId?: number; // 🆕 ID du produit vendeur
+
   @IsNotEmpty()
   @IsNumber()
   @Min(1)
   quantity: number;
+
+  @IsOptional()
+  @IsNumber()
+  unitPrice?: number; // 🆕 Prix unitaire
 
   @IsOptional()
   @IsString()
@@ -27,6 +35,7 @@ export class CreateOrderItemDto {
 }
 
 export enum PaymentMethod {
+  PAYDUNYA = 'PAYDUNYA',
   PAYTECH = 'PAYTECH',
   CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
   OTHER = 'OTHER'
@@ -41,6 +50,14 @@ export class CreateOrderDto {
   @IsNotEmpty()
   @IsString()
   phoneNumber: string;
+
+  @ApiProperty({
+    description: 'Email du client (optionnel pour les invités)',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  email?: string; // 🆕 Email du client
 
   @IsOptional()
   @IsString()
@@ -61,10 +78,18 @@ export class CreateOrderDto {
   paymentMethod?: PaymentMethod;
 
   @ApiProperty({
-    description: 'Whether to initiate PayTech payment immediately',
+    description: 'Whether to initiate payment immediately (PayDunya or PayTech)',
     default: false
   })
   @IsOptional()
   @IsBoolean()
   initiatePayment?: boolean;
+
+  @ApiProperty({
+    description: 'Total amount of the order',
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  totalAmount?: number; // 🆕 Montant total (calculé ou fourni)
 } 

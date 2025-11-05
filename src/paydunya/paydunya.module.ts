@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PaydunyaController } from './paydunya.controller';
 import { PaydunyaService } from './paydunya.service';
@@ -12,7 +12,7 @@ import { OrderModule } from '../order/order.module';
 @Module({
   imports: [
     ConfigModule,
-    OrderModule,
+    forwardRef(() => OrderModule),
   ],
   controllers: [PaydunyaController],
   providers: [PaydunyaService, PrismaService],

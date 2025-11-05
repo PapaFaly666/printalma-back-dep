@@ -4,13 +4,17 @@ import {
   Get,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
   Logger,
   UseGuards,
   Request,
   BadRequestException,
+  Res,
+  Render,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PaydunyaService } from './paydunya.service';
 import { PayDunyaPaymentRequestDto } from './dto/payment-request.dto';
@@ -342,5 +346,475 @@ export class PaydunyaController {
         tokenLength: process.env.PAYDUNYA_TOKEN?.length || 0,
       }
     };
+  }
+
+  /**
+   * Test endpoint to simulate payment status updates without DTO validation
+   * Used for testing the payment logic without strict validation
+   */
+  @Post('test-status-update')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Test payment status update (for development only)' })
+  async testStatusUpdate(@Body() rawData: any) {
+    try {
+      this.logger.log(`Test status update received: ${JSON.stringify(rawData)}`);
+
+      // Manual validation
+      if (!rawData.invoice_token || !rawData.status) {
+        throw new BadRequestException('Missing invoice_token or status');
+      }
+
+      // Create a minimal callback data object
+      const callbackData: PayDunyaCallbackDto = {
+        invoice_token: rawData.invoice_token,
+        status: rawData.status,
+        custom_data: rawData.custom_data,
+        total_amount: rawData.total_amount,
+        payment_method: rawData.payment_method,
+        cancel_reason: rawData.cancel_reason,
+        error_code: rawData.error_code
+      };
+
+      // Process the callback using the same logic
+      const isSuccess = this.paydunyaService.isPaymentSuccessful(callbackData);
+
+      // Handle payment failure reasons
+      let failureDetails = null;
+      if (!isSuccess) {
+        failureDetails = this.paydunyaService.getPaymentFailureReason(callbackData);
+      }
+
+      // Extract order reference
+      let orderNumber: string | null = null;
+      if (callbackData.custom_data) {
+        try {
+          const customData = typeof callbackData.custom_data === 'string'
+            ? JSON.parse(callbackData.custom_data)
+            : callbackData.custom_data;
+          orderNumber = customData.order_number || customData.ref_command;
+        } catch (error) {
+          this.logger.error(`Failed to parse custom_data: ${error.message}`);
+        }
+      }
+
+      // Update order if we have the order number
+      if (orderNumber) {
+        try {
+          await this.orderService.updateOrderPaymentStatus(
+            orderNumber,
+            isSuccess ? 'PAID' : 'FAILED',
+            callbackData.invoice_token,
+            failureDetails,
+            1 // First attempt
+          );
+          this.logger.log(`Order ${orderNumber} payment status updated to ${isSuccess ? 'PAID' : 'FAILED'}`);
+        } catch (error) {
+          this.logger.error(`Failed to update order: ${error.message}`, error.stack);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Test status update processed successfully',
+        data: {
+          invoice_token: callbackData.invoice_token,
+          order_number: orderNumber,
+          payment_status: isSuccess ? 'success' : 'failed',
+          status_updated: !!orderNumber,
+          failure_details: failureDetails
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Test status update failed: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Real PayDunya webhook handler - handles actual IPN notifications from PayDunya
+   * This endpoint bypasses strict DTO validation to handle real PayDunya webhooks
+   * Public endpoint - no authentication required
+   */
+  @Post('webhook')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle real PayDunya IPN webhook (flexible validation)' })
+  @ApiResponse({ status: 200, description: 'Webhook processed successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid webhook data' })
+  async handlePaydunyaWebhook(@Body() rawData: any) {
+    try {
+      this.logger.log(`Real PayDunya webhook received: ${JSON.stringify(rawData)}`);
+
+      // Handle both JSON and form-urlencoded data
+      let webhookData = rawData;
+
+      // If data looks like form-urlencoded, convert it
+      if (typeof rawData === 'object' && Object.keys(rawData).length === 0) {
+        this.logger.error('Empty webhook data received');
+        throw new BadRequestException('Empty webhook data');
+      }
+
+      // Extract required fields with flexible naming
+      const invoiceToken = webhookData.invoice_token || webhookData.token;
+      const status = webhookData.status || webhookData.payment_status;
+
+      if (!invoiceToken || !status) {
+        this.logger.error(`Missing required fields. Available fields: ${Object.keys(webhookData).join(', ')}`);
+        throw new BadRequestException('Missing required fields: invoice_token and status');
+      }
+
+      // Create callback data object with proper field mapping
+      const callbackData: PayDunyaCallbackDto = {
+        invoice_token: invoiceToken,
+        status: status,
+        custom_data: webhookData.custom_data || webhookData.customData,
+        total_amount: webhookData.total_amount || webhookData.amount,
+        customer_name: webhookData.customer_name || webhookData.customer?.name,
+        customer_email: webhookData.customer_email || webhookData.customer?.email,
+        customer_phone: webhookData.customer_phone || webhookData.customer?.phone,
+        payment_method: webhookData.payment_method || 'paydunya',
+        cancel_reason: webhookData.cancel_reason || webhookData.reason,
+        error_code: webhookData.error_code || webhookData.err_code
+      };
+
+      // Process the callback using the same logic as the standard callback
+      const isSuccess = this.paydunyaService.isPaymentSuccessful(callbackData);
+
+      this.logger.log(`Real webhook processed for ${invoiceToken} - Status: ${isSuccess ? 'SUCCESS' : 'FAILED'}`);
+
+      // Handle payment failure reasons
+      let failureDetails = null;
+      if (!isSuccess) {
+        failureDetails = this.paydunyaService.getPaymentFailureReason(callbackData);
+        this.logger.log(`Payment failed for ${invoiceToken} - Reason: ${failureDetails?.reason} (${failureDetails?.category})`);
+      }
+
+      // Extract order reference from custom_data
+      let orderNumber: string | null = null;
+      if (callbackData.custom_data) {
+        try {
+          const customData = typeof callbackData.custom_data === 'string'
+            ? JSON.parse(callbackData.custom_data)
+            : callbackData.custom_data;
+          orderNumber = customData.order_number || customData.ref_command || customData.orderNumber;
+        } catch (error) {
+          this.logger.error(`Failed to parse custom_data: ${error.message}`);
+        }
+      }
+
+      // Update order status if we have the order number
+      if (orderNumber) {
+        try {
+          await this.orderService.updateOrderPaymentStatus(
+            orderNumber,
+            isSuccess ? 'PAID' : 'FAILED',
+            invoiceToken,
+            failureDetails,
+            1
+          );
+          this.logger.log(`Order ${orderNumber} payment status updated to ${isSuccess ? 'PAID' : 'FAILED'}`);
+        } catch (error) {
+          this.logger.error(`Failed to update order payment status: ${error.message}`, error.stack);
+        }
+      }
+
+      // Return success response
+      return {
+        success: true,
+        message: 'PayDunya webhook processed successfully',
+        data: {
+          invoice_token: invoiceToken,
+          order_number: orderNumber,
+          payment_status: isSuccess ? 'success' : 'failed',
+          status_updated: !!orderNumber,
+          failure_details: failureDetails
+        }
+      };
+    } catch (error) {
+      this.logger.error(`PayDunya webhook processing failed: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Payment success page - Handles successful payment redirects from PayDunya
+   * Public endpoint - no authentication required
+   */
+  @Get('payment/success')
+  @ApiOperation({ summary: 'Payment success redirect page' })
+  @ApiResponse({ status: 200, description: 'Payment success page' })
+  async paymentSuccess(
+    @Query('token') token: string,
+    @Query('invoice_token') invoiceToken: string,
+    @Query('order_id') orderId: string,
+    @Res() res: Response
+  ) {
+    try {
+      const paymentToken = token || invoiceToken;
+
+      if (!paymentToken) {
+        return this.renderErrorPage(res, 'Token de paiement manquant', 400);
+      }
+
+      this.logger.log(`Payment success redirect received for token: ${paymentToken}`);
+
+      // Check payment status with PayDunya
+      const paymentStatus = await this.paydunyaService.confirmPayment(paymentToken);
+
+      if (paymentStatus.response_code === '00' && paymentStatus.status === 'completed') {
+        // Payment successful - try to update order status
+        const customData = paymentStatus.custom_data;
+        let orderNumber = null;
+
+        if (customData) {
+          orderNumber = customData.orderNumber || customData.order_number || customData.ref_command;
+        }
+
+        if (orderNumber) {
+          try {
+            await this.orderService.updateOrderPaymentStatus(
+              orderNumber,
+              'PAID',
+              paymentToken,
+              null,
+              1
+            );
+            this.logger.log(`Order ${orderNumber} marked as PAID after success redirect`);
+          } catch (error) {
+            this.logger.error(`Failed to update order status: ${error.message}`);
+          }
+        }
+
+        // Render success page
+        return this.renderSuccessPage(res, {
+          orderNumber,
+          paymentToken,
+          amount: paymentStatus.total_amount,
+          paymentMethod: 'PayDunya',
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // Payment not actually successful
+        return this.renderErrorPage(res, 'Paiement non confirmé', 400);
+      }
+    } catch (error) {
+      this.logger.error(`Payment success redirect error: ${error.message}`);
+      return this.renderErrorPage(res, 'Erreur lors de la vérification du paiement', 500);
+    }
+  }
+
+  /**
+   * Payment cancel page - Handles cancelled payment redirects from PayDunya
+   * Public endpoint - no authentication required
+   */
+  @Get('payment/cancel')
+  @ApiOperation({ summary: 'Payment cancel redirect page' })
+  @ApiResponse({ status: 200, description: 'Payment cancel page' })
+  async paymentCancel(
+    @Query('token') token: string,
+    @Query('invoice_token') invoiceToken: string,
+    @Query('reason') reason: string,
+    @Res() res: Response
+  ) {
+    try {
+      const paymentToken = token || invoiceToken;
+
+      this.logger.log(`Payment cancel redirect received for token: ${paymentToken}, reason: ${reason}`);
+
+      // Try to find and update the associated order
+      if (paymentToken) {
+        try {
+          const paymentStatus = await this.paydunyaService.confirmPayment(paymentToken);
+          const customData = paymentStatus.custom_data;
+
+          if (customData) {
+            const orderNumber = customData.orderNumber || customData.order_number || customData.ref_command;
+
+            if (orderNumber) {
+              await this.orderService.updateOrderPaymentStatus(
+                orderNumber,
+                'FAILED',
+                paymentToken,
+                {
+                  reason: reason || 'User cancelled payment',
+                  category: 'user_cancelled'
+                },
+                1
+              );
+              this.logger.log(`Order ${orderNumber} marked as CANCELLED after cancel redirect`);
+            }
+          }
+        } catch (error) {
+          this.logger.error(`Failed to update order status on cancel: ${error.message}`);
+        }
+      }
+
+      // Render cancel page
+      return this.renderCancelPage(res, {
+        paymentToken,
+        reason: reason || 'Paiement annulé par l\'utilisateur',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      this.logger.error(`Payment cancel redirect error: ${error.message}`);
+      return this.renderErrorPage(res, 'Erreur lors du traitement de l\'annulation', 500);
+    }
+  }
+
+  /**
+   * Render HTML success page
+   */
+  private renderSuccessPage(res: Response, data: any) {
+    const html = `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Paiement Réussi - Printalma</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            .success-icon { width: 80px; height: 80px; margin: 0 auto 20px; background: #28a745; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+            .success-icon::after { content: "✓"; color: white; font-size: 40px; font-weight: bold; }
+            h1 { color: #28a745; text-align: center; margin-bottom: 20px; }
+            .details { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }
+            .details p { margin: 10px 0; }
+            .btn { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
+            .btn-success { background: #28a745; }
+            .footer { text-align: center; margin-top: 30px; color: #666; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="success-icon"></div>
+            <h1>🎉 Paiement Réussi !</h1>
+            <p>Merci pour votre commande. Votre paiement a été traité avec succès.</p>
+
+            <div class="details">
+                <p><strong>Numéro de commande:</strong> ${data.orderNumber || 'N/A'}</p>
+                <p><strong>Montant payé:</strong> ${data.amount ? data.amount.toLocaleString() + ' FCFA' : 'N/A'}</p>
+                <p><strong>Méthode de paiement:</strong> ${data.paymentMethod}</p>
+                <p><strong>Date:</strong> ${new Date(data.timestamp).toLocaleString('fr-FR')}</p>
+                <p><strong>Transaction:</strong> ${data.paymentToken}</p>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="/" class="btn btn-success">Retour à l'accueil</a>
+                <a href="/orders" class="btn">Mes commandes</a>
+            </div>
+
+            <div class="footer">
+                <p>Un email de confirmation vous sera envoyé prochainement.</p>
+                <p>© 2025 Printalma - Tous droits réservés</p>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  }
+
+  /**
+   * Render HTML cancel page
+   */
+  private renderCancelPage(res: Response, data: any) {
+    const html = `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Paiement Annulé - Printalma</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            .cancel-icon { width: 80px; height: 80px; margin: 0 auto 20px; background: #dc3545; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+            .cancel-icon::after { content: "✕"; color: white; font-size: 40px; font-weight: bold; }
+            h1 { color: #dc3545; text-align: center; margin-bottom: 20px; }
+            .details { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }
+            .details p { margin: 10px 0; }
+            .btn { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
+            .btn-warning { background: #ffc107; color: #212529; }
+            .btn-danger { background: #dc3545; }
+            .footer { text-align: center; margin-top: 30px; color: #666; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="cancel-icon"></div>
+            <h1>🚫 Paiement Annulé</h1>
+            <p>Le paiement a été annulé. Votre commande n'a pas été finalisée.</p>
+
+            <div class="details">
+                <p><strong>Raison:</strong> ${data.reason}</p>
+                <p><strong>Token de paiement:</strong> ${data.paymentToken || 'N/A'}</p>
+                <p><strong>Date:</strong> ${new Date(data.timestamp).toLocaleString('fr-FR')}</p>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="/" class="btn btn-warning">Retour à l'accueil</a>
+                <a href="/orders" class="btn">Mes commandes</a>
+            </div>
+
+            <div class="footer">
+                <p>Vous pouvez réessayer le paiement à tout moment depuis vos commandes.</p>
+                <p>© 2025 Printalma - Tous droits réservés</p>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  }
+
+  /**
+   * Render HTML error page
+   */
+  private renderErrorPage(res: Response, message: string, statusCode: number = 500) {
+    const html = `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Erreur - Printalma</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            .error-icon { width: 80px; height: 80px; margin: 0 auto 20px; background: #dc3545; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+            .error-icon::after { content: "!"; color: white; font-size: 40px; font-weight: bold; }
+            h1 { color: #dc3545; text-align: center; margin-bottom: 20px; }
+            .message { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #f5c6cb; }
+            .btn { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
+            .footer { text-align: center; margin-top: 30px; color: #666; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="error-icon"></div>
+            <h1>❌ Erreur de Paiement</h1>
+
+            <div class="message">
+                <strong>${message}</strong>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="/" class="btn">Retour à l'accueil</a>
+                <a href="/contact" class="btn">Contacter le support</a>
+            </div>
+
+            <div class="footer">
+                <p>Si le problème persiste, veuillez contacter notre support technique.</p>
+                <p>© 2025 Printalma - Tous droits réservés</p>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    res.status(statusCode);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
   }
 }

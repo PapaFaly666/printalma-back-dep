@@ -8,6 +8,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { RealBestSellersService } from '../vendor-product/services/real-best-sellers.service';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
 import { PaytechService } from '../paytech/paytech.service';
+import { PaydunyaModule } from '../paydunya/paydunya.module';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
@@ -17,6 +18,7 @@ import { ConfigModule } from '@nestjs/config';
       signOptions: { expiresIn: '24h' },
     }),
     ConfigModule,
+    forwardRef(() => PaydunyaModule),
   ],
   controllers: [OrderController],
   providers: [

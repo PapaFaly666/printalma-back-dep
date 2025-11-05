@@ -33,6 +33,7 @@ import { SubCategoryModule } from './sub-category/sub-category.module';
 import { VariationModule } from './variation/variation.module';
 import { PaytechModule } from './paytech/paytech.module';
 import { PaydunyaModule } from './paydunya/paydunya.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -66,7 +67,8 @@ import { PaydunyaModule } from './paydunya/paydunya.module';
     AdminUsersModule,
     RolesModule,
     PaytechModule,
-    PaydunyaModule
+    PaydunyaModule,
+    PaymentModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

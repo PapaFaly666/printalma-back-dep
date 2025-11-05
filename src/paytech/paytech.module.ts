@@ -7,6 +7,7 @@ import { OrderService } from '../order/order.service';
 import { PrismaService } from '../prisma.service';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
 import { RealBestSellersService } from '../vendor-product/services/real-best-sellers.service';
+import { PaydunyaModule } from '../paydunya/paydunya.module';
 
 /**
  * PayTech Payment Module
@@ -22,6 +23,7 @@ import { RealBestSellersService } from '../vendor-product/services/real-best-sel
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '24h' },
     }),
+    forwardRef(() => PaydunyaModule),
   ],
   controllers: [PaytechController],
   providers: [

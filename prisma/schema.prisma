@@ -116,22 +116,22 @@ model Product {
   suggestedPrice           Float?            @map("suggested_price")
 
   // Hiérarchie de catégories à 3 niveaux
-  categoryId               Int?              @map("category_id")
-  subCategoryId            Int?              @map("sub_category_id")
-  variationId              Int?              @map("variation_id")
+  categoryId    Int? @map("category_id")
+  subCategoryId Int? @map("sub_category_id")
+  variationId   Int? @map("variation_id")
 
-  colorVariations          ColorVariation[]
-  orderItems               OrderItem[]
-  validator                User?             @relation("ProductValidator", fields: [validatedBy], references: [id])
-  sizes                    ProductSize[]
-  stocks                   ProductStock[]
-  stockMovements           StockMovement[]
-  themeProducts            ThemeProduct[]
-  vendorProducts           VendorProduct[]
-  categories               Category[]        @relation("CategoryToProduct")
-  category                 Category?         @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  subCategory              SubCategory?      @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
-  variation                Variation?        @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
+  colorVariations ColorVariation[]
+  orderItems      OrderItem[]
+  validator       User?            @relation("ProductValidator", fields: [validatedBy], references: [id])
+  sizes           ProductSize[]
+  stocks          ProductStock[]
+  stockMovements  StockMovement[]
+  themeProducts   ThemeProduct[]
+  vendorProducts  VendorProduct[]
+  categories      Category[]       @relation("CategoryToProduct")
+  category        Category?        @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  subCategory     SubCategory?     @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
+  variation       Variation?       @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
 
   @@index([isValidated])
   @@index([submittedForValidationAt])
@@ -166,18 +166,18 @@ model ProductStock {
 }
 
 model StockMovement {
-  id        Int                 @id @default(autoincrement())
-  productId Int                 @map("product_id")
-  colorId   Int                 @map("color_id")
-  sizeName  String              @map("size_name")
-  type      StockMovementType
-  quantity  Int
-  reason    String?
-  createdAt DateTime            @default(now()) @map("created_at")
-  createdBy Int?                @map("created_by")
-  product   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
-  colorVariation ColorVariation  @relation(fields: [colorId], references: [id], onDelete: Cascade)
-  user      User?               @relation("StockMovementCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  id             Int               @id @default(autoincrement())
+  productId      Int               @map("product_id")
+  colorId        Int               @map("color_id")
+  sizeName       String            @map("size_name")
+  type           StockMovementType
+  quantity       Int
+  reason         String?
+  createdAt      DateTime          @default(now()) @map("created_at")
+  createdBy      Int?              @map("created_by")
+  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  colorVariation ColorVariation    @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  user           User?             @relation("StockMovementCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([productId])
   @@index([createdAt(sort: Desc)])
@@ -186,19 +186,19 @@ model StockMovement {
 
 // Niveau 0 - Catégorie principale (ex: Vêtements, Accessoires)
 model Category {
-  id                 Int            @id @default(autoincrement())
-  name               String         @unique
-  slug               String         @unique
+  id                 Int           @id @default(autoincrement())
+  name               String        @unique
+  slug               String        @unique
   description        String?
-  displayOrder       Int            @default(0) @map("display_order")
-  coverImageUrl      String?        @map("cover_image_url")
-  coverImagePublicId String?        @map("cover_image_public_id")
-  isActive           Boolean        @default(true) @map("is_active")
-  createdAt          DateTime       @default(now()) @map("created_at")
-  updatedAt          DateTime       @updatedAt @map("updated_at")
-  subCategories      SubCategory[]  @relation("CategorySubCategories")
-  products           Product[]      @relation("CategoryToProduct")
-  directProducts     Product[]      @relation("ProductCategory")
+  displayOrder       Int           @default(0) @map("display_order")
+  coverImageUrl      String?       @map("cover_image_url")
+  coverImagePublicId String?       @map("cover_image_public_id")
+  isActive           Boolean       @default(true) @map("is_active")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  subCategories      SubCategory[] @relation("CategorySubCategories")
+  products           Product[]     @relation("CategoryToProduct")
+  directProducts     Product[]     @relation("ProductCategory")
 
   @@index([isActive])
   @@index([displayOrder])
@@ -310,45 +310,46 @@ model Delimitation {
 }
 
 model Order {
-  id                     Int                       @id @default(autoincrement())
-  orderNumber            String                    @unique
-  userId                 Int
-  status                 OrderStatus               @default(PENDING)
-  totalAmount            Float
-  phoneNumber            String
-  notes                  String?
-  createdAt              DateTime                  @default(now())
-  updatedAt              DateTime                  @updatedAt
-  validatedAt            DateTime?
-  validatedBy            Int?
-  shippingName           String?
-  shippingStreet         String?
-  shippingCity           String?
-  shippingRegion         String?
-  shippingPostalCode     String?
-  shippingCountry        String?
-  shippingAddressFull    String?
-  confirmedAt            DateTime?
-  deliveredAt            DateTime?
-  paymentMethod          String?
-  paymentStatus          String?                   // PayTech payment status: PENDING, PAID, FAILED
-  transactionId          String?                   // PayTech transaction ID
-  shippedAt              DateTime?
-  shippingAmount         Float                     @default(0)
-  subtotal               Float?
-  taxAmount              Float                     @default(0)
+  id                  Int         @id @default(autoincrement())
+  orderNumber         String      @unique
+  userId              Int
+  status              OrderStatus @default(PENDING)
+  totalAmount         Float
+  phoneNumber         String
+  email               String? // 🆕 Email du client
+  notes               String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  validatedAt         DateTime?
+  validatedBy         Int?
+  shippingName        String?
+  shippingStreet      String?
+  shippingCity        String?
+  shippingRegion      String?
+  shippingPostalCode  String?
+  shippingCountry     String?
+  shippingAddressFull String?
+  confirmedAt         DateTime?
+  deliveredAt         DateTime?
+  paymentMethod       String?
+  paymentStatus       String? // PayTech payment status: PENDING, PAID, FAILED
+  transactionId       String? // PayTech transaction ID
+  shippedAt           DateTime?
+  shippingAmount      Float       @default(0)
+  subtotal            Float?
+  taxAmount           Float       @default(0)
 
   // 🆕 Champs pour gestion des fonds insuffisants
-  paymentAttempts        Int                       @default(0) @map("payment_attempts") // Nombre de tentatives
-  lastPaymentAttemptAt   DateTime?                 @map("last_payment_attempt_at") // Dernière tentative
-  lastPaymentFailureReason String?                 @map("last_payment_failure_reason") // Dernière raison d'échec
-  hasInsufficientFunds   Boolean                   @default(false) @map("has_insufficient_funds") // Flag pour fonds insuffisants
+  paymentAttempts          Int       @default(0) @map("payment_attempts") // Nombre de tentatives
+  lastPaymentAttemptAt     DateTime? @map("last_payment_attempt_at") // Dernière tentative
+  lastPaymentFailureReason String?   @map("last_payment_failure_reason") // Dernière raison d'échec
+  hasInsufficientFunds     Boolean   @default(false) @map("has_insufficient_funds") // Flag pour fonds insuffisants
 
   user                   User                      @relation(fields: [userId], references: [id])
   validator              User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
   orderItems             OrderItem[]
   fundsRequestLinks      VendorFundsRequestOrder[]
-  paymentAttemptsHistory PaymentAttempt[]          // 🆕 Historique des tentatives
+  paymentAttemptsHistory PaymentAttempt[] // 🆕 Historique des tentatives
 
   @@index([userId])
   @@index([status])
@@ -360,21 +361,24 @@ model Order {
 }
 
 model OrderItem {
-  id             Int             @id @default(autoincrement())
-  orderId        Int
-  productId      Int
-  quantity       Int
-  unitPrice      Float
-  size           String?
-  color          String?
-  colorId        Int?
-  colorVariation ColorVariation? @relation(fields: [colorId], references: [id])
-  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product        Product         @relation(fields: [productId], references: [id])
+  id              Int             @id @default(autoincrement())
+  orderId         Int
+  productId       Int
+  vendorProductId Int? // 🆕 ID du produit vendeur
+  quantity        Int
+  unitPrice       Float
+  size            String?
+  color           String?
+  colorId         Int?
+  colorVariation  ColorVariation? @relation(fields: [colorId], references: [id])
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id])
+  vendorProduct   VendorProduct?  @relation(fields: [vendorProductId], references: [id]) // 🆕
 
   @@index([orderId])
   @@index([productId])
   @@index([colorId])
+  @@index([vendorProductId]) // 🆕
 }
 
 model Notification {
@@ -529,6 +533,7 @@ model VendorProduct {
   validator                User?                   @relation("VendorProductValidator", fields: [validatedBy], references: [id])
   vendor                   User                    @relation(fields: [vendorId], references: [id])
   images                   VendorProductImage[]
+  orderItems               OrderItem[] // 🆕 Commandes contenant ce produit
 
   @@index([vendorId])
   @@index([baseProductId])
@@ -683,17 +688,17 @@ model VendorCommission {
 
 /// Logs d'audit pour traçabilité des changements de commission
 model CommissionAuditLog {
-  id            Int              @id @default(autoincrement()) @map("id")
-  vendorId      Int              @map("vendor_id")
-  oldRate       Float?           @map("old_rate")
-  newRate       Float            @map("new_rate")
-  changedBy     Int              @map("changed_by")
-  changedAt     DateTime         @default(now()) @map("changed_at")
-  ipAddress     String?          @map("ip_address")
-  userAgent     String?          @map("user_agent")
-  changedByUser User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
+  id               Int              @id @default(autoincrement()) @map("id")
+  vendorId         Int              @map("vendor_id")
+  oldRate          Float?           @map("old_rate")
+  newRate          Float            @map("new_rate")
+  changedBy        Int              @map("changed_by")
+  changedAt        DateTime         @default(now()) @map("changed_at")
+  ipAddress        String?          @map("ip_address")
+  userAgent        String?          @map("user_agent")
+  changedByUser    User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
   vendorCommission VendorCommission @relation("CommissionAuditVendorUser", fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_vendor_commission_fkey")
-  vendorUser    User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
+  vendorUser       User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
 
   @@index([vendorId])
   @@index([changedBy])
@@ -893,36 +898,36 @@ enum UserStatus {
 /// 🆕 Table pour tracker toutes les tentatives de paiement
 /// Permet un suivi détaillé de chaque tentative et des raisons d'échec
 model PaymentAttempt {
-  id                   Int                  @id @default(autoincrement())
-  orderId              Int                  @map("order_id")
-  orderNumber          String               @map("order_number")
-  amount               Float                // Montant de la tentative
-  currency             String               @default("XOF") // XOF, EUR, USD, etc.
-  paymentMethod        String?              @map("payment_method") // Orange Money, Wave, etc.
-  status               PaymentAttemptStatus @default(PENDING)
+  id            Int                  @id @default(autoincrement())
+  orderId       Int                  @map("order_id")
+  orderNumber   String               @map("order_number")
+  amount        Float // Montant de la tentative
+  currency      String               @default("XOF") // XOF, EUR, USD, etc.
+  paymentMethod String?              @map("payment_method") // Orange Money, Wave, etc.
+  status        PaymentAttemptStatus @default(PENDING)
 
   // Informations PayTech
-  paytechToken         String?              @map("paytech_token") // Token PayTech
-  paytechTransactionId String?              @map("paytech_transaction_id") // ID transaction
+  paytechToken         String? @map("paytech_token") // Token PayTech
+  paytechTransactionId String? @map("paytech_transaction_id") // ID transaction
 
   // Détails d'échec
-  failureReason        String?              @map("failure_reason") // Raison brute
-  failureCategory      String?              @map("failure_category") // insufficient_funds, timeout, etc.
-  failureCode          String?              @map("failure_code") // Code erreur
-  failureMessage       String?              @map("failure_message") // Message détaillé
-  processorResponse    String?              @map("processor_response") // Réponse du processeur
+  failureReason     String? @map("failure_reason") // Raison brute
+  failureCategory   String? @map("failure_category") // insufficient_funds, timeout, etc.
+  failureCode       String? @map("failure_code") // Code erreur
+  failureMessage    String? @map("failure_message") // Message détaillé
+  processorResponse String? @map("processor_response") // Réponse du processeur
 
   // Métadonnées
-  ipnData              Json?                @map("ipn_data") // Données IPN complètes (pour debug)
-  isRetry              Boolean              @default(false) @map("is_retry") // Est-ce une tentative de retry?
-  attemptNumber        Int                  @default(1) @map("attempt_number") // Numéro de la tentative
+  ipnData       Json?   @map("ipn_data") // Données IPN complètes (pour debug)
+  isRetry       Boolean @default(false) @map("is_retry") // Est-ce une tentative de retry?
+  attemptNumber Int     @default(1) @map("attempt_number") // Numéro de la tentative
 
   // Horodatage
-  attemptedAt          DateTime             @default(now()) @map("attempted_at")
-  completedAt          DateTime?            @map("completed_at")
-  failedAt             DateTime?            @map("failed_at")
+  attemptedAt DateTime  @default(now()) @map("attempted_at")
+  completedAt DateTime? @map("completed_at")
+  failedAt    DateTime? @map("failed_at")
 
-  order                Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([orderNumber])
@@ -935,25 +940,25 @@ model PaymentAttempt {
 
 /// 🆕 Statut des tentatives de paiement
 enum PaymentAttemptStatus {
-  PENDING      // En attente
-  PROCESSING   // En cours de traitement
-  SUCCESS      // Succès
-  FAILED       // Échec
-  CANCELLED    // Annulé par l'utilisateur
-  EXPIRED      // Session expirée
+  PENDING // En attente
+  PROCESSING // En cours de traitement
+  SUCCESS // Succès
+  FAILED // Échec
+  CANCELLED // Annulé par l'utilisateur
+  EXPIRED // Session expirée
 }
 
 /// Système de rôles personnalisables (RBAC)
 model CustomRole {
-  id          Int                   @id @default(autoincrement())
+  id          Int              @id @default(autoincrement())
   name        String
-  slug        String                @unique
+  slug        String           @unique
   description String?
-  isSystem    Boolean               @default(false) @map("is_system")
-  createdAt   DateTime              @default(now()) @map("created_at")
-  updatedAt   DateTime              @updatedAt @map("updated_at")
-  users       User[]                @relation("UserCustomRole")
-  permissions RolePermission[]      @relation("RolePermissions")
+  isSystem    Boolean          @default(false) @map("is_system")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  users       User[]           @relation("UserCustomRole")
+  permissions RolePermission[] @relation("RolePermissions")
 
   @@index([slug])
   @@index([isSystem])
@@ -984,7 +989,7 @@ model RolePermission {
   permission   Permission @relation("PermissionRoles", fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
-  @@map("role_permissions") 
+  @@map("role_permissions")
 }
 
 /// Logs d'audit pour traçabilité

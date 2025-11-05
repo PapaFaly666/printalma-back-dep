@@ -4,6 +4,7 @@ import { CreateOrderDto, PaymentMethod } from './dto/create-order.dto';
 import { OrderStatus } from '@prisma/client';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
 import { PaytechService } from '../paytech/paytech.service';
+import { PaydunyaService } from '../paydunya/paydunya.service';
 import { ConfigService } from '@nestjs/config';
 import { PayTechCurrency, PayTechEnvironment } from '../paytech/dto/payment-request.dto';
 
@@ -15,6 +16,7 @@ export class OrderService {
     private prisma: PrismaService,
     private salesStatsUpdaterService: SalesStatsUpdaterService,
     private paytechService: PaytechService,
+    private paydunyaService: PaydunyaService,
     private configService: ConfigService
   ) {}
 
@@ -24,47 +26,76 @@ export class OrderService {
 
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
     try {
-      console.log('📦 Données reçues pour orderItems:', createOrderDto.orderItems?.map(item => ({
-        productId: item.productId,
-        colorId: (item as any).colorId,
-        color: item.color,
-        size: item.size,
-        quantity: item.quantity
-      })));
+      console.log('📦 [ORDER] Données reçues:', JSON.stringify(createOrderDto, null, 2));
+
+      // 🆕 Construction du nom complet du client
+      const fullName = [
+        createOrderDto.shippingDetails.firstName || '',
+        createOrderDto.shippingDetails.lastName || ''
+      ].filter(Boolean).join(' ').trim() || 'Client';
+
+      // 🆕 Construction de l'adresse complète
+      const fullAddress = [
+        createOrderDto.shippingDetails.street,
+        createOrderDto.shippingDetails.city,
+        createOrderDto.shippingDetails.postalCode,
+        createOrderDto.shippingDetails.country
+      ].filter(Boolean).join(', ');
+
+      // 🆕 Calcul du montant total si non fourni
+      const totalAmount = createOrderDto.totalAmount ||
+        createOrderDto.orderItems.reduce((sum, item) =>
+          sum + ((item.unitPrice || 0) * item.quantity), 0
+        );
+
+      console.log('📊 [ORDER] Informations calculées:', {
+        fullName,
+        fullAddress,
+        totalAmount,
+        email: createOrderDto.email
+      });
 
       const order = await this.prisma.order.create({
         data: {
           orderNumber: `ORD-${Date.now()}`,
           userId: userId,
-          totalAmount: (createOrderDto as any).totalAmount || 200,
-          phoneNumber: createOrderDto.phoneNumber || '771234567',
+          totalAmount: totalAmount,
+          phoneNumber: createOrderDto.phoneNumber,
+          email: createOrderDto.email || null, // 🆕 Email du client
           notes: createOrderDto.notes,
           status: OrderStatus.PENDING,
-          shippingName: (createOrderDto as any).shippingName || (createOrderDto as any).shippingDetails?.shippingName || 'Client Invité',
-          shippingStreet: (createOrderDto as any).shippingStreet || (createOrderDto as any).shippingDetails?.shippingStreet || '123 Rue Test',
-          shippingCity: (createOrderDto as any).shippingCity || (createOrderDto as any).shippingDetails?.shippingCity || 'Dakar',
-          shippingRegion: (createOrderDto as any).shippingRegion || (createOrderDto as any).shippingDetails?.shippingRegion || 'Dakar',
-          shippingPostalCode: (createOrderDto as any).shippingPostalCode || (createOrderDto as any).shippingDetails?.shippingPostalCode || '12345',
-          shippingCountry: (createOrderDto as any).shippingCountry || (createOrderDto as any).shippingDetails?.shippingCountry || 'Sénégal',
-          shippingAddressFull: (createOrderDto as any).shippingAddressFull || `${(createOrderDto as any).shippingDetails?.shippingStreet || '123 Rue Test'}, ${(createOrderDto as any).shippingDetails?.shippingCity || 'Dakar'}, ${(createOrderDto as any).shippingDetails?.shippingCountry || 'Sénégal'}`,
+          paymentMethod: createOrderDto.paymentMethod || 'CASH_ON_DELIVERY',
+          paymentStatus: 'PENDING',
+
+          // 🆕 Informations de livraison complètes
+          shippingName: fullName,
+          shippingStreet: createOrderDto.shippingDetails.street,
+          shippingCity: createOrderDto.shippingDetails.city,
+          shippingRegion: createOrderDto.shippingDetails.region || createOrderDto.shippingDetails.city,
+          shippingPostalCode: createOrderDto.shippingDetails.postalCode || null,
+          shippingCountry: createOrderDto.shippingDetails.country,
+          shippingAddressFull: fullAddress,
+
           orderItems: {
-            create: ((createOrderDto as any).orderItems || []).map((item: any) => {
-              console.log(`📦 Création orderItem:`, {
+            create: createOrderDto.orderItems.map((item) => {
+              console.log(`📦 [ORDER] Création orderItem:`, {
                 productId: item.productId,
+                vendorProductId: item.vendorProductId, // 🆕
                 colorId: item.colorId,
                 color: item.color,
                 size: item.size,
                 quantity: item.quantity,
-                unitPrice: item.unitPrice || 0
+                unitPrice: item.unitPrice
               });
-              
+
               return {
                 productId: item.productId,
+                vendorProductId: item.vendorProductId || null, // 🆕 ID du produit vendeur
                 quantity: item.quantity,
-                unitPrice: item.unitPrice || 200,
-                size: item.size,
-                color: item.color,
-                colorId: item.colorId
+                unitPrice: item.unitPrice || 0,
+                size: item.size || null,
+                color: item.color || null,
+                colorId: item.colorId || null
               };
             })
           }
@@ -74,6 +105,20 @@ export class OrderService {
             include: {
               product: true,
               colorVariation: true,
+              vendorProduct: { // 🆕 Inclure le produit vendeur
+                include: {
+                  vendor: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                      shop_name: true,
+                      email: true,
+                      phone: true
+                    }
+                  }
+                }
+              }
             }
           },
           user: userId ? true : false // Inclure user seulement si userId existe
@@ -89,9 +134,88 @@ export class OrderService {
         // Ne pas faire échouer la création de commande pour cette erreur
       }
 
-      // 💳 PayTech Payment Integration
+      // 🆕 NOTIFICATION DES VENDEURS CONCERNÉS
+      try {
+        await this.notifyVendorsOfNewOrder(order.id);
+        this.logger.log(`🔔 Notifications vendeurs envoyées pour commande ${order.id}`);
+      } catch (error) {
+        this.logger.error(`❌ Erreur notification vendeurs pour commande ${order.id}:`, error);
+        // Ne pas faire échouer la création de commande pour cette erreur
+      }
+
+      // 💳 Payment Integration (PayDunya or PayTech)
       let paymentData = null;
-      if (createOrderDto.paymentMethod === PaymentMethod.PAYTECH && createOrderDto.initiatePayment) {
+
+      // 💰 PayDunya Payment Integration
+      if (createOrderDto.paymentMethod === PaymentMethod.PAYDUNYA && createOrderDto.initiatePayment) {
+        try {
+          this.logger.log(`💳 Initializing PayDunya payment for order: ${order.orderNumber}`);
+
+          const paymentResponse = await this.paydunyaService.createInvoice({
+            invoice: {
+              total_amount: order.totalAmount,
+              description: `Commande Printalma - ${order.orderNumber}`,
+              customer: {
+                name: fullName,
+                email: createOrderDto.email || undefined,
+                phone: createOrderDto.phoneNumber
+              }
+            },
+            store: {
+              name: 'Printalma',
+              tagline: 'Impression personnalisée de qualité',
+              postal_address: 'Dakar, Sénégal',
+              phone: this.configService.get('STORE_PHONE') || '+221338234567',
+              website_url: this.configService.get('STORE_URL') || 'https://printalma.com'
+            },
+            custom_data: {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              userId: userId
+            },
+            actions: {
+              return_url: this.configService.get('PAYDUNYA_SUCCESS_URL'),
+              cancel_url: this.configService.get('PAYDUNYA_CANCEL_URL'),
+              callback_url: this.configService.get('PAYDUNYA_IPN_URL')
+            }
+          });
+
+          // Générer l'URL de redirection en utilisant la même logique que PaydunyaController
+          let paymentUrl: string;
+
+          if (paymentResponse.response_text && paymentResponse.response_text.startsWith('http')) {
+            // PayDunya a retourné l'URL complète dans response_text
+            paymentUrl = paymentResponse.response_text;
+            this.logger.log(`Using PayDunya provided URL: ${paymentUrl}`);
+          } else {
+            // Construire l'URL selon la documentation Paydunya
+            const paydunyaMode = this.configService.get('PAYDUNYA_MODE', 'test');
+            const baseUrl = paydunyaMode === 'test'
+              ? 'https://app.paydunya.com/sandbox-checkout/invoice'
+              : 'https://app.paydunya.com/checkout/invoice';
+            paymentUrl = `${baseUrl}/${paymentResponse.token}`;
+            this.logger.log(`Constructed payment URL: ${paymentUrl}`);
+          }
+
+          this.logger.log(`Final payment URL: ${paymentUrl}`);
+
+          paymentData = {
+            token: paymentResponse.token,
+            redirect_url: paymentUrl,
+            payment_url: paymentUrl,
+            mode: this.configService.get('PAYDUNYA_MODE', 'test')
+          };
+
+          this.logger.log(`💳 PayDunya payment initialized successfully: ${paymentResponse.token}`);
+        } catch (error) {
+          this.logger.error(`❌ Failed to initialize PayDunya payment: ${error.message}`, error.stack);
+          // Don't fail order creation if payment initialization fails
+          // The user can try to pay later
+        }
+      }
+
+      // 💳 PayTech Payment Integration
+      else if (createOrderDto.paymentMethod === PaymentMethod.PAYTECH && createOrderDto.initiatePayment) {
         try {
           this.logger.log(`💳 Initializing PayTech payment for order: ${order.orderNumber}`);
 
@@ -115,7 +239,7 @@ export class OrderService {
             redirect_url: paymentResponse.redirect_url || paymentResponse.redirectUrl
           };
 
-          this.logger.log(`💳 Payment initialized successfully: ${paymentResponse.token}`);
+          this.logger.log(`💳 PayTech payment initialized successfully: ${paymentResponse.token}`);
         } catch (error) {
           this.logger.error(`❌ Failed to initialize PayTech payment: ${error.message}`, error.stack);
           // Don't fail order creation if payment initialization fails
@@ -125,9 +249,20 @@ export class OrderService {
 
       const formattedOrder = this.formatOrderResponse(order);
 
-      return paymentData
+      // Debug: vérifier les données de paiement
+      this.logger.log(`🔍 PaymentData check:`, {
+        hasPaymentData: !!paymentData,
+        paymentDataToken: paymentData?.token,
+        paymentDataUrl: paymentData?.redirect_url
+      });
+
+      const finalResponse = paymentData
         ? { ...formattedOrder, payment: paymentData }
         : formattedOrder;
+
+      this.logger.log(`🔍 Final response payment field:`, finalResponse.payment);
+
+      return finalResponse;
     } catch (error) {
       console.error('Erreur lors de la création de la commande:', error);
       throw new BadRequestException(`Erreur lors de la création de la commande: ${error.message}`);
@@ -856,6 +991,110 @@ export class OrderService {
       };
     } catch (error) {
       this.logger.error(`❌ Failed to get payment attempts: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 🆕 Notifier les vendeurs concernés par une nouvelle commande
+   * Envoie une notification en base de données pour chaque vendeur
+   */
+  private async notifyVendorsOfNewOrder(orderId: number) {
+    try {
+      // Récupérer la commande avec tous les items et produits vendeurs
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          orderItems: {
+            include: {
+              product: {
+                select: { id: true, name: true }
+              },
+              vendorProduct: {
+                include: {
+                  vendor: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                      shop_name: true,
+                      email: true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      if (!order) {
+        this.logger.warn(`⚠️ Commande ${orderId} non trouvée pour notification`);
+        return;
+      }
+
+      // Identifier tous les vendeurs uniques concernés par cette commande
+      const vendorIds = new Set<number>();
+      const vendorNames = new Map<number, string>();
+
+      for (const item of order.orderItems) {
+        if (item.vendorProduct && item.vendorProduct.vendor) {
+          const vendor = item.vendorProduct.vendor;
+          vendorIds.add(vendor.id);
+          vendorNames.set(vendor.id, vendor.shop_name || `${vendor.firstName} ${vendor.lastName}`);
+        }
+      }
+
+      if (vendorIds.size === 0) {
+        this.logger.log(`ℹ️ Aucun vendeur trouvé pour la commande ${order.orderNumber}`);
+        return;
+      }
+
+      this.logger.log(`🔔 Notification de ${vendorIds.size} vendeur(s) pour commande ${order.orderNumber}`);
+
+      // Créer une notification pour chaque vendeur
+      const notificationPromises = Array.from(vendorIds).map(async (vendorId) => {
+        try {
+          await this.prisma.notification.create({
+            data: {
+              userId: vendorId,
+              type: 'ORDER_NEW', // ✅ Utiliser ORDER_NEW au lieu de NEW_ORDER
+              title: '🛍️ Nouvelle commande reçue !',
+              message: `Une nouvelle commande (${order.orderNumber}) contenant vos produits a été passée par ${order.shippingName}.`,
+              metadata: {
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                totalAmount: order.totalAmount,
+                customerName: order.shippingName,
+                customerPhone: order.phoneNumber,
+                customerEmail: order.email,
+                itemsCount: order.orderItems.length,
+                createdAt: order.createdAt.toISOString()
+              },
+              isRead: false
+            }
+          });
+
+          this.logger.log(`✅ Notification envoyée au vendeur ${vendorNames.get(vendorId)} (ID: ${vendorId})`);
+        } catch (error) {
+          this.logger.error(`❌ Erreur notification vendeur ${vendorId}:`, error);
+        }
+      });
+
+      await Promise.all(notificationPromises);
+
+      this.logger.log(`🎉 Notifications envoyées à tous les vendeurs pour commande ${order.orderNumber}`);
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur lors de la notification des vendeurs:`, error);
       throw error;
     }
   }
