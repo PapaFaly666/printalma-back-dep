@@ -21,12 +21,14 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../core/guards/roles.guard';
 import { Roles } from '../core/guards/roles.decorator';
+import { PrismaService } from '../prisma.service';
 
 @Controller('orders')
 export class OrderController {
   constructor(
     private readonly orderService: OrderService,
-    private readonly orderGateway: OrderGateway
+    private readonly orderGateway: OrderGateway,
+    private readonly prisma: PrismaService
   ) {}
 
   // Créer une commande pour un invité (sans authentification)
@@ -275,79 +277,4 @@ export class OrderController {
     return await this.orderService.getPaymentAttemptDetails(attemptId);
   }
 
-  /**
-   * 🆕 Endpoint de test pour vérifier les champs de paiement
-   * Temporaire - pour debug du frontend
-   */
-  @Get('test-payment-fields/:orderNumber')
-  @HttpCode(HttpStatus.OK)
-  async testPaymentFields(@Param('orderNumber') orderNumber: string) {
-    try {
-      const order = await this.prisma.order.findUnique({
-        where: { orderNumber },
-        include: {
-          orderItems: {
-            include: {
-              product: true,
-              colorVariation: true,
-            },
-          },
-          user: true,
-          paymentAttemptsHistory: {
-            orderBy: {
-              attemptedAt: 'desc',
-            },
-          },
-        },
-      });
-
-      if (!order) {
-        return {
-          success: false,
-          message: `Order ${orderNumber} not found`,
-        };
-      }
-
-      // Formater avec notre méthode enrichie
-      const formattedOrder = this.orderService.formatOrderResponse(order);
-
-      return {
-        success: true,
-        message: `Payment fields test for order ${orderNumber}`,
-        data: {
-          // Champs bruts de la base de données
-          raw: {
-            orderNumber: order.orderNumber,
-            paymentStatus: order.paymentStatus,
-            paymentMethod: order.paymentMethod,
-            transactionId: order.transactionId,
-            paymentAttempts: order.paymentAttempts,
-            lastPaymentAttemptAt: order.lastPaymentAttemptAt,
-            lastPaymentFailureReason: order.lastPaymentFailureReason,
-            hasInsufficientFunds: order.hasInsufficientFunds,
-          },
-          // Champs formatés pour le frontend
-          formatted: {
-            orderNumber: formattedOrder.orderNumber,
-            paymentStatus: formattedOrder.paymentStatus,
-            paymentMethod: formattedOrder.paymentMethod,
-            transactionId: formattedOrder.transactionId,
-            paymentAttempts: formattedOrder.paymentAttempts,
-            lastPaymentAttemptAt: formattedOrder.lastPaymentAttemptAt,
-            lastPaymentFailureReason: formattedOrder.lastPaymentFailureReason,
-            hasInsufficientFunds: formattedOrder.hasInsufficientFunds,
-            payment_info: formattedOrder.payment_info,
-          },
-          // Historique des tentatives
-          attempts: formattedOrder.payment_info?.recent_attempts || [],
-        },
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Error: ${error.message}`,
-        error: error.stack,
-      };
-    }
-  }
-} 
+  } 

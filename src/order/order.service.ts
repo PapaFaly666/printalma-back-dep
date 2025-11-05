@@ -554,7 +554,7 @@ export class OrderService {
     return this.formatOrderResponse(order);
   }
 
-  private formatOrderResponse(order: any) {
+  public formatOrderResponse(order: any) {
     const baseOrder = {
       ...order,
       orderItems: order.orderItems.map((item: any) => {
