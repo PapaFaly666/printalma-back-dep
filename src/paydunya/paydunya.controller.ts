@@ -15,11 +15,13 @@ import {
   Render,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { PaydunyaService } from './paydunya.service';
 import { PayDunyaPaymentRequestDto } from './dto/payment-request.dto';
 import { PayDunyaCallbackDto } from './dto/payment-response.dto';
 import { PayDunyaRefundRequestDto } from './dto/refund-request.dto';
+import { PaydunyaWebhookDto } from './dto/webhook.dto';
+import { PaydunyaSyncService } from './paydunya-sync.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../core/guards/roles.guard';
 import { Roles } from '../core/guards/roles.decorator';
@@ -46,7 +48,8 @@ export class PaydunyaController {
     private readonly paydunyaService: PaydunyaService,
     private readonly orderService: OrderService,
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly paydunyaSyncService: PaydunyaSyncService
   ) {}
 
   /**
@@ -440,6 +443,47 @@ export class PaydunyaController {
   @ApiOperation({ summary: 'Handle real PayDunya IPN webhook (flexible validation)' })
   @ApiResponse({ status: 200, description: 'Webhook processed successfully' })
   @ApiResponse({ status: 400, description: 'Invalid webhook data' })
+  @ApiBody({
+    description: 'PayDunya webhook payload for payment status updates',
+    type: PaydunyaWebhookDto,
+    examples: {
+      success: {
+        summary: 'Successful payment webhook',
+        value: {
+          invoice_token: 'test_success_123',
+          status: 'completed',
+          response_code: '00',
+          total_amount: 15000,
+          custom_data: {
+            order_number: 'ORD-123456',
+            order_id: 123
+          },
+          payment_method: 'paydunya',
+          customer_name: 'Client Test',
+          customer_email: 'client@example.com',
+          customer_phone: '775588834'
+        }
+      },
+      failure: {
+        summary: 'Failed payment webhook',
+        value: {
+          invoice_token: 'test_failed_456',
+          status: 'failed',
+          response_code: '99',
+          total_amount: 10000,
+          custom_data: {
+            order_number: 'ORD-FAILED789',
+            order_id: 456
+          },
+          payment_method: 'paydunya',
+          customer_name: 'Client Échec',
+          customer_email: 'echec@example.com',
+          error_code: 'insufficient_funds',
+          cancel_reason: 'Payment failed due to insufficient funds'
+        }
+      }
+    }
+  })
   async handlePaydunyaWebhook(@Body() rawData: any) {
     try {
       this.logger.log(`Real PayDunya webhook received: ${JSON.stringify(rawData)}`);
@@ -816,5 +860,150 @@ export class PaydunyaController {
     res.status(statusCode);
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
+  }
+
+  /**
+   * Synchronize order with PayDunya status
+   * This endpoint makes a GET request to PayDunya status API and updates the order accordingly
+   */
+  @Get('sync/:orderId')
+  @ApiOperation({ summary: 'Synchronize order with PayDunya status' })
+  @ApiResponse({ status: 200, description: 'Order synchronized successfully' })
+  async syncOrderStatus(
+    @Param('orderId') orderId: string,
+  ) {
+    try {
+      const orderIdNum = parseInt(orderId);
+      const result = await this.paydunyaSyncService.syncOrderWithPaydunyaStatus(orderIdNum);
+
+      return {
+        success: true,
+        message: result.message,
+        data: {
+          orderId: orderIdNum,
+          orderNumber: result.paydunyaData?.custom_data?.order_number,
+          oldStatus: result.oldStatus,
+          newStatus: result.newStatus,
+          paydunyaData: {
+            responseCode: result.paydunyaData?.response_code,
+            status: result.paydunyaData?.status,
+            totalAmount: result.paydunyaData?.invoice?.total_amount,
+            customer: result.paydunyaData?.customer,
+            receiptUrl: result.paydunyaData?.receipt_url
+          }
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Failed to sync order ${orderId}: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * Synchronize order by order number with PayDunya status
+   */
+  @Get('sync-by-number/:orderNumber')
+  @ApiOperation({ summary: 'Synchronize order by number with PayDunya status' })
+  @ApiResponse({ status: 200, description: 'Order synchronized successfully' })
+  async syncOrderByNumber(
+    @Param('orderNumber') orderNumber: string,
+  ) {
+    try {
+      const result = await this.paydunyaSyncService.syncOrderByNumber(orderNumber);
+
+      return {
+        success: true,
+        message: result.message,
+        data: {
+          orderId: result.orderId,
+          orderNumber: orderNumber,
+          oldStatus: result.oldStatus,
+          newStatus: result.newStatus,
+          paydunyaData: {
+            responseCode: result.paydunyaData?.response_code,
+            status: result.paydunyaData?.status,
+            totalAmount: result.paydunyaData?.invoice?.total_amount,
+            customer: result.paydunyaData?.customer,
+            receiptUrl: result.paydunyaData?.receipt_url
+          }
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Failed to sync order ${orderNumber}: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * Synchronize all pending orders with PayDunya
+   */
+  @Post('sync-all')
+  @ApiOperation({ summary: 'Synchronize all pending orders with PayDunya' })
+  @ApiResponse({ status: 200, description: 'All orders synchronized' })
+  async syncAllPendingOrders() {
+    try {
+      const result = await this.paydunyaSyncService.syncAllPendingOrders();
+
+      this.logger.log(`Batch sync completed: ${result.updated}/${result.total} orders updated`);
+
+      return {
+        success: true,
+        message: `Synchronization completed: ${result.updated}/${result.total} orders updated`,
+        data: {
+          summary: {
+            total: result.total,
+            updated: result.updated,
+            errors: result.errors,
+            successRate: result.total > 0 ? (result.updated / result.total * 100).toFixed(1) + '%' : '0%'
+          },
+          details: result.details
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Failed to sync all pending orders: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * Get PayDunya configuration status
+   */
+  @Get('sync-status')
+  @ApiOperation({ summary: 'Check PayDunya sync service status' })
+  @ApiResponse({ status: 200, description: 'Sync service status' })
+  async getSyncStatus() {
+    try {
+      // Test PayDunya service availability
+      const testStatus = await this.paydunyaService.testConnection();
+
+      // Count pending orders that could be synced
+      const pendingCount = await this.prisma.order.count({
+        where: {
+          paymentStatus: 'PENDING',
+          transactionId: { not: null }
+        }
+      });
+
+      return {
+        success: true,
+        message: 'PayDunya sync service is operational',
+        data: {
+          paydunyaConnection: testStatus,
+          pendingOrdersCount: pendingCount,
+          lastSyncTime: new Date().toISOString(),
+          syncServiceReady: true
+        }
+      };
+    } catch (error) {
+      this.logger.error(`PayDunya sync service status check failed: ${error.message}`);
+      return {
+        success: false,
+        message: 'PayDunya sync service unavailable',
+        data: {
+          error: error.message,
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
   }
 }

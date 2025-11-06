@@ -312,4 +312,32 @@ export class PaydunyaService {
     this.logger.log(`Callback verified for invoice: ${callbackData.invoice_token}`);
     return true;
   }
+
+  /**
+   * Test connection to PayDunya API
+   * Makes a simple request to verify API connectivity
+   *
+   * @returns true if connection is successful
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      // Make a simple request to test connectivity
+      // Using a status check for a dummy token to test the API
+      await this.axiosInstance.get('/checkout-invoice/confirm/test-connection', {
+        validateStatus: (status) => status < 500 // Accept any client error as valid connection test
+      });
+
+      this.logger.log('PayDunya API connection test successful');
+      return true;
+    } catch (error) {
+      if (error.response && error.response.status < 500) {
+        // Client errors (4xx) mean the API is reachable, just the token is invalid
+        this.logger.log('PayDunya API connection test successful (client error expected)');
+        return true;
+      }
+
+      this.logger.error(`PayDunya API connection test failed: ${error.message}`);
+      return false;
+    }
+  }
 }

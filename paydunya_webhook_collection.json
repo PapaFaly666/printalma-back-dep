@@ -1,0 +1,293 @@
+{
+  "info": {
+    "name": "PayDunya Webhook Tests",
+    "description": "Collection complète pour tester les webhooks PayDunya",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "✅ Webhook - Paiement réussi",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.expect(pm.response.code).to.eql(200);",
+              "});",
+              "",
+              "pm.test('Success response structure', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData.success).to.be.true;",
+              "    pm.expect(jsonData.message).to.eql('PayDunya webhook processed successfully');",
+              "    pm.expect(jsonData.data).to.have.property('invoice_token');",
+              "    pm.expect(jsonData.data).to.have.property('payment_status');",
+              "    pm.expect(jsonData.data.payment_status).to.eql('success');",
+              "});",
+              "",
+              "pm.test('Response time is less than 2000ms', function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"invoice_token\": \"test_GjuzFboTqC\",\n  \"status\": \"completed\",\n  \"response_code\": \"00\",\n  \"total_amount\": 25000,\n  \"custom_data\": {\n    \"order_number\": \"ORD-1762384361123\",\n    \"order_id\": 111\n  },\n  \"payment_method\": \"paydunya\",\n  \"customer_name\": \"Client Postman Succès\",\n  \"customer_email\": \"success@postman.test\",\n  \"customer_phone\": \"775588834\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:3004/paydunya/webhook",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3004",
+          "path": [
+            "paydunya",
+            "webhook"
+          ]
+        },
+        "description": "Test d'un webhook PayDunya avec un paiement réussi"
+      },
+      "response": []
+    },
+    {
+      "name": "❌ Webhook - Paiement échoué",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.expect(pm.response.code).to.eql(200);",
+              "});",
+              "",
+              "pm.test('Failed payment response structure', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData.success).to.be.true;",
+              "    pm.expect(jsonData.data.payment_status).to.eql('failed');",
+              "    pm.expect(jsonData.data.failure_details).to.not.be.null;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"invoice_token\": \"test_GjuzFboTqC\",\n  \"status\": \"failed\",\n  \"response_code\": \"99\",\n  \"total_amount\": 25000,\n  \"custom_data\": {\n    \"order_number\": \"ORD-1762384361123\",\n    \"order_id\": 111\n  },\n  \"payment_method\": \"paydunya\",\n  \"customer_name\": \"Client Postman Échec\",\n  \"customer_email\": \"failed@postman.test\",\n  \"error_code\": \"insufficient_funds\",\n  \"cancel_reason\": \"Fonds insuffisants pour le paiement\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:3004/paydunya/webhook",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3004",
+          "path": [
+            "paydunya",
+            "webhook"
+          ]
+        },
+        "description": "Test d'un webhook PayDunya avec un paiement échoué"
+      },
+      "response": []
+    },
+    {
+      "name": "⚠️ Webhook - Erreur champs manquants",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 400', function () {",
+              "    pm.expect(pm.response.code).to.eql(400);",
+              "});",
+              "",
+              "pm.test('Error response structure', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('message');",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "    pm.expect(jsonData.statusCode).to.eql(400);",
+              "    pm.expect(jsonData.error).to.eql('Bad Request');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"invoice_token\": \"test_GjuzFboTqC\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:3004/paydunya/webhook",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3004",
+          "path": [
+            "paydunya",
+            "webhook"
+          ]
+        },
+        "description": "Test avec des champs obligatoires manquants (doit retourner 400)"
+      },
+      "response": []
+    },
+    {
+      "name": "🚫 Webhook - Données vides",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 400', function () {",
+              "    pm.expect(pm.response.code).to.eql(400);",
+              "});",
+              "",
+              "pm.test('Empty data error message', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData.message).to.eql('Empty webhook data');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:3004/paydunya/webhook",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3004",
+          "path": [
+            "paydunya",
+            "webhook"
+          ]
+        },
+        "description": "Test avec des données complètement vides (doit retourner 400)"
+      },
+      "response": []
+    },
+    {
+      "name": "🔍 Vérifier statut PayDunya",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3004/paydunya/status/test_GjuzFboTqC",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3004",
+          "path": [
+            "paydunya",
+            "status",
+            "test_GjuzFboTqC"
+          ]
+        },
+        "description": "Vérifier le statut actuel du token PayDunya"
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Script global pour la collection",
+          "console.log('Exécution des tests PayDunya Webhook');"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Tests globaux pour tous les endpoints",
+          "pm.test('Response time is reasonable', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "protocolProfileBehavior": {
+    "disableBodyPruning": true
+  }
+}

@@ -1,0 +1,45 @@
+# Test manuel du cron job PayDunya
+
+### Créer une commande test
+POST http://localhost:3004/orders/guest
+Content-Type: application/json
+
+{
+  "email": "manual-cron-test@test.com",
+  "phoneNumber": "+221775588834",
+  "shippingDetails": {
+    "firstName": "Manual",
+    "lastName": "Cron Test",
+    "street": "456 Rue Cron",
+    "city": "Dakar",
+    "region": "Dakar",
+    "country": "Sénégal"
+  },
+  "orderItems": [{
+    "productId": 1,
+    "quantity": 1,
+    "unitPrice": 8000
+  }],
+  "totalAmount": 8000,
+  "notes": "Test manuel du cron job PayDunya",
+  "paymentMethod": "PAYDUNYA",
+  "initiatePayment": true
+}
+
+###
+
+### Forcer l'exécution du cron job (nécessite token admin)
+POST http://localhost:3004/paydunya/cron/run
+Authorization: Bearer YOUR_ADMIN_TOKEN_HERE
+
+###
+
+### Vérifier une commande spécifique (nécessite token admin)
+POST http://localhost:3004/paydunya/cron/check/ORD-VOTRE-NUMERO-ICI
+Authorization: Bearer YOUR_ADMIN_TOKEN_HERE
+
+###
+
+### Obtenir les statistiques du cron job (nécessite token admin)
+GET http://localhost:3004/paydunya/cron/stats
+Authorization: Bearer YOUR_ADMIN_TOKEN_HERE
