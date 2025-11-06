@@ -199,6 +199,27 @@ export class OrderService {
 
           this.logger.log(`Final payment URL: ${paymentUrl}`);
 
+          // 🆕 Sauvegarder le token PayDunya dans transactionId pour le cron job
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: { transactionId: paymentResponse.token }
+          });
+
+          // 🆕 Créer un PaymentAttempt pour la traçabilité du cron job
+          await this.prisma.paymentAttempt.create({
+            data: {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              paymentMethod: 'paydunya',
+              paytechToken: paymentResponse.token,
+              amount: order.totalAmount,
+              attemptedAt: new Date()
+            }
+          });
+
+          this.logger.log(`💾 Saved PayDunya token ${paymentResponse.token} in transactionId for order ${order.orderNumber}`);
+          this.logger.log(`📝 Created PaymentAttempt record for order ${order.orderNumber}`);
+
           paymentData = {
             token: paymentResponse.token,
             redirect_url: paymentUrl,
@@ -233,6 +254,27 @@ export class OrderService {
             cancel_url: this.configService.get('PAYTECH_CANCEL_URL'),
             custom_field: JSON.stringify({ orderId: order.id, userId })
           });
+
+          // 🆕 Sauvegarder le token PayTech dans transactionId pour le cron job
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: { transactionId: paymentResponse.token }
+          });
+
+          // 🆕 Créer un PaymentAttempt pour la traçabilité du cron job
+          await this.prisma.paymentAttempt.create({
+            data: {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              paymentMethod: 'paytech',
+              paytechToken: paymentResponse.token,
+              amount: order.totalAmount,
+              attemptedAt: new Date()
+            }
+          });
+
+          this.logger.log(`💾 Saved PayTech token ${paymentResponse.token} in transactionId for order ${order.orderNumber}`);
+          this.logger.log(`📝 Created PaymentAttempt record for order ${order.orderNumber}`);
 
           paymentData = {
             token: paymentResponse.token,
