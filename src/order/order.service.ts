@@ -624,7 +624,11 @@ export class OrderService {
     // 🆕 Ajouter les informations de paiement enrichies
     const paymentInfo: any = {
       status: order.paymentStatus,
+      status_text: this.getPaymentStatusText(order.paymentStatus),
+      status_icon: this.getPaymentStatusIcon(order.paymentStatus),
+      status_color: this.getPaymentStatusColor(order.paymentStatus),
       method: order.paymentMethod,
+      method_text: this.getPaymentMethodText(order.paymentMethod),
       transaction_id: order.transactionId,
       attempts_count: order.paymentAttempts || 0,
       last_attempt_at: order.lastPaymentAttemptAt,
@@ -654,6 +658,46 @@ export class OrderService {
       }));
     }
 
+    // 🆕 Informations complètes du client pour l'admin
+    const customerInfo: any = {
+      // Informations utilisateur si disponible
+      user_id: order.userId || null,
+      user_firstname: order.user?.firstName || null,
+      user_lastname: order.user?.lastName || null,
+      user_email: order.user?.email || null,
+      user_phone: order.user?.phone || null,
+      user_role: order.user?.role || null,
+
+      // Informations de livraison de la commande
+      shipping_name: order.shippingName || null,
+      shipping_email: order.email || null,
+      shipping_phone: order.phoneNumber || null,
+
+      // Informations de contact principales
+      email: order.email || order.user?.email || null,
+      phone: order.phoneNumber || order.user?.phone || null,
+
+      // Nom complet pour affichage
+      full_name: order.shippingName ||
+        (order.user ? `${order.user.firstName} ${order.user.lastName}`.trim() : 'Client inconnu'),
+
+      // Détails de livraison
+      shipping_address: order.shippingDetails ? {
+        address: order.shippingDetails.address || null,
+        city: order.shippingDetails.city || null,
+        postal_code: order.shippingDetails?.postalCode || null,
+        country: order.shippingDetails.country || null,
+        additional_info: order.shippingDetails.additionalInfo || null,
+      } : null,
+
+      // Notes client
+      notes: order.notes || null,
+
+      // Dates importantes
+      created_at: order.createdAt || null,
+      updated_at: order.updatedAt || null,
+    };
+
     return {
       ...baseOrder,
       // 🆕 Inclure les champs de paiement directement pour le frontend
@@ -664,8 +708,12 @@ export class OrderService {
       lastPaymentAttemptAt: order.lastPaymentAttemptAt,
       lastPaymentFailureReason: order.lastPaymentFailureReason,
       hasInsufficientFunds: order.hasInsufficientFunds || false,
-      // Garder payment_info pour compatibilité
+
+      // 🆕 Garder payment_info pour compatibilité
       payment_info: paymentInfo,
+
+      // 🆕 Informations complètes du client pour l'admin
+      customer_info: customerInfo,
     };
   }
 
@@ -1199,4 +1247,99 @@ export class OrderService {
       throw error;
     }
   }
+
+// 🎨 Utilitaires pour l'affichage admin des statuts de paiement
+
+  /**
+   * Obtenir le texte lisible pour un statut de paiement
+   */
+  private getPaymentStatusText(status: string): string {
+    switch (status) {
+      case 'PENDING':
+        return 'En attente de paiement';
+      case 'PAID':
+        return 'Payé';
+      case 'FAILED':
+        return 'Échoué';
+      case 'CANCELLED':
+        return 'Annulé';
+      case 'REFUNDED':
+        return 'Remboursé';
+      case 'PROCESSING':
+        return 'En traitement';
+      default:
+        return status;
+    }
+  }
+
+  /**
+   * Obtenir l'icône pour un statut de paiement
+   */
+  private getPaymentStatusIcon(status: string): string {
+    switch (status) {
+      case 'PENDING':
+        return '⏳';
+      case 'PAID':
+        return '✅';
+      case 'FAILED':
+        return '❌';
+      case 'CANCELLED':
+        return '🚫';
+      case 'REFUNDED':
+        return '💰';
+      case 'PROCESSING':
+        return '🔄';
+      default:
+        return '❓';
+    }
+  }
+
+  /**
+   * Obtenir la couleur pour un statut de paiement
+   */
+  private getPaymentStatusColor(status: string): string {
+    switch (status) {
+      case 'PENDING':
+        return '#FFA500'; // Orange
+      case 'PAID':
+        return '#28A745'; // Vert
+      case 'FAILED':
+        return '#DC3545'; // Rouge
+      case 'CANCELLED':
+        return '#6C757D'; // Gris
+      case 'REFUNDED':
+        return '#17A2B8'; // Cyan
+      case 'PROCESSING':
+        return '#007BFF'; // Bleu
+      default:
+        return '#6C757D'; // Gris par défaut
+    }
+  }
+
+  /**
+   * Obtenir le texte lisible pour une méthode de paiement
+   */
+  private getPaymentMethodText(method: string): string {
+    switch (method) {
+      case 'PAYDUNYA':
+        return 'PayDunya';
+      case 'PAYTECH':
+        return 'PayTech';
+      case 'CASH_ON_DELIVERY':
+        return 'Paiement à la livraison';
+      case 'WAVE':
+        return 'Wave';
+      case 'ORANGE_MONEY':
+        return 'Orange Money';
+      case 'FREE_MONEY':
+        return 'Free Money';
+      case 'CARD':
+        return 'Carte bancaire';
+      case 'OTHER':
+        return 'Autre';
+      default:
+        return method;
+    }
+  }
+
 } 
