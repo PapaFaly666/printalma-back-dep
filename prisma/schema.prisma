@@ -370,6 +370,13 @@ model OrderItem {
   size            String?
   color           String?
   colorId         Int?
+
+  // 🎨 Informations de design et mockup
+  mockupUrl       String? // URL du mockup avec le design appliqué
+  designId        Int? // ID du design utilisé
+  designPositions Json? // Coordonnées de placement du design {x, y, scale, rotation, etc.}
+  designMetadata  Json? // Métadonnées complètes du design pour l'historique
+
   colorVariation  ColorVariation? @relation(fields: [colorId], references: [id])
   order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product         Product         @relation(fields: [productId], references: [id])
@@ -379,6 +386,7 @@ model OrderItem {
   @@index([productId])
   @@index([colorId])
   @@index([vendorProductId]) // 🆕
+  @@index([designId]) // 🆕
 }
 
 model Notification {

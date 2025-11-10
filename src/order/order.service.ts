@@ -85,7 +85,12 @@ export class OrderService {
                 color: item.color,
                 size: item.size,
                 quantity: item.quantity,
-                unitPrice: item.unitPrice
+                unitPrice: item.unitPrice,
+                // 🎨 Informations de design
+                mockupUrl: item.mockupUrl,
+                designId: item.designId,
+                hasDesignPositions: !!item.designPositions,
+                hasDesignMetadata: !!item.designMetadata
               });
 
               return {
@@ -95,7 +100,12 @@ export class OrderService {
                 unitPrice: item.unitPrice || 0,
                 size: item.size || null,
                 color: item.color || null,
-                colorId: item.colorId || null
+                colorId: item.colorId || null,
+                // 🎨 Sauvegarder les informations de design et mockup
+                mockupUrl: item.mockupUrl || null,
+                designId: item.designId || null,
+                designPositions: item.designPositions || null,
+                designMetadata: item.designMetadata || null
               };
             })
           }
@@ -426,7 +436,34 @@ export class OrderService {
             include: {
               product: true,
               colorVariation: true,
-            },
+              vendorProduct: {
+                include: {
+                  vendor: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                      shop_name: true,
+                      profile_photo_url: true
+                    }
+                  },
+                  baseProduct: {
+                    include: {
+                      colorVariations: {
+                        include: {
+                          images: {
+                            include: {
+                              delimitations: true
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  design: true
+                }
+              }
+            }
           },
           user: true,
           validator: true,
@@ -444,13 +481,15 @@ export class OrderService {
         skip,
         take: limit,
       }),
-      this.prisma.order.count({ where })
-    ]);
+    this.prisma.order.count({ where })
+  ]);
 
-    const formattedOrders = orders.map(order => this.formatOrderResponse(order));
+    const enrichedOrders = await Promise.all(
+      orders.map(order => this.enrichOrderWithProductData(order))
+    );
 
     return {
-      orders: formattedOrders,
+      orders: enrichedOrders,
       pagination: {
         total,
         page,
@@ -458,6 +497,222 @@ export class OrderService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * 🆕 Enrichir les commandes avec les données complètes des produits vendeurs
+   * Ajoute les images, designs et positions comme dans l'endpoint /public/vendor-products
+   */
+  private async enrichOrderWithProductData(order: any) {
+    try {
+      // Enrichir chaque orderItem avec les données du produit vendeur
+      const enrichedOrderItems = await Promise.all(
+        order.orderItems.map(async (item: any) => {
+          let enrichedProductData = null;
+
+          // Si l'item a un vendorProductId, enrichir avec les données complètes
+          if (item.vendorProductId && item.vendorProduct) {
+            enrichedProductData = await this.createEnrichedProductData(item.vendorProduct);
+          } else {
+            // Sinon, créer une structure de base avec le produit admin
+            enrichedProductData = {
+              id: item.product?.id,
+              vendorName: item.product?.name || 'Produit inconnu',
+              price: item.unitPrice,
+              status: 'PUBLISHED',
+
+              // Structure de base pour les produits sans vendor
+              adminProduct: {
+                id: item.product?.id,
+                name: item.product?.name,
+                description: item.product?.description,
+                colorVariations: item.colorVariation ? [{
+                  name: item.colorVariation.name,
+                  colorCode: item.colorVariation.colorCode,
+                  images: item.colorVariation.images || []
+                }] : []
+              },
+
+              // Informations de base
+              designApplication: {
+                hasDesign: false,
+                designUrl: null,
+                positioning: 'CENTER',
+                scale: 0.6,
+                mode: 'PRESERVED'
+              },
+
+              designDelimitations: [],
+              design: null,
+              designPositions: [],
+
+              vendor: null,
+              images: {
+                adminReferences: item.colorVariation ? [{
+                  colorName: item.colorVariation.name,
+                  colorCode: item.colorVariation.colorCode,
+                  adminImageUrl: item.colorVariation.images?.[0]?.url || null,
+                  imageType: 'admin_reference'
+                }] : [],
+                total: item.colorVariation ? 1 : 0,
+                primaryImageUrl: item.colorVariation?.images?.[0]?.url || null
+              },
+
+              selectedSizes: [],
+              selectedColors: item.colorVariation ? [{
+                id: item.colorVariation.id,
+                name: item.colorVariation.name,
+                colorCode: item.colorVariation.colorCode
+              }] : [],
+              designId: null
+            };
+          }
+
+          return {
+            ...item,
+            // Garder les informations existantes du produit
+            product: {
+              ...item.product,
+              orderedColorName: item.colorVariation?.name || null,
+              orderedColorHexCode: item.colorVariation?.colorCode || null,
+              orderedColorImageUrl: item.colorVariation?.images?.[0]?.url || null,
+            },
+            // 🆕 Ajouter les données enrichies du produit vendeur
+            enrichedVendorProduct: enrichedProductData
+          };
+        })
+      );
+
+      // Formatter la commande avec les items enrichis
+      const formattedOrder = this.formatOrderResponse({
+        ...order,
+        orderItems: enrichedOrderItems
+      });
+
+      return formattedOrder;
+    } catch (error) {
+      this.logger.error(`❌ Erreur enrichissement commande ${order.id}:`, error);
+      // En cas d'erreur, retourner la commande formatée de base
+      return this.formatOrderResponse(order);
+    }
+  }
+
+  /**
+   * Créer des données de produit enrichi si le service n'est pas disponible
+   */
+  private async createEnrichedProductData(vendorProduct: any) {
+    try {
+      // Structure de base similaire à celle du VendorPublishService
+      return {
+        id: vendorProduct.id,
+        vendorName: vendorProduct.name,
+        price: vendorProduct.price,
+        status: vendorProduct.status,
+
+        // 🏆 MEILLEURES VENTES
+        bestSeller: {
+          isBestSeller: vendorProduct.isBestSeller || false,
+          salesCount: vendorProduct.salesCount || 0,
+          totalRevenue: vendorProduct.totalRevenue || 0
+        },
+
+        // 🎨 STRUCTURE ADMIN CONSERVÉE
+        adminProduct: {
+          id: vendorProduct.baseProduct?.id,
+          name: vendorProduct.baseProduct?.name,
+          description: vendorProduct.baseProduct?.description,
+          price: vendorProduct.baseProduct?.price,
+          genre: vendorProduct.baseProduct?.genre,
+          colorVariations: vendorProduct.baseProduct?.colorVariations || [],
+          sizes: vendorProduct.baseProduct?.sizes || []
+        },
+
+        // 🎨 APPLICATION DESIGN
+        designApplication: {
+          hasDesign: !!vendorProduct.design,
+          designUrl: vendorProduct.design?.imageUrl || null,
+          positioning: 'CENTER',
+          scale: vendorProduct.designScale || 0.6,
+          mode: 'PRESERVED'
+        },
+
+        // 🎨 DÉLIMITATIONS DU DESIGN
+        designDelimitations: vendorProduct.baseProduct?.colorVariations?.map((colorVar: any) => ({
+          colorName: colorVar.name,
+          colorCode: colorVar.colorCode,
+          imageUrl: colorVar.images?.[0]?.url || null,
+          naturalWidth: colorVar.images?.[0]?.naturalWidth || 800,
+          naturalHeight: colorVar.images?.[0]?.naturalHeight || 600,
+          delimitations: colorVar.images?.[0]?.delimitations || []
+        })) || [],
+
+        // 🎨 INFORMATIONS DESIGN COMPLÈTES
+        design: vendorProduct.design ? {
+          id: vendorProduct.design.id,
+          name: vendorProduct.design.name,
+          description: vendorProduct.design.description,
+          category: vendorProduct.design.category,
+          imageUrl: vendorProduct.design.imageUrl,
+          tags: vendorProduct.design.tags || [],
+          isValidated: vendorProduct.design.isValidated
+        } : null,
+
+        // 🎨 POSITIONNEMENTS DU DESIGN (basiques)
+        designPositions: vendorProduct.designPositions || [{
+          designId: vendorProduct.designId,
+          position: {
+            x: 0,
+            y: 0,
+            scale: vendorProduct.designScale || 0.6,
+            rotation: 0,
+            designWidth: vendorProduct.designWidth || 1200,
+            designHeight: vendorProduct.designHeight || 1200
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }],
+
+        // 👤 INFORMATIONS VENDEUR
+        vendor: vendorProduct.vendor ? {
+          id: vendorProduct.vendor.id,
+          fullName: `${vendorProduct.vendor.firstName} ${vendorProduct.vendor.lastName}`,
+          shop_name: vendorProduct.vendor.shop_name,
+          profile_photo_url: vendorProduct.vendor.profile_photo_url
+        } : null,
+
+        // 🖼️ IMAGES ADMIN CONSERVÉES
+        images: {
+          adminReferences: vendorProduct.baseProduct?.colorVariations?.map((colorVar: any) => ({
+            colorName: colorVar.name,
+            colorCode: colorVar.colorCode,
+            adminImageUrl: colorVar.images?.[0]?.url || null,
+            imageType: 'admin_reference'
+          })) || [],
+          total: vendorProduct.baseProduct?.colorVariations?.length || 0,
+          primaryImageUrl: vendorProduct.baseProduct?.colorVariations?.[0]?.images?.[0]?.url || null
+        },
+
+        // 📏 SÉLECTIONS VENDEUR
+        selectedSizes: this.parseJsonSafely(vendorProduct.sizes) || [],
+        selectedColors: this.parseJsonSafely(vendorProduct.colors) || [],
+        designId: vendorProduct.designId
+      };
+    } catch (error) {
+      this.logger.error(`❌ Erreur création données enrichies:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Parser du JSON en toute sécurité
+   */
+  private parseJsonSafely(jsonString: string | null): any {
+    if (!jsonString) return null;
+    try {
+      return JSON.parse(jsonString);
+    } catch {
+      return null;
+    }
   }
 
   async getUserOrders(userId: number) {

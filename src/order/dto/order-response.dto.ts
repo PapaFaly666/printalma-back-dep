@@ -24,6 +24,12 @@ export class OrderItemResponseDto {
   size?: string;    // Taille sélectionnée pour cet item
   color?: string;   // Couleur sélectionnée pour cet item (nom ou code)
   product?: ProductInOrderResponseDto; // Objet produit détaillé
+
+  // 🎨 Informations de design et mockup
+  mockupUrl?: string; // URL du mockup avec le design appliqué
+  designId?: number; // ID du design utilisé
+  designPositions?: any; // Coordonnées de placement du design
+  designMetadata?: any; // Métadonnées complètes du design
 }
 
 export class ShippingAddressResponseDto {

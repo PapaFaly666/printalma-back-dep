@@ -400,4 +400,33 @@ export class OrderController {
     return await this.orderService.getPaymentAttemptDetails(attemptId);
   }
 
+  /**
+   * 🧪 TEST: Get all orders without authentication (temporary)
+   * This endpoint is for testing the enriched product data
+   */
+  @Get('test-enriched-orders')
+  @HttpCode(HttpStatus.OK)
+  async testGetAllOrders(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+    @Query('status') status?: string
+  ) {
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+
+    // Validation des paramètres
+    if (pageNum < 1) {
+      throw new BadRequestException('La page doit être supérieure à 0');
+    }
+    if (limitNum < 1 || limitNum > 100) {
+      throw new BadRequestException('La limite doit être entre 1 et 100');
+    }
+
+    return {
+      success: true,
+      message: 'Commandes récupérées avec succès (TEST)',
+      data: await this.orderService.getAllOrders(pageNum, limitNum, status as any)
+    };
+  }
+
   } 

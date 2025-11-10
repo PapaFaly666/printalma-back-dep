@@ -32,6 +32,40 @@ export class CreateOrderItemDto {
   @IsOptional()
   @IsNumber()
   colorId?: number;
+
+  // 🎨 Informations de design et mockup
+  @ApiProperty({
+    description: 'URL du mockup avec le design appliqué',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  mockupUrl?: string;
+
+  @ApiProperty({
+    description: 'ID du design utilisé',
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  designId?: number;
+
+  @ApiProperty({
+    description: 'Coordonnées de placement du design (JSON)',
+    required: false,
+    example: { x: 0.5, y: 0.5, scale: 0.6, rotation: 0 }
+  })
+  @IsOptional()
+  @IsObject()
+  designPositions?: any;
+
+  @ApiProperty({
+    description: 'Métadonnées complètes du design pour l\'historique (JSON)',
+    required: false
+  })
+  @IsOptional()
+  @IsObject()
+  designMetadata?: any;
 }
 
 export enum PaymentMethod {
