@@ -95,9 +95,21 @@ export class PaydunyaService {
       if (error.response) {
         this.logger.error(`PayDunya API Error Response: ${JSON.stringify(error.response.data)}`);
         this.logger.error(`PayDunya API Error Status: ${error.response.status}`);
-        throw new BadRequestException(error.response.data.response_text || error.response.data || 'Invoice creation failed');
+        const errorMessage = error.response.data?.response_text ||
+                           error.response.data?.message ||
+                           error.response.data?.error ||
+                           'Invoice creation failed';
+        throw new BadRequestException(errorMessage);
+      } else if (error.request) {
+        // La requête a été envoyée mais aucune réponse reçue
+        this.logger.error(`PayDunya API No Response: ${error.message}`);
+        this.logger.error(`Request details: ${JSON.stringify(error.request)}`);
+        throw new InternalServerErrorException('Unable to connect to PayDunya API. Please check your network connection and API configuration.');
+      } else {
+        // Erreur de configuration ou autre
+        this.logger.error(`PayDunya Configuration Error: ${error.message}`);
+        throw new InternalServerErrorException(`PayDunya configuration error: ${error.message}`);
       }
-      throw new InternalServerErrorException('Failed to initialize payment');
     }
   }
 
