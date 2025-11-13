@@ -69,6 +69,7 @@ model User {
   deletedByUser           User?                   @relation("DeletedByUser", fields: [deleted_by], references: [id], onDelete: SetNull)
   deletedUsers            User[]                  @relation("DeletedByUser")
   auditLogs               AuditLog[]              @relation("AuditLogUser")
+  productCustomizations   ProductCustomization[]
 
   @@index([country])
   @@index([shop_name])
@@ -120,18 +121,19 @@ model Product {
   subCategoryId Int? @map("sub_category_id")
   variationId   Int? @map("variation_id")
 
-  colorVariations ColorVariation[]
-  orderItems      OrderItem[]
-  validator       User?            @relation("ProductValidator", fields: [validatedBy], references: [id])
-  sizes           ProductSize[]
-  stocks          ProductStock[]
-  stockMovements  StockMovement[]
-  themeProducts   ThemeProduct[]
-  vendorProducts  VendorProduct[]
-  categories      Category[]       @relation("CategoryToProduct")
-  category        Category?        @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  subCategory     SubCategory?     @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
-  variation       Variation?       @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
+  colorVariations       ColorVariation[]
+  orderItems            OrderItem[]
+  validator             User?                    @relation("ProductValidator", fields: [validatedBy], references: [id])
+  sizes                 ProductSize[]
+  stocks                ProductStock[]
+  stockMovements        StockMovement[]
+  themeProducts         ThemeProduct[]
+  vendorProducts        VendorProduct[]
+  categories            Category[]               @relation("CategoryToProduct")
+  category              Category?                @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  subCategory           SubCategory?             @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
+  variation             Variation?               @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
+  productCustomizations ProductCustomization[]
 
   @@index([isValidated])
   @@index([submittedForValidationAt])
@@ -350,6 +352,7 @@ model Order {
   orderItems             OrderItem[]
   fundsRequestLinks      VendorFundsRequestOrder[]
   paymentAttemptsHistory PaymentAttempt[] // 🆕 Historique des tentatives
+  productCustomizations  ProductCustomization[]
 
   @@index([userId])
   @@index([status])
@@ -1018,6 +1021,47 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+/// Personnalisations de produits (design customization)
+/// Stocke les personnalisations faites par les clients sur les produits
+model ProductCustomization {
+  id               Int      @id @default(autoincrement())
+  userId           Int?     @map("user_id")
+  sessionId        String?  @map("session_id")
+
+  // Produit et variation
+  productId        Int      @map("product_id")
+  colorVariationId Int      @map("color_variation_id")
+  viewId           Int      @map("view_id")
+
+  // Design data (JSON) - Array de TextElement | ImageElement
+  designElements   Json     @map("design_elements")
+
+  // Sélections de taille (avant commande)
+  sizeSelections   Json?    @map("size_selections")
+
+  // Métadonnées
+  previewImageUrl  String?  @map("preview_image_url")
+  totalPrice       Decimal  @default(0) @db.Decimal(10, 2) @map("total_price")
+
+  // État
+  status           String   @default("draft")
+  orderId          Int?     @map("order_id")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  product          Product  @relation(fields: [productId], references: [id])
+  user             User?    @relation(fields: [userId], references: [id])
+  order            Order?   @relation(fields: [orderId], references: [id])
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([productId])
+  @@index([status])
+  @@map("product_customizations")
 }
 
 /// Designers - Créateurs qui apparaissent sur la page d'accueil

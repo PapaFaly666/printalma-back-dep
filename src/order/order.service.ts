@@ -77,7 +77,7 @@ export class OrderService {
           shippingAddressFull: fullAddress,
 
           orderItems: {
-            create: createOrderDto.orderItems.map((item) => {
+            create: await Promise.all(createOrderDto.orderItems.map(async (item) => {
               console.log(`📦 [ORDER] Création orderItem:`, {
                 productId: item.productId,
                 vendorProductId: item.vendorProductId, // 🆕
@@ -93,8 +93,26 @@ export class OrderService {
                 hasDesignMetadata: !!item.designMetadata
               });
 
+              // 🔥 CORRECTION: Utiliser baseProductId du vendorProduct au lieu de productId
+              let finalProductId = item.productId;
+              if (item.vendorProductId) {
+                try {
+                  const vendorProduct = await this.prisma.vendorProduct.findUnique({
+                    where: { id: item.vendorProductId },
+                    select: { baseProductId: true }
+                  });
+                  if (vendorProduct) {
+                    finalProductId = vendorProduct.baseProductId;
+                    console.log(`🔄 [ORDER] Utilisation de baseProductId: ${finalProductId} pour vendorProductId: ${item.vendorProductId}`);
+                  }
+                } catch (error) {
+                  console.error(`❌ [ORDER] Erreur récupération baseProductId:`, error);
+                  // Garder productId original si erreur
+                }
+              }
+
               return {
-                productId: item.productId,
+                productId: finalProductId, // 🔥 Utiliser baseProductId au lieu de productId
                 vendorProductId: item.vendorProductId || null, // 🆕 ID du produit vendeur
                 quantity: item.quantity,
                 unitPrice: item.unitPrice || 0,
@@ -107,7 +125,7 @@ export class OrderService {
                 designPositions: item.designPositions || null,
                 designMetadata: item.designMetadata || null
               };
-            })
+            }))
           }
         },
         include: {
@@ -161,6 +179,19 @@ export class OrderService {
         try {
           this.logger.log(`💳 Initializing PayDunya payment for order: ${order.orderNumber}`);
 
+          // Construire l'URL de retour avec les paramètres nécessaires
+          // PayDunya va rediriger vers cette URL après le paiement
+          const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:5174';
+          const baseReturnUrl = `${frontendUrl}/order-confirmation`;
+
+          // Note: On ne peut pas mettre le token ici car on ne l'a pas encore
+          // PayDunya va automatiquement append le token dans les query params
+          const returnUrl = `${baseReturnUrl}?orderNumber=${encodeURIComponent(order.orderNumber)}&totalAmount=${encodeURIComponent(order.totalAmount)}&email=${encodeURIComponent(createOrderDto.email || '')}`;
+          const cancelUrl = `${baseReturnUrl}?orderNumber=${encodeURIComponent(order.orderNumber)}&status=cancelled`;
+
+          this.logger.log(`🔗 Return URL: ${returnUrl}`);
+          this.logger.log(`❌ Cancel URL: ${cancelUrl}`);
+
           const paymentResponse = await this.paydunyaService.createInvoice({
             invoice: {
               total_amount: order.totalAmount,
@@ -184,9 +215,9 @@ export class OrderService {
               userId: userId
             },
             actions: {
-              return_url: this.configService.get('PAYDUNYA_SUCCESS_URL'),
-              cancel_url: this.configService.get('PAYDUNYA_CANCEL_URL'),
-              callback_url: this.configService.get('PAYDUNYA_IPN_URL')
+              return_url: returnUrl,
+              cancel_url: cancelUrl,
+              callback_url: this.configService.get('PAYDUNYA_CALLBACK_URL') || `${this.configService.get('API_URL') || 'http://localhost:3004'}/paydunya/webhook`
             }
           });
 

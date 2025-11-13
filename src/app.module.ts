@@ -34,6 +34,7 @@ import { VariationModule } from './variation/variation.module';
 import { PaytechModule } from './paytech/paytech.module';
 import { PaydunyaModule } from './paydunya/paydunya.module';
 import { PaymentModule } from './payment/payment.module';
+import { CustomizationModule } from './customization/customization.module';
 
 @Module({
   imports: [
@@ -68,7 +69,8 @@ import { PaymentModule } from './payment/payment.module';
     RolesModule,
     PaytechModule,
     PaydunyaModule,
-    PaymentModule
+    PaymentModule,
+    CustomizationModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

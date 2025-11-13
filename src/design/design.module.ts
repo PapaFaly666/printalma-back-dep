@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DesignController } from './design.controller';
+import { PublicDesignController } from './public-design.controller';
 import { DesignService } from './design.service';
 import { DesignProductLinkService } from './design-product-link.service';
 import { DesignAutoValidationService } from './design-auto-validation.service';
@@ -23,7 +24,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       inject: [ConfigService],
     }),
   ],
-  controllers: [DesignController, DesignAutoValidationController],
+  controllers: [DesignController, DesignAutoValidationController, PublicDesignController],
   providers: [DesignService, DesignProductLinkService, DesignAutoValidationService, PrismaService],
   exports: [DesignService, DesignProductLinkService, DesignAutoValidationService],
 })
