@@ -25,6 +25,7 @@ export class CustomizationController {
   /**
    * Sauvegarder une personnalisation (utilisateur ou guest)
    * POST /customizations
+   * Query param optionnel: customizationId pour mettre à jour une personnalisation existante
    */
   @Post()
   @UseGuards(OptionalJwtAuthGuard) // Fonctionne avec ou sans authentification
@@ -32,10 +33,12 @@ export class CustomizationController {
   @ApiResponse({ status: 201, description: 'Customization saved successfully' })
   async saveCustomization(
     @Body() dto: CreateCustomizationDto,
+    @Query('customizationId') customizationId: string,
     @Req() req: any
   ) {
     const userId = req.user?.id; // undefined si guest
-    return this.customizationService.upsertCustomization(dto, userId);
+    const customizationIdNum = customizationId ? parseInt(customizationId, 10) : undefined;
+    return this.customizationService.upsertCustomization(dto, userId, customizationIdNum);
   }
 
   /**
@@ -99,5 +102,42 @@ export class CustomizationController {
   @ApiOperation({ summary: 'Delete customization' })
   async deleteCustomization(@Param('id', ParseIntPipe) id: number) {
     return this.customizationService.deleteCustomization(id);
+  }
+
+  /**
+   * Migrer les personnalisations d'une session guest vers l'utilisateur connecté
+   * POST /customizations/migrate
+   * Body: { sessionId: string }
+   */
+  @Post('migrate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Migrate guest customizations to authenticated user' })
+  @ApiResponse({ status: 200, description: 'Customizations migrated successfully' })
+  async migrateCustomizations(
+    @Body('sessionId') sessionId: string,
+    @Req() req: any
+  ) {
+    return this.customizationService.migrateGuestCustomizations(sessionId, req.user.id);
+  }
+
+  /**
+   * Récupérer une personnalisation draft pour un produit spécifique
+   * GET /customizations/product/:productId/draft
+   */
+  @Get('product/:productId/draft')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Get draft customization for a specific product' })
+  async getDraftForProduct(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Query('sessionId') sessionId: string,
+    @Req() req: any
+  ) {
+    const userId = req.user?.id;
+    return this.customizationService.getDraftCustomizationForProduct(
+      productId,
+      userId,
+      sessionId
+    );
   }
 }

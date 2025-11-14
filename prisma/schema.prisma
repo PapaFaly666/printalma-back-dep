@@ -1057,10 +1057,18 @@ model ProductCustomization {
   user             User?    @relation(fields: [userId], references: [id])
   order            Order?   @relation(fields: [orderId], references: [id])
 
+  // Index simples pour les requêtes de base
   @@index([userId])
   @@index([sessionId])
   @@index([productId])
   @@index([status])
+
+  // Index composés pour les requêtes complexes fréquentes
+  @@index([userId, status, updatedAt(sort: Desc)]) // getUserCustomizations avec tri
+  @@index([sessionId, status, updatedAt(sort: Desc)]) // getSessionCustomizations avec tri
+  @@index([productId, userId, status]) // getDraftCustomizationForProduct (utilisateur)
+  @@index([productId, sessionId, status]) // getDraftCustomizationForProduct (guest)
+
   @@map("product_customizations")
 }
 
