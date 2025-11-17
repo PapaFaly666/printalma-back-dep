@@ -37,8 +37,8 @@ export class CustomizationService {
       productId: dto.productId,
       colorVariationId: dto.colorVariationId,
       viewId: dto.viewId,
-      designElements: dto.designElements as any,
-      sizeSelections: dto.sizeSelections as any,
+      designElements: JSON.parse(JSON.stringify(dto.designElements)),
+      sizeSelections: dto.sizeSelections ? JSON.parse(JSON.stringify(dto.sizeSelections)) : null,
       previewImageUrl: dto.previewImageUrl,
       totalPrice,
       userId,
@@ -221,8 +221,8 @@ export class CustomizationService {
     return this.prisma.productCustomization.update({
       where: { id },
       data: {
-        ...(dto.designElements && { designElements: dto.designElements as any }),
-        ...(dto.sizeSelections && { sizeSelections: dto.sizeSelections as any }),
+        ...(dto.designElements && { designElements: JSON.parse(JSON.stringify(dto.designElements)) }),
+        ...(dto.sizeSelections && { sizeSelections: JSON.parse(JSON.stringify(dto.sizeSelections)) }),
         ...(dto.previewImageUrl && { previewImageUrl: dto.previewImageUrl }),
         ...(dto.status && { status: dto.status })
       },

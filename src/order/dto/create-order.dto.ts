@@ -66,6 +66,58 @@ export class CreateOrderItemDto {
   @IsOptional()
   @IsObject()
   designMetadata?: any;
+
+  // 🎨 ID de la personnalisation sauvegardée
+  @ApiProperty({
+    description: 'ID de la personnalisation sauvegardée (product_customizations)',
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  customizationId?: number;
+
+  // 🎨 NOUVEAU SYSTÈME MULTI-VUES
+  @ApiProperty({
+    description: 'IDs des personnalisations par vue - format: {"colorId-viewId": customizationId}',
+    required: false,
+    example: { "1-5": 456, "1-6": 457 }
+  })
+  @IsOptional()
+  @IsObject()
+  customizationIds?: Record<string, number>;
+
+  @ApiProperty({
+    description: 'Éléments de design par vue - format: {"colorId-viewId": [elements]}',
+    required: false,
+    example: {
+      "1-5": [
+        {
+          id: "text-123",
+          type: "text",
+          text: "MON TEXTE",
+          x: 0.5,
+          y: 0.3,
+          width: 200,
+          height: 50,
+          fontSize: 24,
+          fontFamily: "Arial",
+          color: "#000000",
+          zIndex: 1
+        }
+      ]
+    }
+  })
+  @IsOptional()
+  @IsObject()
+  designElementsByView?: Record<string, any[]>;
+
+  @ApiProperty({
+    description: 'Zone de placement du design (délimitation)',
+    required: false
+  })
+  @IsOptional()
+  @IsObject()
+  delimitation?: any;
 }
 
 export enum PaymentMethod {

@@ -10,6 +10,7 @@ import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats
 import { PaytechService } from '../paytech/paytech.service';
 import { PaydunyaModule } from '../paydunya/paydunya.module';
 import { ConfigModule } from '@nestjs/config';
+import { CustomizationModule } from '../customization/customization.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ConfigModule } from '@nestjs/config';
     }),
     ConfigModule,
     forwardRef(() => PaydunyaModule),
+    CustomizationModule, // 🎨 Module de personnalisation
   ],
   controllers: [OrderController],
   providers: [

@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma.service';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
 import { RealBestSellersService } from '../vendor-product/services/real-best-sellers.service';
 import { PaydunyaModule } from '../paydunya/paydunya.module';
+import { CustomizationModule } from '../customization/customization.module';
 
 /**
  * PayTech Payment Module
@@ -24,6 +25,7 @@ import { PaydunyaModule } from '../paydunya/paydunya.module';
       signOptions: { expiresIn: '24h' },
     }),
     forwardRef(() => PaydunyaModule),
+    CustomizationModule, // 🎨 Module de personnalisation
   ],
   controllers: [PaytechController],
   providers: [

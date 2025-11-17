@@ -7,6 +7,8 @@ import { PaytechService } from '../paytech/paytech.service';
 import { PaydunyaService } from '../paydunya/paydunya.service';
 import { ConfigService } from '@nestjs/config';
 import { PayTechCurrency, PayTechEnvironment } from '../paytech/dto/payment-request.dto';
+import { CustomizationService } from '../customization/customization.service';
+import { CustomizationValidator } from './validators/customization.validator';
 
 @Injectable()
 export class OrderService {
@@ -17,7 +19,8 @@ export class OrderService {
     private salesStatsUpdaterService: SalesStatsUpdaterService,
     private paytechService: PaytechService,
     private paydunyaService: PaydunyaService,
-    private configService: ConfigService
+    private configService: ConfigService,
+    private customizationService: CustomizationService
   ) {}
 
   async createGuestOrder(createOrderDto: CreateOrderDto) {
@@ -78,9 +81,20 @@ export class OrderService {
 
           orderItems: {
             create: await Promise.all(createOrderDto.orderItems.map(async (item) => {
+              // 🎨 VALIDATION DES DONNÉES DE CUSTOMISATION
+              if (item.customizationIds || item.designElementsByView) {
+                try {
+                  CustomizationValidator.validateOrThrow(item);
+                  this.logger.log(`✅ Validation customisation réussie pour productId ${item.productId}`);
+                } catch (error) {
+                  this.logger.error(`❌ Validation customisation échouée:`, error);
+                  throw error;
+                }
+              }
+
               console.log(`📦 [ORDER] Création orderItem:`, {
                 productId: item.productId,
-                vendorProductId: item.vendorProductId, // 🆕
+                vendorProductId: item.vendorProductId,
                 colorId: item.colorId,
                 color: item.color,
                 size: item.size,
@@ -89,6 +103,11 @@ export class OrderService {
                 // 🎨 Informations de design
                 mockupUrl: item.mockupUrl,
                 designId: item.designId,
+                customizationId: item.customizationId,
+                // 🎨 NOUVEAU: Système multi-vues
+                customizationIds: item.customizationIds,
+                hasDesignElementsByView: !!item.designElementsByView,
+                viewsCount: item.customizationIds ? Object.keys(item.customizationIds).length : 0,
                 hasDesignPositions: !!item.designPositions,
                 hasDesignMetadata: !!item.designMetadata
               });
@@ -112,8 +131,8 @@ export class OrderService {
               }
 
               return {
-                productId: finalProductId, // 🔥 Utiliser baseProductId au lieu de productId
-                vendorProductId: item.vendorProductId || null, // 🆕 ID du produit vendeur
+                productId: finalProductId,
+                vendorProductId: item.vendorProductId || null,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice || 0,
                 size: item.size || null,
@@ -123,7 +142,12 @@ export class OrderService {
                 mockupUrl: item.mockupUrl || null,
                 designId: item.designId || null,
                 designPositions: item.designPositions || null,
-                designMetadata: item.designMetadata || null
+                designMetadata: item.designMetadata || null,
+                customizationId: item.customizationId || null,
+                // 🎨 NOUVEAU: Système multi-vues - Enregistrer les données
+                customizationIds: item.customizationIds ? JSON.parse(JSON.stringify(item.customizationIds)) : null,
+                designElementsByView: item.designElementsByView ? JSON.parse(JSON.stringify(item.designElementsByView)) : null,
+                delimitation: item.delimitation ? JSON.parse(JSON.stringify(item.delimitation)) : null
               };
             }))
           }
@@ -152,6 +176,49 @@ export class OrderService {
           user: userId ? true : false // Inclure user seulement si userId existe
         }
       });
+
+      // 🎨 MARQUER LES PERSONNALISATIONS COMME COMMANDÉES
+      try {
+        // Collecter TOUS les IDs de customization (ancien système + nouveau système multi-vues)
+        const allCustomizationIds = new Set<number>();
+
+        createOrderDto.orderItems.forEach(item => {
+          // Ancien système: customizationId (singulier)
+          if (item.customizationId) {
+            allCustomizationIds.add(item.customizationId);
+          }
+
+          // 🆕 NOUVEAU système: customizationIds (pluriel) - Multi-vues
+          if (item.customizationIds) {
+            const ids = Object.values(item.customizationIds);
+            ids.forEach(id => {
+              if (typeof id === 'number') {
+                allCustomizationIds.add(id);
+              }
+            });
+          }
+        });
+
+        const customizationIdsArray = Array.from(allCustomizationIds);
+
+        if (customizationIdsArray.length > 0) {
+          this.logger.log(`🎨 Marquage de ${customizationIdsArray.length} personnalisation(s) comme commandée(s)`);
+          this.logger.log(`🎨 IDs: ${customizationIdsArray.join(', ')}`);
+
+          // Marquer chaque personnalisation comme "ordered"
+          const updatePromises = customizationIdsArray.map(customizationId =>
+            this.customizationService.markAsOrdered(customizationId, order.id)
+          );
+
+          await Promise.all(updatePromises);
+          this.logger.log(`✅ ${customizationIdsArray.length} personnalisation(s) marquée(s) comme commandée(s) pour commande ${order.id}`);
+        } else {
+          this.logger.log(`ℹ️ Aucune personnalisation à marquer pour commande ${order.id}`);
+        }
+      } catch (error) {
+        this.logger.error(`❌ Erreur marquage personnalisations pour commande ${order.id}:`, error);
+        // Ne pas faire échouer la création de commande pour cette erreur
+      }
 
       // 🆕 MISE À JOUR AUTOMATIQUE DES STATISTIQUES - Création de commande
       try {
