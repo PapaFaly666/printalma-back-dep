@@ -560,6 +560,21 @@ export class OrderService {
                   },
                   design: true
                 }
+              },
+              // 🎨 Inclure les données de personnalisation client
+              customization: {
+                select: {
+                  id: true,
+                  designElements: true,
+                  elementsByView: true,
+                  previewImageUrl: true,
+                  colorVariationId: true,
+                  viewId: true,
+                  sizeSelections: true,
+                  status: true,
+                  createdAt: true,
+                  updatedAt: true
+                }
               }
             }
           },
@@ -929,6 +944,21 @@ export class OrderService {
           include: {
             product: true,
             colorVariation: true,
+            // 🎨 Inclure les données de personnalisation client
+            customization: {
+              select: {
+                id: true,
+                designElements: true,
+                elementsByView: true,
+                previewImageUrl: true,
+                colorVariationId: true,
+                viewId: true,
+                sizeSelections: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true
+              }
+            }
           },
         },
         user: true,
@@ -969,7 +999,28 @@ export class OrderService {
             orderedColorName: item.colorVariation?.name || null,
             orderedColorHexCode: item.colorVariation?.colorCode || null,
             orderedColorImageUrl: item.colorVariation?.images?.[0]?.url || null,
-          }
+          },
+
+          // 🎨 Inclure les données de personnalisation si présentes
+          customization: item.customization ? {
+            id: item.customization.id,
+            designElements: item.customization.designElements,
+            elementsByView: item.customization.elementsByView,
+            previewImageUrl: item.customization.previewImageUrl,
+            colorVariationId: item.customization.colorVariationId,
+            viewId: item.customization.viewId,
+            sizeSelections: item.customization.sizeSelections,
+            status: item.customization.status,
+            createdAt: item.customization.createdAt,
+            updatedAt: item.customization.updatedAt,
+            // 🎨 Indicateur de produit personnalisé
+            isCustomized: true,
+            hasDesignElements: Array.isArray(item.customization.designElements) && item.customization.designElements.length > 0,
+            hasMultiViewDesign: item.customization.elementsByView && Object.keys(item.customization.elementsByView).length > 0
+          } : null,
+
+          // 🎨 Indicateur rapide de personnalisation
+          isCustomizedProduct: !!item.customization || !!item.customizationId || !!item.customizationIds
         };
       })
     };

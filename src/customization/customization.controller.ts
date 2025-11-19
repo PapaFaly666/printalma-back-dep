@@ -9,17 +9,23 @@ import {
   Query,
   UseGuards,
   Req,
-  ParseIntPipe
+  ParseIntPipe,
+  UseInterceptors,
+  UploadedFile
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { CustomizationService } from './customization.service';
 import { CreateCustomizationDto, UpdateCustomizationDto } from './dto/create-customization.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { multerConfig } from '../../multerConfig';
 
 @ApiTags('Product Customizations')
 @Controller('customizations')
 export class CustomizationController {
+  private readonly logger = new (require('@nestjs/common').Logger)(CustomizationController.name);
+
   constructor(private readonly customizationService: CustomizationService) {}
 
   /**
@@ -36,6 +42,20 @@ export class CustomizationController {
     @Query('customizationId') customizationId: string,
     @Req() req: any
   ) {
+    // Debug logging - using .log() instead of .debug() for visibility
+    this.logger.log(`📥 Received customization request:`);
+    this.logger.log(`  - productId: ${dto.productId}`);
+    this.logger.log(`  - colorVariationId: ${dto.colorVariationId}`);
+    this.logger.log(`  - viewId: ${dto.viewId}`);
+    this.logger.log(`  - designElements: ${Array.isArray(dto.designElements) ? dto.designElements.length : 'NOT AN ARRAY'} elements`);
+    this.logger.log(`  - elementsByView: ${dto.elementsByView ? Object.keys(dto.elementsByView).length + ' views' : 'undefined'}`);
+
+    if (dto.designElements && dto.designElements.length > 0) {
+      this.logger.log(`  - First element: ${JSON.stringify(dto.designElements[0]).substring(0, 200)}...`);
+    } else if (!dto.elementsByView) {
+      this.logger.warn(`⚠️ designElements AND elementsByView are empty or undefined!`);
+    }
+
     const userId = req.user?.id; // undefined si guest
     const customizationIdNum = customizationId ? parseInt(customizationId, 10) : undefined;
     return this.customizationService.upsertCustomization(dto, userId, customizationIdNum);
@@ -119,6 +139,96 @@ export class CustomizationController {
     @Req() req: any
   ) {
     return this.customizationService.migrateGuestCustomizations(sessionId, req.user.id);
+  }
+
+  /**
+   * Upload d'une image pour une personnalisation
+   * POST /customizations/upload-image
+   */
+  @Post('upload-image')
+  @UseInterceptors(FileInterceptor('file', multerConfig))
+  @ApiOperation({ summary: 'Upload image for customization' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Image file (JPEG, PNG, GIF, WebP, SVG - max 10MB)'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Image uploaded successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        publicId: { type: 'string' },
+        width: { type: 'number' },
+        height: { type: 'number' }
+      }
+    }
+  })
+  async uploadImage(@UploadedFile() file: Express.Multer.File) {
+    return this.customizationService.uploadCustomizationImage(file);
+  }
+
+  /**
+   * Upload d'une image de prévisualisation en base64
+   * POST /customizations/upload-preview
+   */
+  @Post('upload-preview')
+  @ApiOperation({ summary: 'Upload preview image in base64 format' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        imageData: {
+          type: 'string',
+          description: 'Base64 encoded image (data:image/...)'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Preview uploaded successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        publicId: { type: 'string' }
+      }
+    }
+  })
+  async uploadPreview(@Body('imageData') imageData: string) {
+    return this.customizationService.uploadPreviewImage(imageData);
+  }
+
+  /**
+   * Rechercher des personnalisations avec filtres
+   * GET /customizations/search?productId=123&sessionId=xxx&status=draft
+   */
+  @Get('search')
+  @ApiOperation({ summary: 'Search customizations with filters' })
+  @ApiResponse({ status: 200, description: 'List of customizations' })
+  async searchCustomizations(
+    @Query('productId') productId?: string,
+    @Query('sessionId') sessionId?: string,
+    @Query('userId') userId?: string,
+    @Query('status') status?: string
+  ) {
+    return this.customizationService.findCustomizations({
+      productId: productId ? parseInt(productId, 10) : undefined,
+      sessionId,
+      userId: userId ? parseInt(userId, 10) : undefined,
+      status
+    });
   }
 
   /**

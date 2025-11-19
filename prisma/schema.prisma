@@ -552,7 +552,8 @@ model VendorProduct {
   validator                User?                   @relation("VendorProductValidator", fields: [validatedBy], references: [id])
   vendor                   User                    @relation(fields: [vendorId], references: [id])
   images                   VendorProductImage[]
-  orderItems               OrderItem[] // 🆕 Commandes contenant ce produit
+  orderItems               OrderItem[]               // Commandes contenant ce produit
+  customizations           ProductCustomization[]   // Personnalisations sur ce produit
 
   @@index([vendorId])
   @@index([baseProductId])
@@ -1039,19 +1040,25 @@ model ProductCustomization {
   sessionId String? @map("session_id")
 
   // Produit et variation
-  productId        Int @map("product_id")
-  colorVariationId Int @map("color_variation_id")
-  viewId           Int @map("view_id")
+  productId          Int  @map("product_id")
+  vendorProductId    Int? @map("vendor_product_id")
+  colorVariationId   Int  @map("color_variation_id")
+  viewId             Int  @map("view_id")
 
-  // Design data (JSON) - Array de TextElement | ImageElement
-  designElements Json @map("design_elements")
+  // Design data (JSON) - Supporte 2 formats:
+  // Format simple: Array de DesignElement
+  // Format multi-vues: Object {"colorId-viewId": Array de DesignElement}
+  designElements   Json  @map("design_elements")
+  elementsByView   Json? @map("elements_by_view")  // Format multi-vues
 
-  // Sélections de taille (avant commande)
-  sizeSelections Json? @map("size_selections")
+  // Autres données
+  delimitations    Json? @map("delimitations")
+  sizeSelections   Json? @map("size_selections")
 
   // Métadonnées
-  previewImageUrl String? @map("preview_image_url")
-  totalPrice      Decimal @default(0) @map("total_price") @db.Decimal(10, 2)
+  previewImageUrl  String?  @map("preview_image_url")
+  totalPrice       Decimal  @default(0) @map("total_price") @db.Decimal(10, 2)
+  timestamp        BigInt?  @map("timestamp")
 
   // État
   status  String @default("draft")
@@ -1061,21 +1068,24 @@ model ProductCustomization {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  product    Product     @relation(fields: [productId], references: [id])
-  user       User?       @relation(fields: [userId], references: [id])
-  order      Order?      @relation(fields: [orderId], references: [id])
-  orderItems OrderItem[] // 🆕 Items de commande liés à cette personnalisation
+  product       Product        @relation(fields: [productId], references: [id])
+  vendorProduct VendorProduct? @relation(fields: [vendorProductId], references: [id])
+  user          User?          @relation(fields: [userId], references: [id])
+  order         Order?         @relation(fields: [orderId], references: [id])
+  orderItems    OrderItem[]    // Items de commande liés
 
-  // Index simples pour les requêtes de base
+  // Index simples
   @@index([userId])
   @@index([sessionId])
   @@index([productId])
+  @@index([vendorProductId])
   @@index([status])
-  // Index composés pour les requêtes complexes fréquentes
-  @@index([userId, status, updatedAt(sort: Desc)]) // getUserCustomizations avec tri
-  @@index([sessionId, status, updatedAt(sort: Desc)]) // getSessionCustomizations avec tri
-  @@index([productId, userId, status]) // getDraftCustomizationForProduct (utilisateur)
-  @@index([productId, sessionId, status]) // getDraftCustomizationForProduct (guest)
+  @@index([colorVariationId, viewId])
+  // Index composés
+  @@index([userId, status, updatedAt(sort: Desc)])
+  @@index([sessionId, status, updatedAt(sort: Desc)])
+  @@index([productId, userId, status])
+  @@index([productId, sessionId, status])
   @@map("product_customizations")
 }
 

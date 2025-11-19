@@ -46,10 +46,10 @@ async function bootstrap() {
   }));
 
   app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
+    whitelist: false, // Désactivé pour permettre les arrays JSON comme designElements
     transform: true,
     transformOptions: {
-      enableImplicitConversion: true, // Active la conversion implicite des types
+      enableImplicitConversion: false, // Désactivé pour préserver les objets dans les arrays JSON
     }
   }));
 

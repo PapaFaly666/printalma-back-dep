@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsArray, IsOptional, IsObject, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsNumber, IsArray, IsOptional, IsObject, ValidateNested, IsIn, Min, Max, Matches } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 // DTO pour un élément de texte
 export class TextElementDto {
@@ -133,24 +133,56 @@ export class SizeSelectionDto {
   quantity: number;
 }
 
-// DTO principal
+// DTO principal - Compatible avec la doc complète
 export class CreateCustomizationDto {
   @ApiProperty()
   @IsNumber()
+  @Type(() => Number)
   productId: number;
+
+  @ApiPropertyOptional({ description: 'ID du produit vendeur (optionnel)' })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  vendorProductId?: number;
 
   @ApiProperty()
   @IsNumber()
+  @Type(() => Number)
   colorVariationId: number;
 
   @ApiProperty()
   @IsNumber()
+  @Type(() => Number)
   viewId: number;
 
-  @ApiProperty({ type: [Object] })
+  // Format simple: Array d'éléments
+  @ApiPropertyOptional({
+    type: [Object],
+    description: 'Array of DesignElement (format simple - une seule vue)'
+  })
   @IsArray()
-  designElements: (TextElementDto | ImageElementDto)[];
+  @IsOptional()
+  @Transform(({ value }) => value, { toClassOnly: true }) // Préserver les données brutes sans transformation
+  designElements?: any[];
 
+  // Format multi-vues: Object {"colorId-viewId": Array<DesignElement>}
+  @ApiPropertyOptional({
+    type: Object,
+    description: 'Object mapping viewKey to DesignElement array (format multi-vues)'
+  })
+  @IsObject()
+  @IsOptional()
+  @Transform(({ value }) => value, { toClassOnly: true }) // Préserver les données brutes sans transformation
+  elementsByView?: Record<string, any[]>;
+
+  // Délimitations de zones
+  @ApiPropertyOptional({ type: [Object] })
+  @IsArray()
+  @IsOptional()
+  delimitations?: any[];
+
+  // Sélections de taille
   @ApiPropertyOptional({ type: [SizeSelectionDto] })
   @IsArray()
   @IsOptional()
@@ -158,15 +190,24 @@ export class CreateCustomizationDto {
   @Type(() => SizeSelectionDto)
   sizeSelections?: SizeSelectionDto[];
 
+  // Session guest
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
   sessionId?: string;
 
+  // Preview image
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
   previewImageUrl?: string;
+
+  // Timestamp du client
+  @ApiPropertyOptional()
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  timestamp?: number;
 }
 
 export class UpdateCustomizationDto {
