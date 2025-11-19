@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsArray, ValidateNested, IsOptional, IsNumber, Min, IsObject, IsNotEmptyObject, IsEnum, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, IsArray, ValidateNested, IsOptional, IsNumber, Min, Max, IsObject, IsNotEmptyObject, IsEnum, IsBoolean, IsInt } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { ShippingDetailsDto } from './shipping-details.dto';
@@ -12,9 +12,16 @@ export class CreateOrderItemDto {
   @IsNumber()
   vendorProductId?: number; // 🆕 ID du produit vendeur
 
+  @ApiProperty({
+    description: 'Quantité du produit commandé',
+    minimum: 1,
+    maximum: 100,
+    example: 1
+  })
   @IsNotEmpty()
-  @IsNumber()
-  @Min(1)
+  @IsInt({ message: 'La quantité doit être un nombre entier' })
+  @Min(1, { message: 'La quantité minimum est 1' })
+  @Max(100, { message: 'La quantité maximum est 100' })
   quantity: number;
 
   @IsOptional()
@@ -110,6 +117,42 @@ export class CreateOrderItemDto {
   @IsOptional()
   @IsObject()
   designElementsByView?: Record<string, any[]>;
+
+  @ApiProperty({
+    description: 'Métadonnées des vues avec imageUrl pour chaque vue',
+    required: false,
+    example: [
+      {
+        viewKey: "1-5",
+        colorId: 1,
+        viewId: 5,
+        viewType: "FRONT",
+        imageUrl: "https://example.com/front.png",
+        hasElements: true,
+        elementsCount: 2
+      },
+      {
+        viewKey: "1-6",
+        colorId: 1,
+        viewId: 6,
+        viewType: "BACK",
+        imageUrl: "https://example.com/back.png",
+        hasElements: true,
+        elementsCount: 1
+      }
+    ]
+  })
+  @IsOptional()
+  @IsArray()
+  viewsMetadata?: Array<{
+    viewKey: string;
+    colorId: number;
+    viewId: number;
+    viewType: string;
+    imageUrl: string;
+    hasElements: boolean;
+    elementsCount: number;
+  }>;
 
   @ApiProperty({
     description: 'Zone de placement du design (délimitation)',

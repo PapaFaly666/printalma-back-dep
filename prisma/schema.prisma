@@ -370,6 +370,7 @@ model OrderItem {
   vendorProductId Int? // 🆕 ID du produit vendeur
   quantity        Int
   unitPrice       Float
+  totalPrice      Float? // Prix total = unitPrice * quantity
   size            String?
   color           String?
   colorId         Int?
@@ -384,6 +385,7 @@ model OrderItem {
   // 🎨 NOUVEAU SYSTÈME MULTI-VUES - Customisation client
   customizationIds     Json? @map("customization_ids") // {"colorId-viewId": customizationId, ...}
   designElementsByView Json? @map("design_elements_by_view") // {"colorId-viewId": [{type, text, x, y, ...}], ...}
+  viewsMetadata        Json? @map("views_metadata") // [{viewKey, colorId, viewId, viewType, imageUrl, hasElements, elementsCount}, ...]
   delimitation         Json? // Zone de placement du design vendeur
 
   colorVariation ColorVariation?       @relation(fields: [colorId], references: [id])

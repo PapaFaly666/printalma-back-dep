@@ -29,6 +29,24 @@ export class OrderService {
 
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
     try {
+      // 📦 LOG DÉTAILLÉ POUR MULTI-TAILLES
+      const itemsSummary = createOrderDto.orderItems.reduce((acc, item) => {
+        const key = `${item.productId}-${item.colorId || 'no-color'}`;
+        if (!acc[key]) {
+          acc[key] = { productId: item.productId, colorId: item.colorId, sizes: {} };
+        }
+        const size = item.size || 'default';
+        acc[key].sizes[size] = (acc[key].sizes[size] || 0) + item.quantity;
+        return acc;
+      }, {} as Record<string, any>);
+
+      this.logger.log(`📦 [ORDER] Nouvelle commande: ${createOrderDto.orderItems.length} item(s), ${Object.keys(itemsSummary).length} produit(s) unique(s)`);
+
+      for (const [key, summary] of Object.entries(itemsSummary)) {
+        const sizesStr = Object.entries(summary.sizes).map(([size, qty]) => `${size}:${qty}`).join(', ');
+        this.logger.log(`📦 [ORDER] Produit ${summary.productId} (couleur ${summary.colorId}): ${sizesStr}`);
+      }
+
       console.log('📦 [ORDER] Données reçues:', JSON.stringify(createOrderDto, null, 2));
 
       // 🆕 Construction du nom complet du client
@@ -45,23 +63,32 @@ export class OrderService {
         createOrderDto.shippingDetails.country
       ].filter(Boolean).join(', ');
 
-      // 🆕 Calcul du montant total si non fourni
-      const totalAmount = createOrderDto.totalAmount ||
-        createOrderDto.orderItems.reduce((sum, item) =>
-          sum + ((item.unitPrice || 0) * item.quantity), 0
-        );
+      // 🆕 Calcul du subtotal (somme des prix totaux des items)
+      const subtotal = createOrderDto.orderItems.reduce((sum, item) => {
+        const itemTotalPrice = (item.unitPrice || 0) * item.quantity;
+        return sum + itemTotalPrice;
+      }, 0);
+
+      // 🆕 Calcul du montant total (subtotal + frais de livraison éventuels)
+      const totalAmount = createOrderDto.totalAmount || subtotal;
 
       console.log('📊 [ORDER] Informations calculées:', {
         fullName,
         fullAddress,
+        subtotal,
         totalAmount,
+        itemsCount: createOrderDto.orderItems.length,
         email: createOrderDto.email
       });
+
+      // 📦 VALIDATION DU STOCK PAR TAILLE
+      await this.validateStockForOrderItems(createOrderDto.orderItems);
 
       const order = await this.prisma.order.create({
         data: {
           orderNumber: `ORD-${Date.now()}`,
           userId: userId,
+          subtotal: subtotal, // 🆕 Somme des prix totaux des items
           totalAmount: totalAmount,
           phoneNumber: createOrderDto.phoneNumber,
           email: createOrderDto.email || null, // 🆕 Email du client
@@ -92,6 +119,9 @@ export class OrderService {
                 }
               }
 
+              // 🆕 Calcul préliminaire du totalPrice pour les logs
+              const logTotalPrice = (item.unitPrice || 0) * item.quantity;
+
               console.log(`📦 [ORDER] Création orderItem:`, {
                 productId: item.productId,
                 vendorProductId: item.vendorProductId,
@@ -100,6 +130,7 @@ export class OrderService {
                 size: item.size,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
+                totalPrice: logTotalPrice, // 🆕 Prix total calculé
                 // 🎨 Informations de design
                 mockupUrl: item.mockupUrl,
                 designId: item.designId,
@@ -107,7 +138,8 @@ export class OrderService {
                 // 🎨 NOUVEAU: Système multi-vues
                 customizationIds: item.customizationIds,
                 hasDesignElementsByView: !!item.designElementsByView,
-                viewsCount: item.customizationIds ? Object.keys(item.customizationIds).length : 0,
+                hasViewsMetadata: !!item.viewsMetadata,
+                viewsCount: item.viewsMetadata ? item.viewsMetadata.length : (item.customizationIds ? Object.keys(item.customizationIds).length : 0),
                 hasDesignPositions: !!item.designPositions,
                 hasDesignMetadata: !!item.designMetadata
               });
@@ -130,11 +162,15 @@ export class OrderService {
                 }
               }
 
+              // 🆕 Calcul du prix total pour cet item
+              const itemTotalPrice = (item.unitPrice || 0) * item.quantity;
+
               return {
                 productId: finalProductId,
                 vendorProductId: item.vendorProductId || null,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice || 0,
+                totalPrice: itemTotalPrice, // 🆕 Prix total = unitPrice * quantity
                 size: item.size || null,
                 color: item.color || null,
                 colorId: item.colorId || null,
@@ -147,6 +183,7 @@ export class OrderService {
                 // 🎨 NOUVEAU: Système multi-vues - Enregistrer les données
                 customizationIds: item.customizationIds ? JSON.parse(JSON.stringify(item.customizationIds)) : null,
                 designElementsByView: item.designElementsByView ? JSON.parse(JSON.stringify(item.designElementsByView)) : null,
+                viewsMetadata: item.viewsMetadata ? JSON.parse(JSON.stringify(item.viewsMetadata)) : null,
                 delimitation: item.delimitation ? JSON.parse(JSON.stringify(item.delimitation)) : null
               };
             }))
@@ -235,6 +272,15 @@ export class OrderService {
         this.logger.log(`🔔 Notifications vendeurs envoyées pour commande ${order.id}`);
       } catch (error) {
         this.logger.error(`❌ Erreur notification vendeurs pour commande ${order.id}:`, error);
+        // Ne pas faire échouer la création de commande pour cette erreur
+      }
+
+      // 📦 DÉCRÉMENTATION DU STOCK PAR TAILLE
+      try {
+        await this.decrementStockForOrderItems(createOrderDto.orderItems);
+        this.logger.log(`📦 Stock décrémenté pour commande ${order.id}`);
+      } catch (error) {
+        this.logger.error(`❌ Erreur décrémentation stock pour commande ${order.id}:`, error);
         // Ne pas faire échouer la création de commande pour cette erreur
       }
 
@@ -991,6 +1037,10 @@ export class OrderService {
 
         return {
           ...item,
+          // 🆕 Prix et quantité
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice || (item.unitPrice * item.quantity), // 🆕 Prix total = unitPrice * quantity
           colorId: item.colorId,
           color: item.color,
 
@@ -1020,7 +1070,12 @@ export class OrderService {
           } : null,
 
           // 🎨 Indicateur rapide de personnalisation
-          isCustomizedProduct: !!item.customization || !!item.customizationId || !!item.customizationIds
+          isCustomizedProduct: !!item.customization || !!item.customizationId || !!item.customizationIds,
+
+          // 🎨 MULTI-VUES: Métadonnées des vues avec imageUrl (IMPORTANT pour le frontend)
+          viewsMetadata: item.viewsMetadata || null,
+          designElementsByView: item.designElementsByView || null,
+          customizationIds: item.customizationIds || null
         };
       })
     };
@@ -1744,6 +1799,189 @@ export class OrderService {
       default:
         return method;
     }
+  }
+
+  // 📦 VALIDATION DU STOCK PAR TAILLE
+  private async validateStockForOrderItems(orderItems: any[]): Promise<void> {
+    // Grouper les quantités par productId + colorId + size
+    const stockRequirements = new Map<string, { productId: number; colorId: number; sizeName: string; totalQuantity: number }>();
+
+    for (const item of orderItems) {
+      if (!item.size || !item.colorId) {
+        // Si pas de taille ou colorId, skip la validation de stock
+        this.logger.debug(`📦 Skip validation stock pour item sans taille/colorId: productId=${item.productId}`);
+        continue;
+      }
+
+      const key = `${item.productId}-${item.colorId}-${item.size}`;
+      const existing = stockRequirements.get(key);
+
+      if (existing) {
+        existing.totalQuantity += item.quantity;
+      } else {
+        stockRequirements.set(key, {
+          productId: item.productId,
+          colorId: item.colorId,
+          sizeName: item.size,
+          totalQuantity: item.quantity
+        });
+      }
+    }
+
+    // Vérifier le stock pour chaque combinaison
+    for (const [key, requirement] of stockRequirements) {
+      const productStock = await this.prisma.productStock.findUnique({
+        where: {
+          productId_colorId_sizeName: {
+            productId: requirement.productId,
+            colorId: requirement.colorId,
+            sizeName: requirement.sizeName
+          }
+        }
+      });
+
+      // Si pas de stock trouvé, on récupère le nom du produit pour le message d'erreur
+      if (!productStock) {
+        this.logger.warn(`📦 Pas de stock configuré pour: productId=${requirement.productId}, colorId=${requirement.colorId}, taille=${requirement.sizeName}`);
+        // On peut choisir de continuer ou de bloquer - ici on continue car le stock n'est peut-être pas géré
+        continue;
+      }
+
+      if (productStock.stock < requirement.totalQuantity) {
+        const product = await this.prisma.product.findUnique({
+          where: { id: requirement.productId },
+          select: { name: true }
+        });
+
+        throw new BadRequestException(
+          `Stock insuffisant pour ${product?.name || `Produit ${requirement.productId}`} (taille: ${requirement.sizeName}). ` +
+          `Disponible: ${productStock.stock}, Demandé: ${requirement.totalQuantity}`
+        );
+      }
+
+      this.logger.debug(`📦 Stock OK: ${key} - Disponible: ${productStock.stock}, Demandé: ${requirement.totalQuantity}`);
+    }
+
+    this.logger.log(`✅ Validation du stock réussie pour ${stockRequirements.size} combinaison(s) produit/couleur/taille`);
+  }
+
+  // 📦 DÉCRÉMENTATION DU STOCK PAR TAILLE
+  private async decrementStockForOrderItems(orderItems: any[]): Promise<void> {
+    // Grouper les quantités par productId + colorId + size
+    const stockDecrements = new Map<string, { productId: number; colorId: number; sizeName: string; totalQuantity: number }>();
+
+    for (const item of orderItems) {
+      if (!item.size || !item.colorId) {
+        // Si pas de taille ou colorId, skip la décrémentation
+        continue;
+      }
+
+      const key = `${item.productId}-${item.colorId}-${item.size}`;
+      const existing = stockDecrements.get(key);
+
+      if (existing) {
+        existing.totalQuantity += item.quantity;
+      } else {
+        stockDecrements.set(key, {
+          productId: item.productId,
+          colorId: item.colorId,
+          sizeName: item.size,
+          totalQuantity: item.quantity
+        });
+      }
+    }
+
+    // Décrémenter le stock pour chaque combinaison
+    for (const [key, decrement] of stockDecrements) {
+      try {
+        await this.prisma.productStock.update({
+          where: {
+            productId_colorId_sizeName: {
+              productId: decrement.productId,
+              colorId: decrement.colorId,
+              sizeName: decrement.sizeName
+            }
+          },
+          data: {
+            stock: {
+              decrement: decrement.totalQuantity
+            }
+          }
+        });
+
+        // Créer un mouvement de stock pour traçabilité
+        await this.prisma.stockMovement.create({
+          data: {
+            productId: decrement.productId,
+            colorId: decrement.colorId,
+            sizeName: decrement.sizeName,
+            type: 'OUT',
+            quantity: decrement.totalQuantity,
+            reason: 'Commande client'
+          }
+        });
+
+        this.logger.debug(`📦 Stock décrémenté: ${key} - Quantité: ${decrement.totalQuantity}`);
+      } catch (error) {
+        this.logger.warn(`📦 Impossible de décrémenter stock pour: ${key} - ${error.message}`);
+        // Continue avec les autres items
+      }
+    }
+
+    this.logger.log(`📦 Décrémentation terminée pour ${stockDecrements.size} combinaison(s) produit/couleur/taille`);
+  }
+
+  // 📦 RESTAURATION DU STOCK (en cas d'annulation)
+  async restoreStockForOrder(orderId: number): Promise<void> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { orderItems: true }
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Commande ${orderId} non trouvée`);
+    }
+
+    for (const item of order.orderItems) {
+      if (!item.size || !item.colorId) {
+        continue;
+      }
+
+      try {
+        await this.prisma.productStock.update({
+          where: {
+            productId_colorId_sizeName: {
+              productId: item.productId,
+              colorId: item.colorId,
+              sizeName: item.size
+            }
+          },
+          data: {
+            stock: {
+              increment: item.quantity
+            }
+          }
+        });
+
+        // Créer un mouvement de stock pour traçabilité
+        await this.prisma.stockMovement.create({
+          data: {
+            productId: item.productId,
+            colorId: item.colorId,
+            sizeName: item.size,
+            type: 'IN',
+            quantity: item.quantity,
+            reason: `Annulation commande ${order.orderNumber}`
+          }
+        });
+
+        this.logger.debug(`📦 Stock restauré: productId=${item.productId}, colorId=${item.colorId}, taille=${item.size}, quantité=${item.quantity}`);
+      } catch (error) {
+        this.logger.warn(`📦 Impossible de restaurer stock pour item ${item.id}: ${error.message}`);
+      }
+    }
+
+    this.logger.log(`📦 Stock restauré pour commande ${order.orderNumber}`);
   }
 
 } 
