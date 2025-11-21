@@ -1114,3 +1114,129 @@ model Designer {
   @@index([featuredOrder])
   @@map("designers")
 }
+
+// ========================================
+// GESTION DES ZONES DE LIVRAISON
+// ========================================
+
+/// Villes de Dakar et Banlieue
+model DeliveryCity {
+  id               String   @id @default(uuid())
+  name             String
+  category         String // 'Centre', 'Résidentiel', 'Populaire', 'Banlieue'
+  zoneType         String   @map("zone_type") // 'dakar-ville' ou 'banlieue'
+  status           String   @default("active") // 'active' ou 'inactive'
+  price            Decimal  @default(0) @db.Decimal(10, 2)
+  isFree           Boolean  @default(false) @map("is_free")
+  deliveryTimeMin  Int?     @map("delivery_time_min") // en heures ou jours
+  deliveryTimeMax  Int?     @map("delivery_time_max")
+  deliveryTimeUnit String?  @map("delivery_time_unit") // 'heures' ou 'jours'
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([zoneType])
+  @@index([status])
+  @@map("delivery_cities")
+}
+
+/// 13 Régions du Sénégal (hors Dakar)
+model DeliveryRegion {
+  id               String   @id @default(uuid())
+  name             String   @unique
+  status           String   @default("active") // 'active' ou 'inactive'
+  price            Decimal  @db.Decimal(10, 2)
+  deliveryTimeMin  Int      @map("delivery_time_min") // en jours
+  deliveryTimeMax  Int      @map("delivery_time_max")
+  deliveryTimeUnit String   @default("jours") @map("delivery_time_unit")
+  mainCities       String?  @map("main_cities") @db.Text // Liste des principales villes
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("delivery_regions")
+}
+
+/// Zones Internationales
+model DeliveryInternationalZone {
+  id               String                         @id @default(uuid())
+  name             String
+  status           String                         @default("active") // 'active' ou 'inactive'
+  price            Decimal                        @db.Decimal(10, 2)
+  deliveryTimeMin  Int                            @map("delivery_time_min") // en jours
+  deliveryTimeMax  Int                            @map("delivery_time_max")
+  createdAt        DateTime                       @default(now()) @map("created_at")
+  updatedAt        DateTime                       @updatedAt @map("updated_at")
+
+  countries DeliveryInternationalCountry[]
+  tarifs    DeliveryZoneTarif[]
+
+  @@index([status])
+  @@map("delivery_international_zones")
+}
+
+/// Pays des Zones Internationales
+model DeliveryInternationalCountry {
+  id      Int                        @id @default(autoincrement())
+  zoneId  String                     @map("zone_id")
+  country String
+
+  zone DeliveryInternationalZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId])
+  @@map("delivery_international_countries")
+}
+
+/// Transporteurs
+model DeliveryTransporteur {
+  id        String   @id @default(uuid())
+  name      String
+  logoUrl   String?  @map("logo_url") @db.VarChar(500)
+  status    String   @default("active") // 'active' ou 'inactive'
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  zones  DeliveryTransporteurZone[]
+  tarifs DeliveryZoneTarif[]
+
+  @@index([status])
+  @@map("delivery_transporteurs")
+}
+
+/// Zones de Livraison des Transporteurs
+/// Note: zoneId est polymorphe et référence soit une city, region, ou international zone
+model DeliveryTransporteurZone {
+  id             Int      @id @default(autoincrement())
+  transporteurId String   @map("transporteur_id")
+  zoneId         String   @map("zone_id")
+  zoneType       String   @map("zone_type") // 'city', 'region', 'international'
+
+  transporteur DeliveryTransporteur @relation(fields: [transporteurId], references: [id], onDelete: Cascade)
+
+  @@index([transporteurId])
+  @@index([zoneId, zoneType])
+  @@map("delivery_transporteur_zones")
+}
+
+/// Tarifs par Zone et Transporteur
+model DeliveryZoneTarif {
+  id                         String   @id @default(uuid())
+  zoneId                     String   @map("zone_id")
+  zoneName                   String   @map("zone_name")
+  transporteurId             String   @map("transporteur_id")
+  transporteurName           String   @map("transporteur_name")
+  prixTransporteur           Decimal  @map("prix_transporteur") @db.Decimal(10, 2)
+  prixStandardInternational  Decimal  @map("prix_standard_international") @db.Decimal(10, 2)
+  delaiLivraisonMin          Int      @map("delai_livraison_min")
+  delaiLivraisonMax          Int      @map("delai_livraison_max")
+  status                     String   @default("active") // 'active' ou 'inactive'
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  transporteur      DeliveryTransporteur         @relation(fields: [transporteurId], references: [id], onDelete: Cascade)
+  internationalZone DeliveryInternationalZone    @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId])
+  @@index([transporteurId])
+  @@index([status])
+  @@map("delivery_zone_tarifs")
+}
