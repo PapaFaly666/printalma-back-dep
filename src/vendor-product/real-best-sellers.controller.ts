@@ -1,6 +1,6 @@
 import { Controller, Get, Query, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
-import { RealBestSellersService, BestSellersOptions } from './real-best-sellers.service';
+import { RealBestSellersService, BestSellersOptions } from './services/real-best-sellers.service';
 
 @ApiTags('🏆 Meilleures Ventes (Données Réelles)')
 @Controller('public')
@@ -148,9 +148,9 @@ export class RealBestSellersController {
       };
 
       const result = await this.realBestSellersService.getRealBestSellers(options);
-      
+
       const executionTime = Date.now() - startTime;
-      this.logger.log(`✅ Meilleures ventes récupérées: ${result.data.bestSellers.length} produits en ${executionTime}ms`);
+      this.logger.log(`✅ Meilleures ventes récupérées: ${result.bestSellers.length} produits en ${executionTime}ms`);
       
       return {
         success: true,

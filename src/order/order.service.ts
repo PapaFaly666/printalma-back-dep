@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateOrderDto, PaymentMethod } from './dto/create-order.dto';
 import { OrderStatus } from '@prisma/client';
@@ -9,6 +9,10 @@ import { ConfigService } from '@nestjs/config';
 import { PayTechCurrency, PayTechEnvironment } from '../paytech/dto/payment-request.dto';
 import { CustomizationService } from '../customization/customization.service';
 import { CustomizationValidator } from './validators/customization.validator';
+import { CustomizationEnricherHelper } from './helpers/customization-enricher.helper';
+import { DeliveryValidator } from './validators/delivery.validator';
+import { DeliveryEnricherHelper } from './helpers/delivery-enricher.helper';
+import { calculateRevenueSplit } from '../utils/commission-utils';
 
 @Injectable()
 export class OrderService {
@@ -24,7 +28,51 @@ export class OrderService {
   ) {}
 
   async createGuestOrder(createOrderDto: CreateOrderDto) {
-    return this.createOrder(3, createOrderDto); // Utiliser userId: 3 pour les commandes invitées
+    // Pour les commandes invitées, utiliser l'ID du vendeur du premier produit
+    // au lieu d'un ID fixe (3)
+    if (createOrderDto.orderItems && createOrderDto.orderItems.length > 0) {
+      const firstItem = createOrderDto.orderItems[0];
+
+      // Si l'item a un vendorProductId, récupérer l'ID du vendeur
+      if (firstItem.vendorProductId) {
+        try {
+          const vendorProduct = await this.prisma.vendorProduct.findUnique({
+            where: { id: firstItem.vendorProductId },
+            select: { vendorId: true }
+          });
+
+          if (vendorProduct) {
+            this.logger.log(`👤 Guest order using vendor ID: ${vendorProduct.vendorId} for vendorProduct: ${firstItem.vendorProductId}`);
+            return this.createOrder(vendorProduct.vendorId, createOrderDto);
+          }
+        } catch (error) {
+          this.logger.error(`❌ Erreur récupération vendeur pour vendorProduct ${firstItem.vendorProductId}:`, error);
+        }
+      }
+
+      // Si pas de vendorProductId, essayer de trouver un produit vendeur pour ce produit de base
+      try {
+        const vendorProduct = await this.prisma.vendorProduct.findFirst({
+          where: {
+            baseProductId: firstItem.productId,
+            isValidated: true
+          },
+          select: { vendorId: true },
+          orderBy: { createdAt: 'asc' }
+        });
+
+        if (vendorProduct) {
+          this.logger.log(`👤 Guest order using vendor ID: ${vendorProduct.vendorId} for baseProduct: ${firstItem.productId}`);
+          return this.createOrder(vendorProduct.vendorId, createOrderDto);
+        }
+      } catch (error) {
+        this.logger.error(`❌ Erreur récupération vendeur pour baseProduct ${firstItem.productId}:`, error);
+      }
+    }
+
+    // En dernier recours, utiliser l'ID par défaut 3
+    this.logger.warn(`⚠️ Aucun vendeur trouvé, utilisation de l'ID par défaut 3 pour la commande invitée`);
+    return this.createOrder(3, createOrderDto);
   }
 
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
@@ -69,13 +117,81 @@ export class OrderService {
         return sum + itemTotalPrice;
       }, 0);
 
-      // 🆕 Calcul du montant total (subtotal + frais de livraison éventuels)
-      const totalAmount = createOrderDto.totalAmount || subtotal;
+      // 🚚 TRAITEMENT DES INFORMATIONS DE LIVRAISON
+      let enrichedDeliveryInfo = null;
+      let deliveryFee = 0;
+      let deliveryMetadata = null;
+
+      if (createOrderDto.deliveryInfo) {
+        // Valider les données de livraison
+        DeliveryValidator.validateOrThrow(createOrderDto.deliveryInfo);
+
+        // Enrichir avec les données complètes depuis la BDD
+        enrichedDeliveryInfo = await DeliveryEnricherHelper.enrichDeliveryInfo(
+          createOrderDto.deliveryInfo,
+          this.prisma
+        );
+
+        deliveryFee = createOrderDto.deliveryInfo.deliveryFee || 0;
+        deliveryMetadata = DeliveryEnricherHelper.buildDeliveryMetadata(enrichedDeliveryInfo);
+
+        this.logger.log(`🚚 [ORDER] Livraison configurée:`, {
+          type: enrichedDeliveryInfo.deliveryType,
+          transporteur: enrichedDeliveryInfo.transporteur?.name,
+          fee: deliveryFee,
+          location: enrichedDeliveryInfo.location?.name
+        });
+      }
+
+      // 🆕 Calcul du montant total (subtotal + frais de livraison)
+      const totalAmount = subtotal + deliveryFee;
+
+      // 💰 CALCUL ET STOCKAGE DE LA COMMISSION AU MOMENT DE LA CRÉATION
+      let commissionRate = 40.0; // Taux par défaut
+      let commissionAmount = 0;
+      let vendorAmount = totalAmount;
+
+      try {
+        // Récupérer le vendeur à partir du premier produit de la commande
+        const firstItem = createOrderDto.orderItems[0];
+        let vendorId = null;
+
+        if (firstItem?.vendorProductId) {
+          const vendorProduct = await this.prisma.vendorProduct.findUnique({
+            where: { id: firstItem.vendorProductId },
+            select: { vendorId: true }
+          });
+          vendorId = vendorProduct?.vendorId;
+        }
+
+        if (vendorId) {
+          // Récupérer la commission personnalisée du vendeur directement avec Prisma
+          const vendorCommission = await this.prisma.vendorCommission.findUnique({
+            where: { vendorId }
+          });
+          if (vendorCommission) {
+            commissionRate = vendorCommission.commissionRate;
+          }
+        }
+
+        // Calcul du split de revenus
+        const revenueSplit = calculateRevenueSplit(totalAmount, commissionRate);
+        commissionAmount = revenueSplit.commissionAmount;
+        vendorAmount = revenueSplit.vendorRevenue;
+
+        this.logger.log(`💰 [COMMISSION] Commande: commission ${commissionRate}% (${commissionAmount} XOF), vendeur: ${vendorAmount} XOF`);
+      } catch (error) {
+        this.logger.warn(`⚠️ [COMMISSION] Erreur calcul commission, utilisation du taux par défaut ${commissionRate}%:`, error);
+        // En cas d'erreur, on garde les valeurs par défaut
+        commissionAmount = totalAmount * (commissionRate / 100);
+        vendorAmount = totalAmount - commissionAmount;
+      }
 
       console.log('📊 [ORDER] Informations calculées:', {
         fullName,
         fullAddress,
         subtotal,
+        deliveryFee,
         totalAmount,
         itemsCount: createOrderDto.orderItems.length,
         email: createOrderDto.email
@@ -97,6 +213,12 @@ export class OrderService {
           paymentMethod: createOrderDto.paymentMethod || 'CASH_ON_DELIVERY',
           paymentStatus: 'PENDING',
 
+          // 💰 Champs de commission figés au moment de la création
+          commissionRate: commissionRate,
+          commissionAmount: commissionAmount,
+          vendorAmount: vendorAmount,
+          commissionAppliedAt: new Date(),
+
           // 🆕 Informations de livraison complètes
           shippingName: fullName,
           shippingStreet: createOrderDto.shippingDetails.street,
@@ -105,6 +227,23 @@ export class OrderService {
           shippingPostalCode: createOrderDto.shippingDetails.postalCode || null,
           shippingCountry: createOrderDto.shippingDetails.country,
           shippingAddressFull: fullAddress,
+
+          // 🚚 SYSTÈME DE LIVRAISON DYNAMIQUE
+          deliveryType: enrichedDeliveryInfo?.deliveryType || null,
+          deliveryCityId: enrichedDeliveryInfo?.location?.type === 'city' ? enrichedDeliveryInfo.location.id : null,
+          deliveryCityName: enrichedDeliveryInfo?.location?.type === 'city' ? enrichedDeliveryInfo.location.name : null,
+          deliveryRegionId: enrichedDeliveryInfo?.location?.type === 'region' ? enrichedDeliveryInfo.location.id : null,
+          deliveryRegionName: enrichedDeliveryInfo?.location?.type === 'region' ? enrichedDeliveryInfo.location.name : null,
+          deliveryZoneId: enrichedDeliveryInfo?.location?.type === 'international' ? enrichedDeliveryInfo.location.id : null,
+          deliveryZoneName: enrichedDeliveryInfo?.location?.type === 'international' ? enrichedDeliveryInfo.location.name : null,
+          transporteurId: enrichedDeliveryInfo?.transporteur?.id || null,
+          transporteurName: enrichedDeliveryInfo?.transporteur?.name || null,
+          transporteurLogo: enrichedDeliveryInfo?.transporteur?.logo || null,
+          transporteurPhone: enrichedDeliveryInfo?.transporteur?.phone || null,
+          deliveryFee: deliveryFee,
+          deliveryTime: enrichedDeliveryInfo?.tarif?.deliveryTime || null,
+          zoneTarifId: createOrderDto.deliveryInfo?.zoneTarifId || null,
+          deliveryMetadata: deliveryMetadata,
 
           orderItems: {
             create: await Promise.all(createOrderDto.orderItems.map(async (item) => {
@@ -165,27 +304,59 @@ export class OrderService {
               // 🆕 Calcul du prix total pour cet item
               const itemTotalPrice = (item.unitPrice || 0) * item.quantity;
 
-              return {
+              // 🆕 ENRICHISSEMENT DES DONNÉES DE CUSTOMISATION
+              let enrichedItem = {
                 productId: finalProductId,
                 vendorProductId: item.vendorProductId || null,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice || 0,
-                totalPrice: itemTotalPrice, // 🆕 Prix total = unitPrice * quantity
+                totalPrice: itemTotalPrice,
                 size: item.size || null,
                 color: item.color || null,
                 colorId: item.colorId || null,
-                // 🎨 Sauvegarder les informations de design et mockup
+                // 🎨 Design et mockup
                 mockupUrl: item.mockupUrl || null,
                 designId: item.designId || null,
                 designPositions: item.designPositions || null,
                 designMetadata: item.designMetadata || null,
                 customizationId: item.customizationId || null,
-                // 🎨 NOUVEAU: Système multi-vues - Enregistrer les données
+                // 🎨 Système multi-vues - Données de base
                 customizationIds: item.customizationIds ? JSON.parse(JSON.stringify(item.customizationIds)) : null,
                 designElementsByView: item.designElementsByView ? JSON.parse(JSON.stringify(item.designElementsByView)) : null,
                 viewsMetadata: item.viewsMetadata ? JSON.parse(JSON.stringify(item.viewsMetadata)) : null,
-                delimitation: item.delimitation ? JSON.parse(JSON.stringify(item.delimitation)) : null
+                delimitation: item.delimitation ? JSON.parse(JSON.stringify(item.delimitation)) : null,
+                // 🆕 NOUVEAUX CHAMPS
+                delimitations: item.delimitations ? JSON.parse(JSON.stringify(item.delimitations)) : null,
+                colorVariationData: item.colorVariationData ? JSON.parse(JSON.stringify(item.colorVariationData)) : null,
               };
+
+              // 🆕 ENRICHIR avec colorVariation complète si colorId présent
+              if (item.colorId && (item.designElementsByView || item.customizationIds)) {
+                try {
+                  const enrichedData = await CustomizationEnricherHelper.enrichOrderItemWithColorVariation(
+                    enrichedItem,
+                    this.prisma
+                  );
+
+                  // Mettre à jour les champs enrichis
+                  enrichedItem.colorVariationData = enrichedData.colorVariationData;
+                  enrichedItem.delimitations = enrichedData.delimitations;
+                  enrichedItem.delimitation = enrichedData.delimitation;
+
+                  // 🆕 Validation des dimensions de référence
+                  const validation = CustomizationEnricherHelper.validateDelimitationDimensions(
+                    enrichedData.delimitations
+                  );
+                  if (!validation.isValid) {
+                    this.logger.warn(`⚠️ Problèmes de délimitations pour productId ${item.productId}:`, validation.warnings);
+                  }
+                } catch (error) {
+                  this.logger.error(`❌ Erreur enrichissement pour productId ${item.productId}:`, error);
+                  // Continuer sans enrichissement en cas d'erreur
+                }
+              }
+
+              return enrichedItem;
             }))
           }
         },
@@ -902,6 +1073,7 @@ export class OrderService {
 
   /**
    * Récupère toutes les commandes contenant des produits du vendeur
+   * ou les commandes où le vendeur est l'utilisateur (commandes invitées)
    */
   async getVendorOrders(vendorId: number) {
     // Récupérer les informations du vendeur
@@ -930,14 +1102,27 @@ export class OrderService {
       return [];
     }
 
-    // Récupérer toutes les commandes contenant ces produits
+    // Récupérer toutes les commandes :
+    // 1. Commandes où le vendeur est l'utilisateur (nouvelles commandes invitées)
+    // 2. Commandes contenant les produits vendeur du vendeur (plus précis que baseProductId)
     const orders = await this.prisma.order.findMany({
       where: {
-        orderItems: {
-          some: {
-            productId: { in: baseProductIds }
+        OR: [
+          {
+            // 🆕 Commandes où le vendeur est l'utilisateur (nouvelles commandes invitées)
+            userId: vendorId
+          },
+          {
+            // 🎯 Commandes contenant spécifiquement les produits vendeur de ce vendeur
+            orderItems: {
+              some: {
+                vendorProduct: {
+                  vendorId: vendorId
+                }
+              }
+            }
           }
-        }
+        ]
       },
       include: {
         orderItems: {
@@ -963,18 +1148,68 @@ export class OrderService {
 
     this.logger.log(`Vendeur ${vendorId}: ${orders.length} commande(s) trouvée(s)`);
 
-    // Ajouter les informations du vendeur à chaque commande
-    return orders.map(order => ({
-      ...this.formatOrderResponse(order),
-      vendor: {
-        id: vendor.id,
-        firstName: vendor.firstName,
-        lastName: vendor.lastName,
-        email: vendor.email,
-        shopName: vendor.shop_name,
-        role: vendor.role
+    // Récupérer les informations de commission du vendeur directement depuis la base de données
+    const commissionRecord = await this.prisma.vendorCommission.findUnique({
+      where: { vendorId },
+      select: { commissionRate: true, updatedAt: true }
+    });
+
+    const commissionRate = commissionRecord ? commissionRecord.commissionRate : 40.0; // Taux par défaut
+    const commissionUpdatedAt = commissionRecord?.updatedAt || null;
+
+    this.logger.log(`Commission pour vendeur ${vendorId}: ${commissionRate}%`);
+
+    // Ajouter les informations du vendeur et les détails de commission à chaque commande
+    return orders.map(order => {
+      // 🛡️ UTILISER LES COMMISSIONS STOCKÉES (protection contre les changements rétroactifs)
+      const storedCommissionRate = order.commissionRate || commissionRate;
+      const storedCommissionAmount = order.commissionAmount || 0;
+      const storedVendorAmount = order.vendorAmount || order.totalAmount;
+      const storedCommissionAppliedAt = order.commissionAppliedAt;
+
+      // Pour les commandes anciennes sans commission stockée, calculer dynamiquement
+      let commissionInfo;
+      if (!order.commissionRate) {
+        // Commande ancienne : calcul dynamique
+        const revenueSplit = calculateRevenueSplit(order.totalAmount, commissionRate);
+        commissionInfo = {
+          commission_rate: commissionRate,
+          commission_amount: revenueSplit.commissionAmount,
+          vendor_amount: revenueSplit.vendorRevenue,
+          total_amount: revenueSplit.totalAmount,
+          applied_rate: commissionRate,
+          has_custom_rate: commissionRecord !== null,
+          commission_applied_at: commissionUpdatedAt,
+          is_legacy_order: true // Marquer comme commande ancienne
+        };
+      } else {
+        // Commande récente : utiliser les données stockées
+        commissionInfo = {
+          commission_rate: storedCommissionRate,
+          commission_amount: storedCommissionAmount,
+          vendor_amount: storedVendorAmount,
+          total_amount: order.totalAmount,
+          applied_rate: storedCommissionRate,
+          has_custom_rate: true, // Si une commission est stockée, c'est qu'elle était personnalisée
+          commission_applied_at: storedCommissionAppliedAt?.toISOString() || null,
+          is_legacy_order: false // Marquer comme commande récente
+        };
       }
-    }));
+
+      return {
+        ...this.formatOrderResponse(order),
+        vendor: {
+          id: vendor.id,
+          firstName: vendor.firstName,
+          lastName: vendor.lastName,
+          email: vendor.email,
+          shopName: vendor.shop_name,
+          role: vendor.role
+        },
+        // 🛡️ Commission protégée contre les changements rétroactifs
+        commission_info: commissionInfo
+      };
+    });
   }
 
   async getOrderById(id: number, userId?: number) {
@@ -1072,6 +1307,31 @@ export class OrderService {
           // 🎨 Indicateur rapide de personnalisation
           isCustomizedProduct: !!item.customization || !!item.customizationId || !!item.customizationIds,
 
+          // 🏪 Ajouter les informations du vendeur si le produit n'est pas personnalisé
+          ...(!!item.customization || !!item.customizationId || !!item.customizationIds ? {} : {
+            vendorInfo: item.vendorProduct?.vendor ? {
+              id: item.vendorProduct.vendor.id,
+              firstName: item.vendorProduct.vendor.firstName,
+              lastName: item.vendorProduct.vendor.lastName,
+              shopName: item.vendorProduct.vendor.shop_name,
+              profilePhotoUrl: item.vendorProduct.vendor.profile_photo_url,
+              email: `${item.vendorProduct.vendor.firstName}.${item.vendorProduct.vendor.lastName}@example.com`,
+              phone: '+221' + '00000000', // Format placeholder
+              address: item.vendorProduct.vendor.address || null,
+              country: item.vendorProduct.vendor.country || null,
+              vendorType: item.vendorProduct.vendor.vendeur_type || 'ARTISTE',
+              status: item.vendorProduct.vendor.status ? 'ACTIVE' : 'INACTIVE',
+              createdAt: item.vendorProduct.vendor.created_at,
+              lastLogin: item.vendorProduct.vendor.last_login_at,
+              shopDescription: `Boutique ${item.vendorProduct.vendor.shop_name} - Spécialisé dans les produits personnalisés`,
+              specialties: ['Personnalisation', 'Design personnalisé', 'Impression qualité'],
+              responseTime: 'Quelques heures',
+              rating: 4.5,
+              totalSales: item.vendorProduct.salesCount || 0,
+              totalRevenue: item.vendorProduct.totalRevenue || 0
+            } : null
+          }),
+
           // 🎨 MULTI-VUES: Métadonnées des vues avec imageUrl (IMPORTANT pour le frontend)
           viewsMetadata: item.viewsMetadata || null,
           designElementsByView: item.designElementsByView || null,
@@ -1157,6 +1417,9 @@ export class OrderService {
       updated_at: order.updatedAt || null,
     };
 
+    // 🚚 INFORMATIONS DE LIVRAISON
+    const deliveryInfo = DeliveryEnricherHelper.buildDeliveryInfoFromOrder(order);
+
     return {
       ...baseOrder,
       // 🆕 Inclure les champs de paiement directement pour le frontend
@@ -1167,6 +1430,9 @@ export class OrderService {
       lastPaymentAttemptAt: order.lastPaymentAttemptAt,
       lastPaymentFailureReason: order.lastPaymentFailureReason,
       hasInsufficientFunds: order.hasInsufficientFunds || false,
+      // 🚚 Informations de livraison enrichies
+      deliveryInfo: deliveryInfo,
+      deliveryFee: order.deliveryFee || 0,
 
       // 🆕 Garder payment_info pour compatibilité
       payment_info: paymentInfo,

@@ -107,13 +107,14 @@ export class ProductService {
       console.log('💾 [BACKEND] create method - Produit créé avec isReadyProduct:', product.isReadyProduct);
       console.log('💾 [BACKEND] create method - Produit créé avec suggestedPrice:', product.suggestedPrice);
 
-      // 3.3. Connect categories to the product (many-to-many)
+      // 3.3. Connect categories to the product (many-to-many via CategoryToProduct junction table)
       if (categories.filter(Boolean).length > 0) {
-        await tx.product.update({
-          where: { id: product.id },
-          data: {
-            categories: { connect: categories.filter(Boolean).map(c => ({ id: c.id })) }
-          },
+        await tx.categoryToProduct.createMany({
+          data: categories.filter(Boolean).map(c => ({
+            A: c.id,
+            B: product.id
+          })),
+          skipDuplicates: true,
         });
       }
 
@@ -213,7 +214,11 @@ export class ProductService {
       return tx.product.findUnique({
         where: { id: product.id },
         include: {
-          categories: true,
+          CategoryToProduct: {
+            include: {
+              categories: true
+            }
+          },
           sizes: true,
           colorVariations: {
             include: {
@@ -264,7 +269,7 @@ export class ProductService {
 
     // 3. Filtre category
     if (filters.category) {
-      where.categories = { some: { name: filters.category } };
+      where.CategoryToProduct = { some: { categories: { name: filters.category } } };
       console.log('🔍 Filtrage backend - category:', filters.category);
     }
 
@@ -334,7 +339,11 @@ export class ProductService {
     const products = await this.prisma.product.findMany({
       where,
       include: {
-        categories: true,
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        },
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
         subCategory: true, // ✅ Inclure la sous-catégorie
@@ -447,7 +456,16 @@ export class ProductService {
     productId: number,
     body: { categoryId?: number | null; subCategoryId?: number | null; variationId?: number | null }
   ) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId }, include: { categories: true } });
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        }
+      }
+    });
     if (!product) {
       throw new NotFoundException('Produit non trouvé');
     }
@@ -486,23 +504,32 @@ export class ProductService {
     if (variationId) categoriesToConnect.push(variationId);
 
     // Mise à jour: déconnecter toutes les anciennes catégories et connecter les nouvelles
-    await this.prisma.product.update({
-      where: { id: productId },
-      data: {
-        categories: { set: [] },
-      },
+    // Delete all existing CategoryToProduct entries for this product
+    await this.prisma.categoryToProduct.deleteMany({
+      where: { B: productId },
     });
 
+    // Create new CategoryToProduct entries
     if (categoriesToConnect.length > 0) {
-      await this.prisma.product.update({
-        where: { id: productId },
-        data: {
-          categories: { connect: categoriesToConnect.map((cid) => ({ id: cid })) },
-        },
+      await this.prisma.categoryToProduct.createMany({
+        data: categoriesToConnect.map((cid) => ({
+          A: cid,
+          B: productId
+        })),
+        skipDuplicates: true,
       });
     }
 
-    return this.prisma.product.findUnique({ where: { id: productId }, include: { categories: true } });
+    return this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        }
+      }
+    });
   }
 
   // Méthode mise à jour pour inclure les informations de design
@@ -510,7 +537,11 @@ export class ProductService {
     const products = await this.prisma.product.findMany({
       where: { isDelete: false },
       include: {
-        categories: true,
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        },
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
         colorVariations: {
@@ -667,7 +698,11 @@ export class ProductService {
     return this.prisma.product.findMany({
       where: { isDelete: true },
       include: {
-        categories: true,
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        },
         sizes: true,
         colorVariations: {
           include: {
@@ -995,7 +1030,11 @@ export class ProductService {
     const products = await this.prisma.product.findMany({
       where: { isDelete: false },
       include: {
-        categories: true,
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        },
         sizes: true,
         subCategory: true, // ✅ Inclure la sous-catégorie
         variation: true, // ✅ Inclure la variation
@@ -1147,7 +1186,11 @@ export class ProductService {
     const existingProduct = await this.prisma.product.findFirst({
       where: { id, isDelete: false },
       include: {
-        categories: true,
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        },
         colorVariations: {
           include: { images: true }
         }
@@ -1169,7 +1212,11 @@ export class ProductService {
         updatedAt: new Date()
       },
       include: {
-        categories: true,
+        CategoryToProduct: {
+          include: {
+            categories: true
+          }
+        },
         colorVariations: {
           include: { images: true }
         }
@@ -1203,7 +1250,7 @@ export class ProductService {
     const existingProduct = await this.prisma.product.findUnique({
       where: { id, isDelete: false },
       include: { 
-        categories: true,
+        CategoryToProduct: { include: { categories: true } },
         colorVariations: {
           include: { images: true }
         }
@@ -1230,7 +1277,7 @@ export class ProductService {
         updatedAt: new Date()
       },
       include: {
-        categories: true,
+        CategoryToProduct: { include: { categories: true } },
         colorVariations: {
           include: { images: true }
         },
@@ -1305,7 +1352,7 @@ export class ProductService {
         take: take,
         orderBy,
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           colorVariations: {
             include: { images: true }
           }
@@ -1403,7 +1450,7 @@ export class ProductService {
           updatedAt: new Date()
       },
       include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           colorVariations: { include: { images: true } }
         }
       });
@@ -1468,7 +1515,7 @@ export class ProductService {
         where: { id },
         data,
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           sizes: true,
           colorVariations: {
             include: {
@@ -1499,12 +1546,19 @@ export class ProductService {
     // 4. Mettre à jour les catégories si fourni
     if (updateDto.categories) {
       // Suppression des anciennes associations et ajout des nouvelles
-      await this.prisma.product.update({
-        where: { id },
-        data: {
-          categories: { set: [], connect: updateDto.categories.map((categoryId: number) => ({ id: Number(categoryId) })) },
-        },
+      await this.prisma.categoryToProduct.deleteMany({
+        where: { B: id },
       });
+
+      if (updateDto.categories.length > 0) {
+        await this.prisma.categoryToProduct.createMany({
+          data: updateDto.categories.map((categoryId: number) => ({
+            A: Number(categoryId),
+            B: id
+          })),
+          skipDuplicates: true,
+        });
+      }
     }
 
     // 5. Mettre à jour les tailles si fourni
@@ -1723,7 +1777,7 @@ export class ProductService {
     const finalProduct = await this.prisma.product.findUnique({
       where: { id },
       include: {
-        categories: true,
+        CategoryToProduct: { include: { categories: true } },
         sizes: true,
         colorVariations: {
           include: {
@@ -1869,13 +1923,14 @@ export class ProductService {
       console.log('💾 Produit créé avec isReadyProduct:', product.isReadyProduct);
       console.log('💾 Produit créé - Genre reçu dans DTO:', genreValue);
 
-      // 3.3. Connect categories to the product (many-to-many)
+      // 3.3. Connect categories to the product (many-to-many via junction table)
       if (categories.length > 0) {
-        await tx.product.update({
-          where: { id: product.id },
-          data: {
-            categories: { connect: categories.map((category) => ({ id: category.id })) },
-          },
+        await tx.categoryToProduct.createMany({
+          data: categories.map((category) => ({
+            A: category.id,
+            B: product.id
+          })),
+          skipDuplicates: true,
         });
       }
       
@@ -1949,7 +2004,7 @@ export class ProductService {
       this.prisma.product.findMany({
         where: whereClause,
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           sizes: true,
           colorVariations: {
             include: {
@@ -1989,7 +2044,7 @@ export class ProductService {
         isReadyProduct: true, // Seulement les produits prêts
       },
       include: {
-        categories: true,
+        CategoryToProduct: { include: { categories: true } },
         sizes: true,
         colorVariations: {
           include: {
@@ -2028,7 +2083,7 @@ export class ProductService {
         isReadyProduct: true,
       },
       include: {
-        categories: true,
+        CategoryToProduct: { include: { categories: true } },
         sizes: true,
         colorVariations: {
           include: {
@@ -2110,12 +2165,9 @@ export class ProductService {
 
       // 3.2. Update categories if provided
       if (updateDto.categories) {
-        // Remove existing categories
-        await tx.product.update({
-          where: { id },
-        data: {
-          categories: { set: [] },
-          },
+        // Remove existing categories via junction table
+        await tx.categoryToProduct.deleteMany({
+          where: { B: id },
         });
 
         // Add new categories (by name). Only connect existing to avoid schema mismatches
@@ -2125,12 +2177,15 @@ export class ProductService {
         });
         const categories = await Promise.all(categoryPromises);
 
-        await tx.product.update({
-          where: { id },
-          data: {
-            categories: { connect: categories.filter(Boolean).map((category) => ({ id: category.id })) },
-          },
-        });
+        if (categories.filter(Boolean).length > 0) {
+          await tx.categoryToProduct.createMany({
+            data: categories.filter(Boolean).map((category) => ({
+              A: category.id,
+              B: id
+            })),
+            skipDuplicates: true,
+          });
+        }
       }
 
       // 3.3. Update sizes if provided
@@ -2233,7 +2288,7 @@ export class ProductService {
       return tx.product.findUnique({
         where: { id },
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           sizes: true,
           colorVariations: {
             include: {
@@ -2280,13 +2335,12 @@ export class ProductService {
   async getAvailableCategories() {
     const categories = await this.prisma.category.findMany({
       include: {
-        _count: {
+        directProducts: {
+          where: {
+            isDelete: false
+          },
           select: {
-            products: {
-              where: {
-                isDelete: false
-              }
-            }
+            id: true
           }
         }
       },
@@ -2300,7 +2354,7 @@ export class ProductService {
       categories: categories.map(category => ({
         id: category.id,
         name: category.name,
-        productCount: category._count.products
+        productCount: category.directProducts.length
       }))
     };
   }

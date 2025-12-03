@@ -432,7 +432,7 @@ export class VendorPublishService {
             },
             baseProduct: {
               include: {
-                categories: true,
+                category: true,
                 themeProducts: {
                   include: {
                     theme: true
@@ -554,7 +554,7 @@ export class VendorPublishService {
           name: product.adminProductName,
           description: product.adminProductDescription,
           price: product.adminProductPrice,
-          categories: (product.baseProduct as any).categories?.map((c: any) => ({ id: c.id, name: c.name })) || [],
+          categories: product.baseProduct?.category ? [{ id: product.baseProduct.category.id, name: product.baseProduct.category.name }] : [],
           themes: (product.baseProduct as any).themeProducts?.map((tp: any) => ({
             id: tp.theme.id,
             name: tp.theme.name,
@@ -701,7 +701,7 @@ export class VendorPublishService {
           },
           baseProduct: {
             include: {
-              categories: true,
+              category: true,
               themeProducts: {
                 include: {
                   theme: true
@@ -779,7 +779,7 @@ export class VendorPublishService {
           name: product.adminProductName,
           description: product.adminProductDescription,
           price: product.adminProductPrice,
-          categories: (product.baseProduct as any).categories?.map((c: any) => ({ id: c.id, name: c.name })) || [],
+          categories: product.baseProduct?.category ? [{ id: product.baseProduct.category.id, name: product.baseProduct.category.name }] : [],
           themes: (product.baseProduct as any).themeProducts?.map((tp: any) => ({
             id: tp.theme.id,
             name: tp.theme.name,
@@ -3153,29 +3153,12 @@ export class VendorPublishService {
    * 🏷️ Convertir nom de catégorie en ID
    */
   private getCategoryId(categoryName: string): number {
-    const CATEGORY_MAPPING = {
-      'Mangas': 5,
-      'ILLUSTRATION': 1,
-      'LOGO': 2,
-      'PATTERN': 3,
-      'TYPOGRAPHY': 4,
-      'ABSTRACT': 6,
-      'illustration': 1,
-      'logo': 2,
-      'pattern': 3,
-      'typography': 4,
-      'abstract': 6
-    };
+    // TEMPORAIRE: utiliser l'ID 1 (Vêtements) pour toutes les catégories
+    // car les autres catégories (2-6) n'existent pas encore dans la base de données
+    const DEFAULT_CATEGORY_ID = 1;
 
-    const categoryId = CATEGORY_MAPPING[categoryName];
-
-    if (!categoryId) {
-      this.logger.warn(`⚠️ Catégorie "${categoryName}" non reconnue, utilisation de l'ID par défaut (1)`);
-      return 1; // ID par défaut pour ILLUSTRATION
-    }
-
-    this.logger.log(`🏷️ Conversion catégorie: "${categoryName}" → ID ${categoryId}`);
-    return categoryId;
+    this.logger.log(`🏷️ Conversion catégorie: "${categoryName}" → ID ${DEFAULT_CATEGORY_ID} (temporaire)`);
+    return DEFAULT_CATEGORY_ID;
   }
 
   /**

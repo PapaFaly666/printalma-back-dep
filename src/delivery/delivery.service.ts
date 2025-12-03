@@ -379,21 +379,47 @@ export class DeliveryService {
   // ========================================
 
   async getZoneTarifs() {
-    return this.prisma.deliveryZoneTarif.findMany({
+    const tarifs = await this.prisma.deliveryZoneTarif.findMany({
+      include: {
+        internationalZone: {
+          include: {
+            countries: true,
+          },
+        },
+        transporteur: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
+
+    return tarifs.map(tarif => ({
+      ...tarif,
+      countries: tarif.internationalZone?.countries.map(c => c.country) || [],
+      transporteurLogo: tarif.transporteur?.logoUrl,
+    }));
   }
 
   async getZoneTarifById(id: string) {
     const tarif = await this.prisma.deliveryZoneTarif.findUnique({
       where: { id },
+      include: {
+        internationalZone: {
+          include: {
+            countries: true,
+          },
+        },
+        transporteur: true,
+      },
     });
 
     if (!tarif) {
       throw new NotFoundException(`Zone tarif with ID ${id} not found`);
     }
 
-    return tarif;
+    return {
+      ...tarif,
+      countries: tarif.internationalZone?.countries.map(c => c.country) || [],
+      transporteurLogo: tarif.transporteur?.logoUrl,
+    };
   }
 
   async createZoneTarif(data: CreateZoneTarifDto) {
@@ -486,6 +512,172 @@ export class DeliveryService {
       const deliveryTime = `${zone.deliveryTimeMin}-${zone.deliveryTimeMax} jours`;
 
       return { fee, deliveryTime };
+    }
+
+    throw new BadRequestException('Invalid parameters');
+  }
+
+  // ========================================
+  // TRANSPORTEURS PAR ZONE
+  // ========================================
+
+  async getTransporteursByZone(
+    cityId?: string,
+    regionId?: string,
+    internationalZoneId?: string,
+  ): Promise<any[]> {
+    // Validate that only one parameter is provided
+    const providedParams = [cityId, regionId, internationalZoneId].filter(Boolean);
+    if (providedParams.length === 0) {
+      throw new BadRequestException('At least one parameter (cityId, regionId, or internationalZoneId) must be provided');
+    }
+    if (providedParams.length > 1) {
+      throw new BadRequestException('Only one parameter (cityId, regionId, or internationalZoneId) can be provided');
+    }
+
+    let zoneType: string;
+    let zoneId: string;
+
+    if (cityId) {
+      zoneType = 'city';
+      zoneId = cityId;
+
+      // Vérifier que la ville existe
+      await this.getCityById(cityId);
+
+      // Récupérer les tarifs pour cette ville
+      const tarifs = await this.prisma.deliveryZoneTarif.findMany({
+        where: {
+          zoneId: cityId,
+          status: 'active',
+          transporteur: {
+            status: 'active'
+          }
+        },
+        include: {
+          transporteur: true,
+          internationalZone: false // Pas nécessaire pour les villes
+        },
+        orderBy: {
+          prixTransporteur: 'asc' // Trier par prix croissant
+        }
+      });
+
+      return tarifs.map(tarif => ({
+        transporteur: {
+          id: tarif.transporteur.id,
+          name: tarif.transporteur.name,
+          logoUrl: tarif.transporteur.logoUrl,
+          status: tarif.transporteur.status
+        },
+        tarif: {
+          id: tarif.id,
+          prixTransporteur: Number(tarif.prixTransporteur),
+          delaiLivraisonMin: tarif.delaiLivraisonMin,
+          delaiLivraisonMax: tarif.delaiLivraisonMax,
+          deliveryTime: `${tarif.delaiLivraisonMin}-${tarif.delaiLivraisonMax} jours`
+        },
+        deliveryFee: Number(tarif.prixTransporteur),
+        deliveryTime: `${tarif.delaiLivraisonMin}-${tarif.delaiLivraisonMax} jours`,
+        zoneType: 'city',
+        zoneId: cityId
+      }));
+
+    } else if (regionId) {
+      zoneType = 'region';
+      zoneId = regionId;
+
+      // Vérifier que la région existe
+      await this.getRegionById(regionId);
+
+      // Récupérer les tarifs pour cette région
+      const tarifs = await this.prisma.deliveryZoneTarif.findMany({
+        where: {
+          zoneId: regionId,
+          status: 'active',
+          transporteur: {
+            status: 'active'
+          }
+        },
+        include: {
+          transporteur: true,
+          internationalZone: false // Pas nécessaire pour les régions
+        },
+        orderBy: {
+          prixTransporteur: 'asc'
+        }
+      });
+
+      return tarifs.map(tarif => ({
+        transporteur: {
+          id: tarif.transporteur.id,
+          name: tarif.transporteur.name,
+          logoUrl: tarif.transporteur.logoUrl,
+          status: tarif.transporteur.status
+        },
+        tarif: {
+          id: tarif.id,
+          prixTransporteur: Number(tarif.prixTransporteur),
+          delaiLivraisonMin: tarif.delaiLivraisonMin,
+          delaiLivraisonMax: tarif.delaiLivraisonMax,
+          deliveryTime: `${tarif.delaiLivraisonMin}-${tarif.delaiLivraisonMax} jours`
+        },
+        deliveryFee: Number(tarif.prixTransporteur),
+        deliveryTime: `${tarif.delaiLivraisonMin}-${tarif.delaiLivraisonMax} jours`,
+        zoneType: 'region',
+        zoneId: regionId
+      }));
+
+    } else if (internationalZoneId) {
+      zoneType = 'international';
+      zoneId = internationalZoneId;
+
+      // Vérifier que la zone internationale existe
+      await this.getInternationalZoneById(internationalZoneId);
+
+      // Récupérer les tarifs pour cette zone internationale
+      const tarifs = await this.prisma.deliveryZoneTarif.findMany({
+        where: {
+          zoneId: internationalZoneId,
+          status: 'active',
+          transporteur: {
+            status: 'active'
+          }
+        },
+        include: {
+          transporteur: true,
+          internationalZone: {
+            include: {
+              countries: true
+            }
+          }
+        },
+        orderBy: {
+          prixStandardInternational: 'asc'
+        }
+      });
+
+      return tarifs.map(tarif => ({
+        transporteur: {
+          id: tarif.transporteur.id,
+          name: tarif.transporteur.name,
+          logoUrl: tarif.transporteur.logoUrl,
+          status: tarif.transporteur.status
+        },
+        tarif: {
+          id: tarif.id,
+          prixTransporteur: Number(tarif.prixTransporteur),
+          prixStandardInternational: Number(tarif.prixStandardInternational),
+          delaiLivraisonMin: tarif.delaiLivraisonMin,
+          delaiLivraisonMax: tarif.delaiLivraisonMax,
+          deliveryTime: `${tarif.delaiLivraisonMin}-${tarif.delaiLivraisonMax} jours`
+        },
+        deliveryFee: Number(tarif.prixStandardInternational), // Utiliser le prix international
+        deliveryTime: `${tarif.delaiLivraisonMin}-${tarif.delaiLivraisonMax} jours`,
+        zoneType: 'international',
+        zoneId: internationalZoneId,
+        countries: tarif.internationalZone?.countries?.map(c => c.country) || []
+      }));
     }
 
     throw new BadRequestException('Invalid parameters');

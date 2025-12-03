@@ -36,6 +36,7 @@ import { PaydunyaModule } from './paydunya/paydunya.module';
 import { PaymentModule } from './payment/payment.module';
 import { CustomizationModule } from './customization/customization.module';
 import { DeliveryModule } from './delivery/delivery.module';
+import { PublicUsersModule } from './public-users/public-users.module';
 
 @Module({
   imports: [
@@ -72,7 +73,8 @@ import { DeliveryModule } from './delivery/delivery.module';
     PaydunyaModule,
     PaymentModule,
     CustomizationModule,
-    DeliveryModule
+    DeliveryModule,
+    PublicUsersModule
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

@@ -449,7 +449,7 @@ export class ThemeService {
       this.prisma.product.findMany({
         where,
         include: {
-          categories: true,
+          category: true,
           colorVariations: {
             include: {
               images: {
@@ -471,7 +471,7 @@ export class ThemeService {
 
     // Transformer les données
     const transformedProducts = products.map(product => {
-      const categories = (product.categories || []).map(c => c.name);
+      const categories = product.category ? [product.category.name] : [];
 
       return {
         id: product.id,
@@ -575,7 +575,7 @@ export class ThemeService {
       this.prisma.product.findMany({
         where,
         include: {
-          categories: true,
+          category: true,
           colorVariations: {
             include: {
               images: {
@@ -604,7 +604,7 @@ export class ThemeService {
 
     // Transformer les données
     const transformedProducts = products.map(product => {
-      const categories = (product.categories || []).map(c => c.name);
+      const categories = product.category ? [product.category.name] : [];
 
       return {
         id: product.id,

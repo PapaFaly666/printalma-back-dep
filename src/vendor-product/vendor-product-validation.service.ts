@@ -843,7 +843,7 @@ export class VendorProductValidationService {
             // Informations produit de base complètes
             baseProduct: {
               include: {
-                categories: true,
+                category: true,
                 sizes: true,
                 colorVariations: {
                   include: {

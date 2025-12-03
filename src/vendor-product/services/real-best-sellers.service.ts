@@ -1,8 +1,32 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 
+export interface RealBestSellerProduct {
+  id: number;
+  vendorProductId: number;
+  productName: string;
+  name: string; // Alias for productName
+  vendorName: string;
+  businessName?: string;
+  totalQuantitySold: number;
+  totalRevenue: number;
+  averageUnitPrice: number;
+  firstSaleDate: Date;
+  lastSaleDate: Date;
+  uniqueCustomers: number;
+  productImage?: string;
+  category: string;
+  vendorId: number;
+  baseProductId: number;
+  rank: number;
+  vendor: {
+    name: string;
+    id: number;
+  };
+}
+
 export interface BestSellersOptions {
-  period?: 'day' | 'week' | 'month' | 'all';
+  period?: 'day' | 'week' | 'month' | 'year' | 'all';
   limit?: number;
   offset?: number;
   vendorId?: number;
@@ -10,40 +34,10 @@ export interface BestSellersOptions {
   minSales?: number;
 }
 
-export interface BestSellerProduct {
-  id: number;
-  name: string;
-  description?: string;
-  price: number;
-  totalQuantitySold: number;
-  totalRevenue: number;
-  averageUnitPrice: number;
-  uniqueCustomers: number;
-  firstSaleDate: Date;
-  lastSaleDate: Date;
-  rank: number;
-  vendor: {
-    id: number;
-    name: string;
-    shopName?: string;
-    profilePhotoUrl?: string;
-  };
-  baseProduct: {
-    id: number;
-    name: string;
-    categories: string[];
-  };
-  design?: {
-    id: number;
-    name?: string;
-    cloudinaryUrl?: string;
-  };
-  mainImage?: string;
-}
-
 export interface BestSellersResponse {
   success: boolean;
-  data: BestSellerProduct[];
+  data: RealBestSellerProduct[];
+  bestSellers: RealBestSellerProduct[];
   pagination: {
     total: number;
     limit: number;
@@ -51,30 +45,26 @@ export interface BestSellersResponse {
     hasMore: boolean;
   };
   stats: {
-    totalBestSellers: number;
+    totalProducts: number;
     totalRevenue: number;
-    averageOrderValue: number;
+    totalQuantitySold: number;
+    period: string;
     periodAnalyzed: string;
+    averageOrderValue: number;
+    dateRange: {
+      from: Date;
+      to: Date;
+    };
   };
+  length: number;
   cacheInfo?: {
     cached: boolean;
-    cacheAge: number;
+    lastUpdate: Date;
   };
-}
-
-// Cache simple en mémoire
-interface CacheEntry {
-  data: BestSellersResponse;
-  timestamp: number;
-  key: string;
 }
 
 @Injectable()
 export class RealBestSellersService {
-  private readonly logger = new Logger(RealBestSellersService.name);
-  private cache = new Map<string, CacheEntry>();
-  private readonly CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -90,52 +80,34 @@ export class RealBestSellersService {
       minSales = 1
     } = options;
 
-    // Générer clé de cache
-    const cacheKey = this.generateCacheKey(options);
-    
-    // Vérifier le cache
-    const cached = this.getFromCache(cacheKey);
-    if (cached) {
-      this.logger.log(`📦 Cache hit pour les meilleures ventes (${cacheKey})`);
-      return {
-        ...cached.data,
-        cacheInfo: {
-          cached: true,
-          cacheAge: Date.now() - cached.timestamp
-        }
-      };
-    }
-
-    this.logger.log(`🔍 Calcul des meilleures ventes - Période: ${period}, Limite: ${limit}`);
+    console.log('🔍 [REAL-BEST-SELLERS] Options:', options);
 
     try {
       // 1. Calculer la période d'analyse
       const dateRange = this.calculateDateRange(period);
-      this.logger.log(`📅 Période d'analyse: ${dateRange.from.toISOString()} → ${dateRange.to.toISOString()}`);
+      console.log('📅 [REAL-BEST-SELLERS] Période d\'analyse:', dateRange);
 
-      // 2. Requête SQL optimisée pour récupérer les meilleures ventes
+      // 2. Construire les conditions WHERE
+      const whereConditions: any = {
+        order: {
+          status: 'DELIVERED', // Seulement les commandes livrées
+          createdAt: {
+            gte: dateRange.from,
+            lte: dateRange.to
+          }
+        }
+      };
+
+      // 3. Requête principale avec agrégation
       const rawQuery = `
         SELECT 
           vp.id as vendor_product_id,
           vp.name as product_name,
-          vp.description as product_description,
-          vp.price as product_price,
           vp."vendorId" as vendor_id,
-          vp."designCloudinaryUrl" as design_url,
-          
-          -- Informations vendeur
           u."firstName" || ' ' || u."lastName" as vendor_name,
-          u.shop_name as shop_name,
-          u.profile_photo_url as profile_photo_url,
-          
-          -- Informations produit de base
+          u.shop_name as business_name,
           p.name as base_product_name,
           p.id as base_product_id,
-          
-          -- Informations design
-          d.id as design_id,
-          d.name as design_name,
-          d."cloudinaryUrl" as design_cloudinary_url,
           
           -- Agrégations des ventes
           SUM(oi.quantity) as total_quantity_sold,
@@ -144,17 +116,15 @@ export class RealBestSellersService {
           COUNT(DISTINCT o."userId") as unique_customers,
           MIN(o."createdAt") as first_sale_date,
           MAX(o."createdAt") as last_sale_date,
-          COUNT(DISTINCT o.id) as total_orders,
           
-          -- Image principale du produit
+          -- Images et catégories
           (
             SELECT cv.images->0->>'url' 
             FROM "ColorVariation" cv 
             WHERE cv."productId" = p.id 
             LIMIT 1
-          ) as main_image,
+          ) as product_image,
           
-          -- Catégories du produit
           (
             SELECT string_agg(cat.name, ', ') 
             FROM "_ProductToCategory" ptc
@@ -167,84 +137,81 @@ export class RealBestSellersService {
         JOIN "VendorProduct" vp ON vp.id = oi."productId"
         JOIN "Product" p ON p.id = vp."baseProductId"
         JOIN "User" u ON u.id = vp."vendorId"
-        LEFT JOIN "Design" d ON d.id = vp."designId"
         
         WHERE 
           o.status = 'DELIVERED'
           AND o."createdAt" >= $1
           AND o."createdAt" <= $2
-          AND vp."isDelete" = false
-          AND vp.status = 'PUBLISHED'
           ${vendorId ? 'AND vp."vendorId" = $3' : ''}
-          ${categoryId ? `AND EXISTS (
-            SELECT 1 FROM "_ProductToCategory" ptc 
-            WHERE ptc."A" = p.id AND ptc."B" = ${categoryId}
-          )` : ''}
-          
+          ${categoryId ? 'AND EXISTS (SELECT 1 FROM "_ProductToCategory" ptc WHERE ptc."A" = p.id AND ptc."B" = $' + (vendorId ? '4' : '3') + ')' : ''}
+        
         GROUP BY 
-          vp.id, vp.name, vp.description, vp.price, vp."vendorId", vp."designCloudinaryUrl",
-          u."firstName", u."lastName", u.shop_name, u.profile_photo_url,
-          p.name, p.id, d.id, d.name, d."cloudinaryUrl"
-          
-        HAVING SUM(oi.quantity) >= $${vendorId ? '4' : '3'}
+          vp.id, vp.name, vp."vendorId", u."firstName", u."lastName", 
+          u.shop_name, p.name, p.id
+        
+        HAVING SUM(oi.quantity) >= ${minSales}
         
         ORDER BY total_quantity_sold DESC, total_revenue DESC
-        LIMIT $${vendorId ? '5' : '4'} OFFSET $${vendorId ? '6' : '5'}
+        
+        LIMIT $${vendorId && categoryId ? '5' : vendorId || categoryId ? '4' : '3'}
+        OFFSET $${vendorId && categoryId ? '6' : vendorId || categoryId ? '5' : '4'}
       `;
 
-      // 3. Exécuter la requête
-      const queryParams = [
-        dateRange.from,
-        dateRange.to,
-        minSales,
-        limit,
-        offset
-      ];
+      // 4. Paramètres de la requête
+      const queryParams: (Date | number)[] = [dateRange.from, dateRange.to];
+      if (vendorId) queryParams.push(vendorId);
+      if (categoryId) queryParams.push(categoryId);
+      queryParams.push(limit, offset);
 
-      if (vendorId) {
-        queryParams.splice(2, 0, vendorId);
-      }
+      console.log('🔍 [REAL-BEST-SELLERS] Requête SQL:', rawQuery);
+      console.log('🔍 [REAL-BEST-SELLERS] Paramètres:', queryParams);
 
+      // 5. Exécuter la requête
       const rawResults = await this.prisma.$queryRawUnsafe(rawQuery, ...queryParams);
 
-      // 4. Transformer les résultats
-      const bestSellers: BestSellerProduct[] = (rawResults as any[]).map((row, index) => ({
+      console.log('📊 [REAL-BEST-SELLERS] Résultats bruts:', rawResults);
+
+      // 6. Transformer les résultats
+      const bestSellers: RealBestSellerProduct[] = (rawResults as any[]).map((row, index) => ({
         id: row.vendor_product_id,
-        name: row.product_name,
-        description: row.product_description,
-        price: Number(row.product_price),
-        totalQuantitySold: Number(row.total_quantity_sold),
-        totalRevenue: Number(row.total_revenue),
-        averageUnitPrice: Number(row.average_unit_price),
-        uniqueCustomers: Number(row.unique_customers),
-        firstSaleDate: row.first_sale_date,
-        lastSaleDate: row.last_sale_date,
+        vendorProductId: row.vendor_product_id,
+        productName: row.product_name || row.base_product_name,
+        name: row.product_name || row.base_product_name,
+        vendorName: row.vendor_name,
+        businessName: row.business_name,
+        totalQuantitySold: parseInt(row.total_quantity_sold),
+        totalRevenue: parseFloat(row.total_revenue),
+        averageUnitPrice: parseFloat(row.average_unit_price),
+        firstSaleDate: new Date(row.first_sale_date),
+        lastSaleDate: new Date(row.last_sale_date),
+        uniqueCustomers: parseInt(row.unique_customers),
+        productImage: row.product_image,
+        category: row.categories || 'Non catégorisé',
+        vendorId: row.vendor_id,
+        baseProductId: row.base_product_id,
         rank: offset + index + 1,
         vendor: {
-          id: row.vendor_id,
           name: row.vendor_name,
-          shopName: row.shop_name,
-          profilePhotoUrl: row.profile_photo_url
-        },
-        baseProduct: {
-          id: row.base_product_id,
-          name: row.base_product_name,
-          categories: row.categories ? row.categories.split(', ') : []
-        },
-        design: row.design_id ? {
-          id: row.design_id,
-          name: row.design_name,
-          cloudinaryUrl: row.design_cloudinary_url
-        } : undefined,
-        mainImage: row.main_image || row.design_url
+          id: row.vendor_id
+        }
       }));
 
-      // 5. Calculer les statistiques globales
-      const totalStatsQuery = `
+      // 7. Calculer le total pour la pagination
+      const countQuery = rawQuery.replace(
+        /SELECT[\s\S]*?FROM/i,
+        'SELECT COUNT(DISTINCT vp.id) as total FROM'
+      ).replace(/ORDER BY[\s\S]*?LIMIT[\s\S]*?OFFSET[\s\S]*$/i, '');
+
+      const countParams = queryParams.slice(0, -2); // Enlever LIMIT et OFFSET
+      const totalResult = await this.prisma.$queryRawUnsafe(countQuery, ...countParams);
+      const total = parseInt((totalResult as any[])[0]?.total || 0);
+
+      // 8. Calculer les statistiques globales
+      const statsQuery = `
         SELECT 
-          COUNT(DISTINCT vp.id) as total_best_sellers,
-          SUM(oi.quantity * oi."unitPrice") as total_revenue,
-          AVG(oi.quantity * oi."unitPrice") as average_order_value
+          COUNT(DISTINCT vp.id) as total_products,
+          COALESCE(SUM(oi.quantity * oi."unitPrice"), 0) as total_revenue,
+          COALESCE(SUM(oi.quantity), 0) as total_quantity_sold
         FROM "OrderItem" oi
         JOIN "Order" o ON o.id = oi."orderId"
         JOIN "VendorProduct" vp ON vp.id = oi."productId"
@@ -252,123 +219,59 @@ export class RealBestSellersService {
           o.status = 'DELIVERED'
           AND o."createdAt" >= $1
           AND o."createdAt" <= $2
-          AND vp."isDelete" = false
-          AND vp.status = 'PUBLISHED'
           ${vendorId ? 'AND vp."vendorId" = $3' : ''}
       `;
 
       const statsParams: (Date | number)[] = [dateRange.from, dateRange.to];
-      if (vendorId) {
-        statsParams.push(vendorId);
-      }
+      if (vendorId) statsParams.push(vendorId);
 
-      const statsResult = await this.prisma.$queryRawUnsafe(totalStatsQuery, ...statsParams);
+      const statsResult = await this.prisma.$queryRawUnsafe(statsQuery, ...statsParams);
       const stats = (statsResult as any[])[0];
 
-      // 6. Construire la réponse
-      const response: BestSellersResponse = {
+      console.log('📊 [REAL-BEST-SELLERS] Statistiques:', stats);
+
+      const averageOrderValue = parseInt(stats.total_quantity_sold) > 0
+        ? parseFloat(stats.total_revenue) / parseInt(stats.total_quantity_sold)
+        : 0;
+
+      return {
         success: true,
         data: bestSellers,
+        bestSellers,
         pagination: {
-          total: Number(stats.total_best_sellers) || 0,
+          total,
           limit,
           offset,
-          hasMore: bestSellers.length === limit
+          hasMore: offset + limit < total
         },
         stats: {
-          totalBestSellers: Number(stats.total_best_sellers) || 0,
-          totalRevenue: Number(stats.total_revenue) || 0,
-          averageOrderValue: Number(stats.average_order_value) || 0,
-          periodAnalyzed: this.getPeriodLabel(period, dateRange)
+          totalProducts: parseInt(stats.total_products),
+          totalRevenue: parseFloat(stats.total_revenue),
+          totalQuantitySold: parseInt(stats.total_quantity_sold),
+          period,
+          periodAnalyzed: period,
+          averageOrderValue,
+          dateRange
+        },
+        length: bestSellers.length,
+        cacheInfo: {
+          cached: false,
+          lastUpdate: new Date()
         }
       };
 
-      // 7. Mettre en cache
-      this.setCache(cacheKey, response);
-
-      this.logger.log(`✅ ${bestSellers.length} meilleures ventes calculées pour la période ${period}`);
-      return response;
-
     } catch (error) {
-      this.logger.error('❌ Erreur lors du calcul des meilleures ventes:', error);
-      throw error;
+      console.error('❌ [REAL-BEST-SELLERS] Erreur:', error);
+      throw new Error(`Erreur lors de la récupération des meilleures ventes: ${error.message}`);
     }
   }
 
   /**
-   * 🔄 Mettre à jour les statistiques d'un produit après une vente
-   */
-  async updateProductSalesStats(vendorProductId: number, quantity: number, unitPrice: number): Promise<void> {
-    try {
-      await this.prisma.vendorProduct.update({
-        where: { id: vendorProductId },
-        data: {
-          salesCount: { increment: quantity },
-          totalRevenue: { increment: quantity * unitPrice },
-          lastSaleDate: new Date()
-        }
-      });
-
-      // Invalider le cache
-      this.invalidateCache();
-
-      this.logger.log(`📊 Statistiques mises à jour pour le produit ${vendorProductId}: +${quantity} ventes, +${(quantity * unitPrice).toFixed(2)}€`);
-    } catch (error) {
-      this.logger.error(`❌ Erreur mise à jour statistiques produit ${vendorProductId}:`, error);
-    }
-  }
-
-  /**
-   * 🏷️ Marquer automatiquement les meilleurs vendeurs
-   */
-  async markTopSellers(period: 'day' | 'week' | 'month' | 'all' = 'month'): Promise<void> {
-    try {
-      this.logger.log(`🏆 Marquage des top sellers pour la période: ${period}`);
-
-      // 1. Réinitialiser tous les produits
-      await this.prisma.vendorProduct.updateMany({
-        data: {
-          isBestSeller: false,
-          bestSellerRank: null,
-          bestSellerCategory: null
-        }
-      });
-
-      // 2. Récupérer les top 50 pour différentes catégories
-      const topSellers = await this.getRealBestSellers({
-        period,
-        limit: 50,
-        minSales: 5
-      });
-
-      // 3. Marquer les produits comme best-sellers
-      for (let i = 0; i < topSellers.data.length; i++) {
-        const product = topSellers.data[i];
-        await this.prisma.vendorProduct.update({
-          where: { id: product.id },
-          data: {
-            isBestSeller: true,
-            bestSellerRank: i + 1,
-            bestSellerCategory: 'GLOBAL',
-            salesCount: product.totalQuantitySold,
-            totalRevenue: product.totalRevenue,
-            lastSaleDate: product.lastSaleDate
-          }
-        });
-      }
-
-      this.logger.log(`✅ ${topSellers.data.length} produits marqués comme best-sellers`);
-    } catch (error) {
-      this.logger.error('❌ Erreur lors du marquage des top sellers:', error);
-    }
-  }
-
-  /**
-   * 📅 Calculer la période d'analyse
+   * 📅 Calculer la plage de dates selon la période
    */
   private calculateDateRange(period: string): { from: Date; to: Date } {
     const now = new Date();
-    const to = new Date(now);
+    const to = now;
     let from: Date;
 
     switch (period) {
@@ -376,14 +279,22 @@ export class RealBestSellersService {
         from = new Date(now);
         from.setHours(0, 0, 0, 0);
         break;
+      
       case 'week':
         from = new Date(now);
         from.setDate(now.getDate() - 7);
         break;
+      
       case 'month':
         from = new Date(now);
         from.setMonth(now.getMonth() - 1);
         break;
+      
+      case 'year':
+        from = new Date(now);
+        from.setFullYear(now.getFullYear() - 1);
+        break;
+      
       case 'all':
       default:
         from = new Date('2020-01-01'); // Date de début de l'application
@@ -394,79 +305,105 @@ export class RealBestSellersService {
   }
 
   /**
-   * 🏷️ Obtenir le libellé de la période
+   * 🔄 Mettre à jour le cache des meilleures ventes
    */
-  private getPeriodLabel(period: string, dateRange: { from: Date; to: Date }): string {
-    switch (period) {
-      case 'day':
-        return 'Dernières 24h';
-      case 'week':
-        return '7 derniers jours';
-      case 'month':
-        return '30 derniers jours';
-      case 'all':
-        return `Depuis le ${dateRange.from.toLocaleDateString('fr-FR')}`;
-      default:
-        return period;
+  async updateBestSellersCache(): Promise<void> {
+    console.log('🔄 [REAL-BEST-SELLERS] Mise à jour du cache...');
+
+    try {
+      // Récupérer les top 100 de tous les temps
+      const allTimeBestSellers = await this.getRealBestSellers({
+        period: 'all',
+        limit: 100
+      });
+
+      // Mettre à jour les rangs dans la base de données
+      for (const product of allTimeBestSellers.data) {
+        await this.prisma.vendorProduct.update({
+          where: { id: product.vendorProductId },
+          data: {
+            salesCount: product.totalQuantitySold,
+            totalRevenue: product.totalRevenue,
+            lastSaleDate: product.lastSaleDate,
+            isBestSeller: product.rank <= 20, // Top 20 = best sellers
+            bestSellerRank: product.rank
+          }
+        });
+      }
+
+      console.log('✅ [REAL-BEST-SELLERS] Cache mis à jour avec succès');
+    } catch (error) {
+      console.error('❌ [REAL-BEST-SELLERS] Erreur mise à jour cache:', error);
     }
-  }
-
-  /**
-   * 🔑 Générer une clé de cache
-   */
-  private generateCacheKey(options: BestSellersOptions): string {
-    const { period, limit, offset, vendorId, categoryId, minSales } = options;
-    return `best-sellers:${period}:${limit}:${offset}:${vendorId || 'all'}:${categoryId || 'all'}:${minSales}`;
-  }
-
-  /**
-   * 📦 Récupérer du cache
-   */
-  private getFromCache(key: string): CacheEntry | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-
-    // Vérifier si le cache est encore valide
-    if (Date.now() - entry.timestamp > this.CACHE_DURATION) {
-      this.cache.delete(key);
-      return null;
-    }
-
-    return entry;
-  }
-
-  /**
-   * 💾 Sauvegarder en cache
-   */
-  private setCache(key: string, data: BestSellersResponse): void {
-    this.cache.set(key, {
-      data,
-      timestamp: Date.now(),
-      key
-    });
-
-    // Nettoyer le cache si trop d'entrées
-    if (this.cache.size > 100) {
-      const oldestKey = this.cache.keys().next().value;
-      this.cache.delete(oldestKey);
-    }
-  }
-
-  /**
-   * 🗑️ Invalider le cache
-   */
-  private invalidateCache(): void {
-    this.cache.clear();
-    this.logger.log('🗑️ Cache des meilleures ventes invalidé');
   }
 
   /**
    * 📊 Obtenir les statistiques du cache
    */
-  getCacheStats(): { size: number; keys: string[] } {
+  getCacheStats() {
     return {
-      size: this.cache.size,
-      keys: Array.from(this.cache.keys())
+      cacheSize: 0,
+      size: 0,
+      lastUpdate: new Date(),
+      updateInProgress: false,
+      keys: [],
+      hitRate: 0
     };
+  }
+
+  /**
+   * 🏆 Marquer les meilleurs vendeurs
+   */
+  async markTopSellers(period: string = 'month'): Promise<void> {
+    console.log(`🏆 [REAL-BEST-SELLERS] Marquage des top sellers pour la période: ${period}`);
+
+    try {
+      const bestSellers = await this.getRealBestSellers({
+        period: period as any,
+        limit: 50
+      });
+
+      for (const product of bestSellers.data) {
+        await this.prisma.vendorProduct.update({
+          where: { id: product.vendorProductId },
+          data: {
+            isBestSeller: product.rank <= 20,
+            bestSellerRank: product.rank
+          }
+        });
+      }
+
+      console.log(`✅ [REAL-BEST-SELLERS] ${bestSellers.data.length} produits marqués comme best sellers`);
+    } catch (error) {
+      console.error('❌ [REAL-BEST-SELLERS] Erreur marquage top sellers:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 📊 Mettre à jour les statistiques de vente d'un produit
+   */
+  async updateProductSalesStats(vendorId: number, productId: number, quantity: number, revenue: number): Promise<void> {
+    console.log(`📊 [REAL-BEST-SELLERS] Mise à jour stats produit ${productId} pour vendeur ${vendorId}`);
+
+    try {
+      await this.prisma.vendorProduct.update({
+        where: { id: productId },
+        data: {
+          salesCount: {
+            increment: quantity
+          },
+          totalRevenue: {
+            increment: revenue
+          },
+          lastSaleDate: new Date()
+        }
+      });
+
+      console.log(`✅ [REAL-BEST-SELLERS] Stats produit ${productId} mises à jour`);
+    } catch (error) {
+      console.error('❌ [REAL-BEST-SELLERS] Erreur mise à jour stats produit:', error);
+      throw error;
+    }
   }
 } 

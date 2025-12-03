@@ -58,10 +58,12 @@ export class SalesStatsUpdaterService {
         }
 
         // Mettre à jour les statistiques du VendorProduct
+        const revenue = item.quantity * item.unitPrice;
         await this.realBestSellersService.updateProductSalesStats(
+          vendorProduct.vendorId,
           vendorProduct.id,
           item.quantity,
-          item.unitPrice
+          revenue
         );
 
         this.logger.debug(`📊 Stats mises à jour pour VendorProduct ${vendorProduct.id}: +${item.quantity} ventes`);

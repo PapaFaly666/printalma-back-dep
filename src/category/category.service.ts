@@ -58,7 +58,7 @@ export class CategoryService {
             include: {
                 subCategories: true,
                 _count: {
-                    select: { products: true }
+                    select: { CategoryToProduct: true }
                 }
             }
         });
@@ -92,7 +92,7 @@ export class CategoryService {
                     orderBy: { displayOrder: 'asc' }
                 },
                 _count: {
-                    select: { products: true }
+                    select: { CategoryToProduct: true }
                 }
             }
         });
@@ -108,7 +108,7 @@ export class CategoryService {
 
         return categories.map(cat => ({
             ...cat,
-            productCount: cat._count?.products || 0,
+            productCount: cat._count?.CategoryToProduct || 0,
             subcategories: cat.subCategories || []
         }));
     }
@@ -128,7 +128,7 @@ export class CategoryService {
                     orderBy: { displayOrder: 'asc' }
                 },
                 _count: {
-                    select: { products: true }
+                    select: { CategoryToProduct: true }
                 }
             }
         });
@@ -139,7 +139,7 @@ export class CategoryService {
 
         return {
             ...category,
-            productCount: category._count.products
+            productCount: category._count.CategoryToProduct
         };
     }
 
@@ -198,7 +198,7 @@ export class CategoryService {
             include: {
                 subCategories: true,
                 _count: {
-                    select: { products: true }
+                    select: { CategoryToProduct: true }
                 }
             }
         });
@@ -214,10 +214,10 @@ export class CategoryService {
 
         return {
             success: true,
-            message: `Catégorie mise à jour avec succès${updatedCategory._count.products > 0 ? ` (${updatedCategory._count.products} produit(s) affecté(s))` : ''}`,
+            message: `Catégorie mise à jour avec succès${updatedCategory._count.CategoryToProduct > 0 ? ` (${updatedCategory._count.CategoryToProduct} produit(s) affecté(s))` : ''}`,
             data: {
                 ...updatedCategory,
-                productCount: updatedCategory._count.products
+                productCount: updatedCategory._count.CategoryToProduct
             }
         };
     }
@@ -583,7 +583,7 @@ export class CategoryService {
             include: {
                 _count: {
                     select: {
-                        products: true,
+                        CategoryToProduct: true,
                         subCategories: true
                     }
                 }
@@ -610,7 +610,7 @@ export class CategoryService {
             success: true,
             data: {
                 categoryId: id,
-                productsCount: cat._count.products,
+                productsCount: cat._count.CategoryToProduct,
                 subCategoriesCount: cat._count.subCategories,
                 variationsCount
             }

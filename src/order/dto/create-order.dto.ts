@@ -3,6 +3,110 @@ import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { ShippingDetailsDto } from './shipping-details.dto';
 
+// 🚚 DTO pour les informations de livraison (défini en premier pour éviter les références circulaires)
+export class DeliveryInfoDto {
+  @ApiProperty({
+    description: 'Type de livraison',
+    enum: ['city', 'region', 'international'],
+    example: 'city'
+  })
+  @IsNotEmpty()
+  @IsString()
+  deliveryType: 'city' | 'region' | 'international';
+
+  // Localisation
+  @ApiProperty({ description: 'ID de la ville (si deliveryType = city)', required: false })
+  @IsOptional()
+  @IsString()
+  cityId?: string;
+
+  @ApiProperty({ description: 'Nom de la ville', required: false })
+  @IsOptional()
+  @IsString()
+  cityName?: string;
+
+  @ApiProperty({ description: 'ID de la région (si deliveryType = region)', required: false })
+  @IsOptional()
+  @IsString()
+  regionId?: string;
+
+  @ApiProperty({ description: 'Nom de la région', required: false })
+  @IsOptional()
+  @IsString()
+  regionName?: string;
+
+  @ApiProperty({ description: 'ID de la zone internationale (si deliveryType = international)', required: false })
+  @IsOptional()
+  @IsString()
+  zoneId?: string;
+
+  @ApiProperty({ description: 'Nom de la zone internationale', required: false })
+  @IsOptional()
+  @IsString()
+  zoneName?: string;
+
+  @ApiProperty({ description: 'Code pays (ex: SN, FR, US)', required: false })
+  @IsOptional()
+  @IsString()
+  countryCode?: string;
+
+  @ApiProperty({ description: 'Nom du pays', required: false })
+  @IsOptional()
+  @IsString()
+  countryName?: string;
+
+  // Transporteur sélectionné
+  @ApiProperty({
+    description: 'ID du transporteur choisi (OBLIGATOIRE sauf pour le Sénégal)',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  transporteurId?: string;
+
+  @ApiProperty({ description: 'Nom du transporteur', required: false })
+  @IsOptional()
+  @IsString()
+  transporteurName?: string;
+
+  @ApiProperty({ description: 'URL du logo du transporteur', required: false })
+  @IsOptional()
+  @IsString()
+  transporteurLogo?: string;
+
+  // Tarification
+  @ApiProperty({
+    description: 'ID du tarif appliqué (OBLIGATOIRE sauf pour le Sénégal)',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  zoneTarifId?: string;
+
+  @ApiProperty({
+    description: 'Montant des frais de livraison en XOF (OBLIGATOIRE sauf pour le Sénégal)',
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  deliveryFee?: number;
+
+  @ApiProperty({ description: 'Délai de livraison (ex: 24-48h)', required: false })
+  @IsOptional()
+  @IsString()
+  deliveryTime?: string;
+
+  // Métadonnées complètes (optionnel)
+  @ApiProperty({ description: 'Métadonnées complètes de livraison', required: false })
+  @IsOptional()
+  @IsObject()
+  metadata?: {
+    availableCarriers?: any[];
+    selectedAt?: string;
+    calculationDetails?: any;
+  };
+}
+
 export class CreateOrderItemDto {
   @IsNotEmpty()
   @IsNumber()
@@ -155,12 +259,87 @@ export class CreateOrderItemDto {
   }>;
 
   @ApiProperty({
-    description: 'Zone de placement du design (délimitation)',
-    required: false
+    description: 'Zone de placement principale (première vue)',
+    required: false,
+    example: {
+      x: 150.5,
+      y: 200.3,
+      width: 400.0,
+      height: 500.0,
+      coordinateType: 'PIXEL',
+      referenceWidth: 1200,
+      referenceHeight: 1500
+    }
   })
   @IsOptional()
   @IsObject()
   delimitation?: any;
+
+  @ApiProperty({
+    description: 'Array de toutes les délimitations par vue pour le système multi-vues',
+    required: false,
+    example: [
+      {
+        viewId: 45,
+        viewKey: '12-45',
+        viewType: 'FRONT',
+        imageUrl: 'https://example.com/front.png',
+        x: 150.5,
+        y: 200.3,
+        width: 400.0,
+        height: 500.0,
+        coordinateType: 'PIXEL',
+        referenceWidth: 1200,
+        referenceHeight: 1500
+      }
+    ]
+  })
+  @IsOptional()
+  @IsArray()
+  delimitations?: Array<{
+    viewId: number;
+    viewKey: string;
+    viewType?: string;
+    imageUrl?: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    coordinateType: string;
+    referenceWidth: number;
+    referenceHeight: number;
+  }>;
+
+  @ApiProperty({
+    description: 'Objet complet de la variation de couleur avec toutes ses images et délimitations',
+    required: false,
+    example: {
+      id: 12,
+      name: 'Noir',
+      colorCode: '#000000',
+      images: [
+        {
+          id: 45,
+          url: 'https://example.com/front.png',
+          viewType: 'FRONT',
+          delimitations: [
+            {
+              x: 150.5,
+              y: 200.3,
+              width: 400.0,
+              height: 500.0,
+              coordinateType: 'PIXEL',
+              referenceWidth: 1200,
+              referenceHeight: 1500
+            }
+          ]
+        }
+      ]
+    }
+  })
+  @IsOptional()
+  @IsObject()
+  colorVariationData?: any;
 }
 
 export enum PaymentMethod {
@@ -221,4 +400,27 @@ export class CreateOrderDto {
   @IsOptional()
   @IsNumber()
   totalAmount?: number; // 🆕 Montant total (calculé ou fourni)
+
+  // 🚚 NOUVEAU: Informations de livraison
+  @ApiProperty({
+    description: 'Informations de livraison et transporteur',
+    required: false,
+    example: {
+      deliveryType: 'city',
+      cityId: '1',
+      cityName: 'Dakar',
+      countryCode: 'SN',
+      countryName: 'Sénégal',
+      transporteurId: '5',
+      transporteurName: 'DHL Express',
+      transporteurLogo: 'https://api.printalma.com/uploads/logos/dhl.png',
+      zoneTarifId: '23',
+      deliveryFee: 3000,
+      deliveryTime: '24-48h'
+    }
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DeliveryInfoDto)
+  deliveryInfo?: DeliveryInfoDto;
 } 

@@ -679,7 +679,7 @@ export class AdminWizardValidationController {
       const baseProduct = await this.prisma.product.findUnique({
         where: { id: baseProductId },
         include: {
-          categories: {
+          category: {
             select: { id: true, name: true }
           },
           colorVariations: {
@@ -712,7 +712,7 @@ export class AdminWizardValidationController {
         name: baseProduct.name,
         description: baseProduct.description || null,
         price: Math.round(baseProduct.price * 100), // Convertir en centimes si nécessaire
-        categories: baseProduct.categories || [],
+        categories: baseProduct.category ? [baseProduct.category] : [],
         colorVariations: baseProduct.colorVariations?.map(color => ({
           id: color.id,
           name: color.name,

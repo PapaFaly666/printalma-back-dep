@@ -181,11 +181,18 @@ export async function seedProducts(categoryData: any) {
         categoryId: productData.categoryId,
         subCategoryId: productData.subCategoryId,
         variationId: productData.variationId,
-        categories: {
-          connect: [{ id: productData.categoryId }],
-        },
       },
     });
+
+    // Connect categories via junction table
+    if (productData.categoryId) {
+      await prisma.categoryToProduct.create({
+        data: {
+          A: productData.categoryId,
+          B: product.id,
+        },
+      });
+    }
 
     // Créer les tailles
     for (const size of productData.sizes) {

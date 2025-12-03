@@ -36,7 +36,7 @@ export class MockupService {
           isValidated: true, // ✅ MOCKUPS CRÉÉS PAR ADMIN SONT VALIDÉS PAR DÉFAUT
         },
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           subCategory: true, // ✅ Inclure la sous-catégorie
           variation: true, // ✅ Inclure la variation
           colorVariations: {
@@ -110,7 +110,7 @@ export class MockupService {
         where: { id },
         data: updateData,
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           subCategory: true, // ✅ Inclure la sous-catégorie
           variation: true, // ✅ Inclure la variation
           colorVariations: {
@@ -148,7 +148,7 @@ export class MockupService {
           isDelete: false
         },
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           subCategory: true, // ✅ Inclure la sous-catégorie
           variation: true, // ✅ Inclure la variation
           colorVariations: {
@@ -209,7 +209,7 @@ export class MockupService {
       const mockups = await this.prisma.product.findMany({
         where: whereClause,
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           subCategory: true, // ✅ Inclure la sous-catégorie
           variation: true, // ✅ Inclure la variation
           colorVariations: {
@@ -251,7 +251,7 @@ export class MockupService {
           isDelete: false
         },
         include: {
-          categories: true,
+          CategoryToProduct: { include: { categories: true } },
           subCategory: true, // ✅ Inclure la sous-catégorie
           variation: true, // ✅ Inclure la variation
           colorVariations: {
@@ -354,11 +354,13 @@ export class MockupService {
       categories.push(category);
     }
 
-    await this.prisma.product.update({
-      where: { id: productId },
-      data: {
-        categories: { connect: categories.map(c => ({ id: c.id })) }
-      }
+    // Use junction table CategoryToProduct
+    await this.prisma.categoryToProduct.createMany({
+      data: categories.map(c => ({
+        A: c.id,
+        B: productId
+      })),
+      skipDuplicates: true,
     });
   }
 

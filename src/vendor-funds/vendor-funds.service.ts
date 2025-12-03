@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { FundsRequestStatus, PaymentMethodType } from '@prisma/client';
@@ -20,10 +21,12 @@ import {
 
 @Injectable()
 export class VendorFundsService {
+  private readonly logger = new Logger(VendorFundsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Calculer les gains d'un vendeur
+   * Calculer les gains d'un vendeur basés sur les commandes après débit de commission
    */
   async calculateVendorEarnings(vendorId: number): Promise<VendorEarningsData> {
     const now = new Date();
@@ -31,10 +34,24 @@ export class VendorFundsService {
     const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    // Calculer les gains totaux depuis les commandes livrées
-    const deliveredOrders = await this.prisma.order.findMany({
+    // Récupérer le taux de commission actuel du vendeur (priorité au taux personnalisé)
+    const vendorCommission = await this.prisma.vendorCommission.findUnique({
+      where: { vendorId: vendorId }
+    });
+
+    const commissionRate = vendorCommission?.commissionRate || 0.10; // Taux par défaut si non spécifié
+
+    console.log(`[VENDOR ${vendorId}] Taux de commission utilisé: ${commissionRate}`);
+
+    // Calculer les gains depuis les commandes confirmées et livrées (commission déjà débitée)
+    // On considère CONFIRMED et DELIVERED car ces statuts indiquent que la commission a été appliquée
+    const validOrders = await this.prisma.order.findMany({
       where: {
-        status: 'DELIVERED',
+        status: {
+          in: ['CONFIRMED', 'DELIVERED']
+        },
+        // Ne considérer que les commandes où la commission a été effectivement débitée
+        // Cela signifie que la commande est complètement finalisée ou confirmée
         orderItems: {
           some: {
             product: {
@@ -62,29 +79,58 @@ export class VendorFundsService {
       },
     });
 
-    // Calculer les gains avec commission
-    let totalEarnings = 0;
+    // Calculer les gains nets après commission
+    let totalEarnings = 0; // Gains nets pour le vendeur (après commission)
+    let totalCommissionAmount = 0; // Commission totale prélevée par l'admin
     let thisMonthEarnings = 0;
     let lastMonthEarnings = 0;
 
-    for (const order of deliveredOrders) {
+    for (const order of validOrders) {
       for (const item of order.orderItems) {
         if (item.product.vendorProducts.length > 0) {
-          const vendorProduct = item.product.vendorProducts[0];
-          const commissionRate = 0.10; // Taux par défaut
-          const itemEarnings = item.unitPrice * item.quantity * (1 - commissionRate);
+          // Si la commission est déjà calculée dans la commande, utiliser ces valeurs
+          // Sinon, la calculer avec le taux par défaut
+          let netEarnings: number;
+          let commissionAmount: number;
+          let orderItemTotal: number;
 
-          totalEarnings += itemEarnings;
+          if (order.commissionAmount && order.vendorAmount) {
+            // Utiliser les valeurs déjà calculées dans la commande
+            orderItemTotal = item.unitPrice * item.quantity;
+            commissionAmount = order.commissionAmount;
+            netEarnings = order.vendorAmount;
+          } else if (order.commissionRate) {
+            // Utiliser le taux de commission de la commande
+            orderItemTotal = item.unitPrice * item.quantity;
+            commissionAmount = orderItemTotal * order.commissionRate;
+            netEarnings = orderItemTotal - commissionAmount;
+          } else {
+            // Calcul par défaut
+            orderItemTotal = item.unitPrice * item.quantity;
+            commissionAmount = orderItemTotal * commissionRate;
+            netEarnings = orderItemTotal - commissionAmount;
+          }
+
+          totalEarnings += netEarnings;
+          totalCommissionAmount += commissionAmount;
 
           // Gains de ce mois
           if (order.createdAt >= firstDayThisMonth) {
-            thisMonthEarnings += itemEarnings;
+            thisMonthEarnings += netEarnings;
           }
 
           // Gains du mois dernier
           if (order.createdAt >= firstDayLastMonth && order.createdAt <= lastDayLastMonth) {
-            lastMonthEarnings += itemEarnings;
+            lastMonthEarnings += netEarnings;
           }
+
+          console.log(`[VENDOR ${vendorId}] Commande ${order.id}:`, {
+            orderItemTotal,
+            commissionAmount,
+            netEarnings,
+            orderStatus: order.status,
+            commissionRate: order.commissionRate || commissionRate
+          });
         }
       }
     }
@@ -106,7 +152,8 @@ export class VendorFundsService {
 
     const pendingAmount = pendingRequests.reduce((sum, req) => sum + req.amount, 0);
     const paidAmount = paidRequests.reduce((sum, req) => sum + req.amount, 0);
-    const availableAmount = Math.max(0, totalEarnings - pendingAmount - paidAmount);
+    // 💰 Montant disponible pour le vendeur = Total gagné - Commission admin - Déjà retiré - En attente
+    const availableAmount = Math.max(0, totalEarnings - totalCommissionAmount - pendingAmount - paidAmount);
 
     // Mettre à jour le cache des gains (sans availableAmount qui se calcule dynamiquement)
     await this.prisma.vendorEarnings.upsert({
@@ -115,7 +162,7 @@ export class VendorFundsService {
         totalEarnings,
         thisMonthEarnings,
         lastMonthEarnings,
-        totalCommissionPaid: totalEarnings * 0.10,
+        totalCommissionPaid: totalCommissionAmount, // Utiliser le montant réel de commission calculée
         lastCalculatedAt: new Date(),
       },
       create: {
@@ -125,7 +172,7 @@ export class VendorFundsService {
         pendingAmount: 0,   // Valeur par défaut, sera recalculée dynamiquement
         thisMonthEarnings,
         lastMonthEarnings,
-        totalCommissionPaid: totalEarnings * 0.10,
+        totalCommissionPaid: totalCommissionAmount, // Commission admin réelle
         averageCommissionRate: 0.10,
       },
     });
@@ -153,50 +200,50 @@ export class VendorFundsService {
    * Récupérer les gains du vendeur
    */
   async getVendorEarnings(vendorId: number): Promise<VendorEarningsData> {
-    // D'abord essayer de récupérer depuis le cache
-    const cachedEarnings = await this.prisma.vendorEarnings.findUnique({
+    // Forcer un recalcul en temps réel pour éviter les données cachées obsolètes
+    const realTimeEarnings = await this.calculateVendorEarnings(vendorId);
+
+    // Récupérer les demandes de fonds actuelles pour un calcul précis
+    const fundsRequests = await this.prisma.vendorFundsRequest.findMany({
       where: { vendorId }
     });
 
-    if (cachedEarnings) {
-      // Calculer correctement les montants depuis les demandes de fonds
-      const fundsRequests = await this.prisma.vendorFundsRequest.findMany({
-        where: { vendorId }
-      });
+    // Calculer les montants réels depuis les demandes
+    const paidAmount = fundsRequests
+      .filter(req => req.status === 'PAID')
+      .reduce((sum, req) => sum + req.amount, 0);
 
-      // Séparer les demandes payées et en attente
-      const paidAmount = fundsRequests
-        .filter(req => req.status === 'PAID')
-        .reduce((sum, req) => sum + req.amount, 0);
+    const pendingAmount = fundsRequests
+      .filter(req => req.status === 'PENDING')
+      .reduce((sum, req) => sum + req.amount, 0);
 
-      const pendingAmount = fundsRequests
-        .filter(req => req.status === 'PENDING')
-        .reduce((sum, req) => sum + req.amount, 0);
+    const approvedAmount = fundsRequests
+      .filter(req => req.status === 'APPROVED')
+      .reduce((sum, req) => sum + req.amount, 0);
 
-      // Calcul correct : Revenus Totaux - Payé - En Attente
-      const availableAmount = Math.max(0, cachedEarnings.totalEarnings - paidAmount - pendingAmount);
+    // CORRECTION : Si realTimeEarnings.totalEarnings contient déjà les gains nets (après déduction commission),
+    // alors on ne doit PLUS déduire la commission dans le calcul final
+    // totalEarnings = GAINS NETS (commission déjà déduite)
+    const availableAmount = Math.max(0, realTimeEarnings.totalEarnings - paidAmount - pendingAmount - approvedAmount);
 
-      console.log(`[VENDOR ${vendorId}] Calcul des gains depuis cache:`, {
-        totalEarnings: cachedEarnings.totalEarnings,
-        paidAmount,
-        pendingAmount,
-        availableAmount
-      });
+    console.log(`[VENDOR ${vendorId}] Calcul des gains en temps réel:`, {
+      totalEarnings: realTimeEarnings.totalEarnings,
+      paidAmount,
+      pendingAmount,
+      approvedAmount,
+      availableAmount
+    });
 
-      return {
-        totalEarnings: cachedEarnings.totalEarnings,
-        availableAmount: availableAmount,
-        pendingAmount: pendingAmount,
-        thisMonthEarnings: cachedEarnings.thisMonthEarnings,
-        lastMonthEarnings: cachedEarnings.lastMonthEarnings,
-        commissionPaid: cachedEarnings.totalCommissionPaid,
-        totalCommission: cachedEarnings.totalEarnings + cachedEarnings.totalCommissionPaid,
-        averageCommissionRate: 0.1 // Taux par défaut
-      };
-    }
-
-    // Si pas de cache, calculer et créer le cache
-    return await this.calculateVendorEarnings(vendorId);
+    return {
+      totalEarnings: realTimeEarnings.totalEarnings,
+      availableAmount: availableAmount,
+      pendingAmount: pendingAmount + approvedAmount, // Comprend les montants en attente et approuvés
+      thisMonthEarnings: realTimeEarnings.thisMonthEarnings,
+      lastMonthEarnings: realTimeEarnings.lastMonthEarnings,
+      commissionPaid: 0, // Commission déjà déduite des gains nets
+      totalCommission: 0, // Commission déjà déduite des gains nets
+      averageCommissionRate: realTimeEarnings.averageCommissionRate,
+    };
   }
 
   /**
@@ -280,14 +327,65 @@ export class VendorFundsService {
     vendorId: number,
     createData: CreateFundsRequestDto,
   ): Promise<FundsRequestData> {
+    // 🔧 VALIDATION DES DONNÉES D'ENTRÉE
+    this.logger.log('🔍 Données reçues dans createFundsRequest:', JSON.stringify(createData));
+
+    if (!createData || typeof createData !== 'object') {
+      throw new BadRequestException('Les données de la demande sont requises et doivent être un objet JSON valide');
+    }
+
     const { amount, description, paymentMethod, phoneNumber, iban, orderIds } = createData;
 
-    // Vérifier le solde disponible
+    // Validation des champs requis
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      throw new BadRequestException('Le montant est requis et doit être un nombre positif (minimum 1000 FCFA)');
+    }
+
+    if (amount < 1000) {
+      throw new BadRequestException('Le montant minimum de retrait est de 1000 FCFA');
+    }
+
+    if (!description || typeof description !== 'string' || description.trim().length === 0) {
+      throw new BadRequestException('La description est requise et ne peut pas être vide');
+    }
+
+    if (!paymentMethod || typeof paymentMethod !== 'string') {
+      throw new BadRequestException('La méthode de paiement est requise');
+    }
+
+    const validPaymentMethods = ['WAVE', 'ORANGE_MONEY', 'BANK_TRANSFER'];
+    if (!validPaymentMethods.includes(paymentMethod)) {
+      throw new BadRequestException(`Méthode de paiement invalide. Options: ${validPaymentMethods.join(', ')}`);
+    }
+
+    if (paymentMethod !== 'BANK_TRANSFER' && (!phoneNumber || typeof phoneNumber !== 'string')) {
+      throw new BadRequestException('Le numéro de téléphone est requis pour cette méthode de paiement');
+    }
+
+    if (paymentMethod === 'BANK_TRANSFER' && (!iban || typeof iban !== 'string')) {
+      throw new BadRequestException('L\'IBAN est requis pour les virements bancaires');
+    }
+
+    // Vérifier le solde disponible avec un calcul précis en temps réel
     const earnings = await this.getVendorEarnings(vendorId);
 
+    this.logger.log(`💰 [VENDOR ${vendorId}] Vérification solde disponible:`, {
+      totalEarnings: earnings.totalEarnings,
+      availableAmount: earnings.availableAmount,
+      pendingAmount: earnings.pendingAmount,
+      requestedAmount: amount
+    });
+
     if (earnings.availableAmount < amount) {
+      this.logger.warn(`⚠️ [VENDOR ${vendorId}] Solde insuffisant pour retrait:`, {
+        disponible: earnings.availableAmount,
+        demandé: amount,
+        différence: amount - earnings.availableAmount
+      });
+
       throw new BadRequestException(
-        `Solde insuffisant. Disponible: ${earnings.availableAmount} FCFA, Demandé: ${amount} FCFA`
+        `Solde insuffisant. Disponible: ${earnings.availableAmount.toLocaleString('fr-FR')} FCFA, Demandé: ${amount.toLocaleString('fr-FR')} FCFA. ` +
+        `Vous devez attendre que vos commandes soient livrées ou que vos demandes en attente soient traitées.`
       );
     }
 

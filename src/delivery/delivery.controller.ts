@@ -297,6 +297,44 @@ export class DeliveryController {
   }
 
   // ========================================
+  // TRANSPORTEURS PAR ZONE
+  // ========================================
+
+  @Get('transporteurs/by-zone')
+  @ApiOperation({ summary: 'Récupère les transporteurs disponibles pour une zone spécifique' })
+  @ApiQuery({ name: 'cityId', required: false, description: 'ID de la ville' })
+  @ApiQuery({ name: 'regionId', required: false, description: 'ID de la région' })
+  @ApiQuery({ name: 'internationalZoneId', required: false, description: 'ID de la zone internationale' })
+  @ApiResponse({
+    status: 200,
+    description: 'Transporteurs disponibles récupérés avec succès',
+    schema: {
+      properties: {
+        transporteurs: {
+          type: 'array',
+          items: {
+            properties: {
+              transporteur: { type: 'object' },
+              tarif: { type: 'object' },
+              deliveryFee: { type: 'number' },
+              deliveryTime: { type: 'string' }
+            }
+          }
+        }
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Paramètres invalides' })
+  @ApiResponse({ status: 404, description: 'Zone non trouvée' })
+  getTransporteursByZone(
+    @Query('cityId') cityId?: string,
+    @Query('regionId') regionId?: string,
+    @Query('internationalZoneId') internationalZoneId?: string,
+  ) {
+    return this.deliveryService.getTransporteursByZone(cityId, regionId, internationalZoneId);
+  }
+
+  // ========================================
   // CALCUL DE FRAIS DE LIVRAISON
   // ========================================
 

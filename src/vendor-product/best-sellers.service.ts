@@ -122,9 +122,11 @@ export class BestSellersService {
     // Filtre par catégorie (via le produit de base)
     if (category) {
       where.baseProduct = {
-        categories: {
+        CategoryToProduct: {
           some: {
-            name: category
+            categories: {
+              name: category
+            }
           }
         }
       };
@@ -140,7 +142,7 @@ export class BestSellersService {
           include: {
             baseProduct: {
               include: {
-                categories: true,
+                CategoryToProduct: { include: { categories: true } },
                 colorVariations: {
                   include: {
                     images: {
@@ -237,9 +239,9 @@ export class BestSellersService {
             id: product.baseProduct.id,
             name: product.baseProduct.name,
             genre: product.baseProduct.genre,
-            categories: product.baseProduct.categories.map(cat => ({
-              id: cat.id,
-              name: cat.name
+            categories: product.baseProduct.CategoryToProduct.map(ctp => ({
+              id: ctp.categories.id,
+              name: ctp.categories.name
             })),
             colorVariations: product.baseProduct.colorVariations.map(color => ({
               id: color.id,
@@ -353,7 +355,7 @@ export class BestSellersService {
           include: {
             baseProduct: {
               include: {
-                categories: true,
+                CategoryToProduct: { include: { categories: true } },
                 colorVariations: {
                   include: {
                     images: {
@@ -419,7 +421,7 @@ export class BestSellersService {
             id: product.baseProduct.id,
             name: product.baseProduct.name,
             genre: product.baseProduct.genre,
-            categories: product.baseProduct.categories.map(cat => ({ id: cat.id, name: cat.name })),
+            categories: product.baseProduct.CategoryToProduct.map(ctp => ({ id: ctp.categories.id, name: ctp.categories.name })),
             colorVariations: product.baseProduct.colorVariations.map(color => ({
               id: color.id,
               name: color.name,
@@ -486,7 +488,7 @@ export class BestSellersService {
         include: {
           baseProduct: {
             include: {
-              categories: true
+              category: true
             }
           }
         }
@@ -505,9 +507,9 @@ export class BestSellersService {
     // Compter les catégories uniques
     const uniqueCategories = new Set();
     categoriesResult.forEach(product => {
-      product.baseProduct.categories.forEach(cat => {
-        uniqueCategories.add(cat.name);
-      });
+      if (product.baseProduct?.category) {
+        uniqueCategories.add(product.baseProduct.category.name);
+      }
     });
 
     return {
@@ -588,18 +590,18 @@ export class BestSellersService {
       include: {
         baseProduct: {
           include: {
-            categories: true
+            category: true
           }
         }
       }
     });
 
-    if (!product || !product.baseProduct.categories.length) {
+    if (!product || !product.baseProduct?.category) {
       return 'Général';
     }
 
-    // Retourner la première catégorie
-    return product.baseProduct.categories[0].name;
+    // Retourner la catégorie
+    return product.baseProduct.category.name;
   }
 
   /**

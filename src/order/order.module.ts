@@ -11,6 +11,7 @@ import { PaytechService } from '../paytech/paytech.service';
 import { PaydunyaModule } from '../paydunya/paydunya.module';
 import { ConfigModule } from '@nestjs/config';
 import { CustomizationModule } from '../customization/customization.module';
+import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { CustomizationModule } from '../customization/customization.module';
     RealBestSellersService,
     SalesStatsUpdaterService,
     PaytechService,
+    VendorFundsService,
   ],
   exports: [OrderService, OrderGateway],
 })
