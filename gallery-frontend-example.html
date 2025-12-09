@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Créer une Galerie - Exemple Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .error {
+            color: red;
+            margin-top: 5px;
+        }
+        .success {
+            color: green;
+            margin-top: 5px;
+        }
+        .preview-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .preview-item {
+            position: relative;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .preview-item img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+        .preview-item .index {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: red;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+        .image-count {
+            font-weight: bold;
+            color: #666;
+        }
+        .loading {
+            display: none;
+            color: #666;
+        }
+        .gallery-created {
+            background: #f0f8ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .tips {
+            background: #f9f9f9;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Créer une nouvelle galerie</h1>
+
+    <div class="tips">
+        <strong>Important:</strong> Vous devez sélectionner <strong>exactement 5 images</strong> pour créer une galerie.
+        Formats acceptés: JPG, PNG, GIF, WebP. Taille max: 10MB par image.
+    </div>
+
+    <form id="galleryForm">
+        <div class="form-group">
+            <label for="title">Titre de la galerie *</label>
+            <input
+                type="text"
+                id="title"
+                name="title"
+                required
+                minLength="3"
+                maxLength="100"
+                placeholder="Ma nouvelle galerie"
+            >
+            <div id="titleError" class="error"></div>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea
+                id="description"
+                name="description"
+                rows="3"
+                maxLength="500"
+                placeholder="Description de votre galerie (optionnel)"
+            ></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="images">Sélectionner 5 images *</label>
+            <input
+                type="file"
+                id="images"
+                name="images"
+                multiple
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                required
+            >
+            <div id="imageError" class="error"></div>
+            <div id="imageCount" class="image-count"></div>
+        </div>
+
+        <div id="previewContainer" class="preview-container"></div>
+
+        <div class="form-group">
+            <button type="submit" id="submitBtn">
+                Créer la galerie
+            </button>
+            <span id="loading" class="loading"> Création en cours...</span>
+        </div>
+
+        <div id="formError" class="error"></div>
+        <div id="formSuccess" class="success"></div>
+    </form>
+
+    <div id="galleryResult" class="gallery-created" style="display: none;">
+        <h3>Galerie créée avec succès!</h3>
+        <pre id="resultJson"></pre>
+    </div>
+
+    <script>
+        class GalleryCreator {
+            constructor() {
+                this.form = document.getElementById('galleryForm');
+                this.imagesInput = document.getElementById('images');
+                this.previewContainer = document.getElementById('previewContainer');
+                this.selectedFiles = [];
+                this.init();
+            }
+
+            init() {
+                // Événements
+                this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+                this.imagesInput.addEventListener('change', (e) => this.handleImageSelect(e));
+
+                // Valider le titre en temps réel
+                document.getElementById('title').addEventListener('input', (e) => {
+                    this.validateTitle(e.target.value);
+                });
+            }
+
+            validateTitle(title) {
+                const errorEl = document.getElementById('titleError');
+                if (title.length > 0 && title.length < 3) {
+                    errorEl.textContent = 'Le titre doit contenir au moins 3 caractères';
+                    return false;
+                }
+                errorEl.textContent = '';
+                return true;
+            }
+
+            handleImageSelect(e) {
+                const files = Array.from(e.target.files);
+                const errorEl = document.getElementById('imageError');
+                const countEl = document.getElementById('imageCount');
+
+                // Réinitialiser
+                errorEl.textContent = '';
+                this.selectedFiles = [];
+
+                // Valider le nombre
+                if (files.length !== 5) {
+                    errorEl.textContent = `Vous devez sélectionner exactement 5 images (${files.length}/5 sélectionnées)`;
+                    countEl.textContent = `${files.length}/5 images sélectionnées`;
+                    countEl.style.color = 'red';
+                    this.previewContainer.innerHTML = '';
+                    return;
+                }
+
+                // Valider chaque fichier
+                const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                const maxSize = 10 * 1024 * 1024; // 10MB
+
+                for (const file of files) {
+                    if (!validTypes.includes(file.type)) {
+                        errorEl.textContent = `Le fichier ${file.name} n'est pas une image valide`;
+                        countEl.textContent = '';
+                        this.previewContainer.innerHTML = '';
+                        return;
+                    }
+                    if (file.size > maxSize) {
+                        errorEl.textContent = `Le fichier ${file.name} est trop grand (max 10MB)`;
+                        countEl.textContent = '';
+                        this.previewContainer.innerHTML = '';
+                        return;
+                    }
+                }
+
+                // Tout est valide
+                this.selectedFiles = files;
+                countEl.textContent = '✅ 5/5 images sélectionnées';
+                countEl.style.color = 'green';
+                this.displayPreviews();
+            }
+
+            displayPreviews() {
+                this.previewContainer.innerHTML = '';
+
+                this.selectedFiles.forEach((file, index) => {
+                    const reader = new FileReader();
+
+                    reader.onload = (e) => {
+                        const previewItem = document.createElement('div');
+                        previewItem.className = 'preview-item';
+
+                        previewItem.innerHTML = `
+                            <span class="index">${index + 1}</span>
+                            <img src="${e.target.result}" alt="Preview ${index + 1}">
+                        `;
+
+                        this.previewContainer.appendChild(previewItem);
+                    };
+
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            async handleSubmit(e) {
+                e.preventDefault();
+
+                // Validation
+                const title = document.getElementById('title').value;
+                const description = document.getElementById('description').value;
+
+                if (!this.validateTitle(title)) {
+                    return;
+                }
+
+                if (this.selectedFiles.length !== 5) {
+                    document.getElementById('imageError').textContent = 'Vous devez sélectionner exactement 5 images';
+                    return;
+                }
+
+                // UI
+                document.getElementById('submitBtn').disabled = true;
+                document.getElementById('loading').style.display = 'inline';
+                document.getElementById('formError').textContent = '';
+                document.getElementById('formSuccess').textContent = '';
+
+                try {
+                    // Créer FormData
+                    const formData = new FormData();
+                    formData.append('title', title);
+                    if (description) {
+                        formData.append('description', description);
+                    }
+
+                    // Ajouter les images
+                    this.selectedFiles.forEach((file) => {
+                        formData.append('images', file);
+                    });
+
+                    // Envoyer la requête
+                    const response = await fetch('/vendor/galleries', {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'include' // Important pour les cookies
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Erreur lors de la création');
+                    }
+
+                    // Succès
+                    document.getElementById('formSuccess').textContent = 'Galerie créée avec succès!';
+                    document.getElementById('galleryResult').style.display = 'block';
+                    document.getElementById('resultJson').textContent = JSON.stringify(data, null, 2);
+
+                    // Réinitialiser le formulaire
+                    this.form.reset();
+                    this.selectedFiles = [];
+                    this.previewContainer.innerHTML = '';
+                    document.getElementById('imageCount').textContent = '';
+
+                } catch (error) {
+                    document.getElementById('formError').textContent = error.message;
+                } finally {
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('loading').style.display = 'none';
+                }
+            }
+        }
+
+        // Initialiser
+        document.addEventListener('DOMContentLoaded', () => {
+            new GalleryCreator();
+        });
+    </script>
+</body>
+</html>

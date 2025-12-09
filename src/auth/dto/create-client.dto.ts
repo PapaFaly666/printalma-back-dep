@@ -335,7 +335,7 @@ export class UpdateVendorProfileDto {
   @IsString()
   address?: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     example: 'Boutique Design Jean',
     description: 'Nom de la boutique',
     required: false
@@ -343,6 +343,61 @@ export class UpdateVendorProfileDto {
   @IsOptional()
   @IsString()
   shop_name?: string;
+
+  // 🆕 Champs réseaux sociaux
+  @ApiProperty({
+    example: 'https://facebook.com/maboutique',
+    description: 'URL du profil Facebook',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  facebook_url?: string;
+
+  @ApiProperty({
+    example: 'https://instagram.com/@maboutique',
+    description: 'URL du profil Instagram',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  instagram_url?: string;
+
+  @ApiProperty({
+    example: 'https://twitter.com/maboutique',
+    description: 'URL du profil Twitter/X',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  twitter_url?: string;
+
+  @ApiProperty({
+    example: 'https://tiktok.com/@maboutique',
+    description: 'URL du profil TikTok',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  tiktok_url?: string;
+
+  @ApiProperty({
+    example: 'https://youtube.com/channel/maboutique',
+    description: 'URL de la chaîne YouTube',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  youtube_url?: string;
+
+  @ApiProperty({
+    example: 'https://linkedin.com/in/maboutique',
+    description: 'URL du profil LinkedIn',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  linkedin_url?: string;
 }
 
 // 🆕 DTO pour mise à jour des informations vendeur par l'admin
@@ -449,6 +504,50 @@ export class ExtendedVendorProfileResponseDto {
     required: false
   })
   profile_photo_url?: string;
+
+  // 🆕 Champs réseaux sociaux
+  @ApiProperty({
+    example: 'https://facebook.com/maboutique',
+    description: 'URL du profil Facebook',
+    required: false
+  })
+  facebook_url?: string;
+
+  @ApiProperty({
+    example: 'https://instagram.com/@maboutique',
+    description: 'URL du profil Instagram',
+    required: false
+  })
+  instagram_url?: string;
+
+  @ApiProperty({
+    example: 'https://twitter.com/maboutique',
+    description: 'URL du profil Twitter/X',
+    required: false
+  })
+  twitter_url?: string;
+
+  @ApiProperty({
+    example: 'https://tiktok.com/@maboutique',
+    description: 'URL du profil TikTok',
+    required: false
+  })
+  tiktok_url?: string;
+
+  @ApiProperty({
+    example: 'https://youtube.com/channel/maboutique',
+    description: 'URL de la chaîne YouTube',
+    required: false
+  })
+  youtube_url?: string;
+
+  @ApiProperty({
+    example: 'https://linkedin.com/in/maboutique',
+    description: 'URL du profil LinkedIn',
+    required: false
+  })
+  linkedin_url?: string;
+
   status: boolean;
   must_change_password: boolean;
   last_login_at: Date | null;

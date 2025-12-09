@@ -1761,11 +1761,37 @@ export class VendorPublishService {
         this.prisma.design.findMany({
           where,
           include: {
+            category: {
+              select: {
+                id: true,
+                name: true,
+                slug: true
+              }
+            },
+            vendor: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                shop_name: true,
+                phone: true,
+                profile_photo_url: true,
+                country: true,
+                address: true
+              }
+            },
             vendorProducts: {
               select: {
                 id: true,
                 name: true,
-                status: true
+                status: true,
+                price: true,
+                adminProductPrice: true,
+                basePriceAdmin: true,
+                salesCount: true,
+                totalRevenue: true,
+                isBestSeller: true,
+                stock: true
               }
             }
           },
@@ -1776,36 +1802,90 @@ export class VendorPublishService {
         this.prisma.design.count({ where })
       ]);
 
-      const formattedDesigns = designs.map(design => ({
-        id: design.id,
-        name: design.name,
-        description: design.description,
-        imageUrl: design.imageUrl,
-        thumbnailUrl: design.thumbnailUrl,
-        categoryId: design.categoryId,
-        tags: design.tags,
-        isValidated: design.isValidated,
-        isPending: design.isPending,
-        isDraft: design.isDraft,
-        createdAt: design.createdAt,
-        linkedProducts: design.vendorProducts.length,
-        products: design.vendorProducts.map(p => ({
-          id: p.id,
-          name: p.name,
-          status: p.status
-        }))
-      }));
+      // Calculer les statistiques globales
+      const stats = {
+        total: totalCount,
+        published: designs.filter(d => d.isPublished && !d.isDraft && !d.isPending).length,
+        pending: designs.filter(d => d.isPending).length,
+        draft: designs.filter(d => d.isDraft).length,
+        totalEarnings: designs.reduce((sum, d) => sum + (d.earnings || 0), 0),
+        totalViews: designs.reduce((sum, d) => sum + (d.views || 0), 0),
+        totalLikes: designs.reduce((sum, d) => sum + (d.likes || 0), 0)
+      };
+
+      const formattedDesigns = designs.map(design => {
+        // Traitement des dimensions
+        let dimensions = null;
+        try {
+          dimensions = typeof design.dimensions === 'string'
+            ? JSON.parse(design.dimensions)
+            : design.dimensions;
+        } catch (e) {
+          console.error(`Error parsing dimensions for design ${design.id}:`, e);
+        }
+
+        return {
+          // Informations principales du design (même structure que /api/designs)
+          id: design.id,
+          name: design.name,
+          description: design.description,
+          price: design.price, // Prix du design défini par le vendeur
+          categoryId: design.categoryId,
+          category: design.category,
+          imageUrl: design.imageUrl,
+          thumbnailUrl: design.thumbnailUrl,
+          fileSize: design.fileSize,
+          dimensions: dimensions,
+
+          // Statuts de validation
+          isPublished: design.isPublished,
+          isPending: design.isPending,
+          isDraft: design.isDraft,
+          isValidated: design.isValidated,
+          validationStatus: design.isValidated ? 'VALIDATED' :
+                           design.isPending ? 'PENDING' :
+                           design.isDraft ? 'DRAFT' : 'PENDING',
+          validatedAt: design.validatedAt,
+
+          // Tags et métadonnées
+          tags: design.tags || [],
+
+          // Statistiques
+          usageCount: design.usageCount || 0,
+          earnings: design.earnings || 0,
+          views: design.views || 0,
+          likes: design.likes || 0,
+
+          // Dates
+          createdAt: design.createdAt,
+          updatedAt: design.updatedAt,
+          publishedAt: design.publishedAt,
+
+          // Informations du vendeur
+          vendor: design.vendor,
+
+          // Informations complémentaires pour compatibilité
+          linkedProducts: design.vendorProducts.length,
+          priceInfo: {
+            minPrice: design.vendorProducts.length > 0 ? Math.min(...design.vendorProducts.map(p => p.price).filter(p => p != null)) : 0,
+            maxPrice: design.vendorProducts.length > 0 ? Math.max(...design.vendorProducts.map(p => p.price).filter(p => p != null)) : 0,
+            avgPrice: design.vendorProducts.length > 0 ? Math.round(design.vendorProducts.reduce((sum, p) => sum + (p.price || 0), 0) / design.vendorProducts.length) : 0,
+            currency: 'FCFA'
+          }
+        };
+      });
 
       return {
         success: true,
         data: {
           designs: formattedDesigns,
           pagination: {
-            total: totalCount,
-            limit,
-            offset,
-            hasMore: offset + limit < totalCount
-          }
+            currentPage: Math.floor(offset / limit) + 1,
+            totalPages: Math.ceil(totalCount / limit),
+            totalItems: totalCount,
+            itemsPerPage: limit
+          },
+          stats
         }
       };
 

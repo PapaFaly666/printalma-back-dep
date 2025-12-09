@@ -37,6 +37,7 @@ import { PaymentModule } from './payment/payment.module';
 import { CustomizationModule } from './customization/customization.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { PublicUsersModule } from './public-users/public-users.module';
+import { VendorGalleryModule } from './vendor-gallery/vendor-gallery.module';
 
 @Module({
   imports: [
@@ -74,7 +75,8 @@ import { PublicUsersModule } from './public-users/public-users.module';
     PaymentModule,
     CustomizationModule,
     DeliveryModule,
-    PublicUsersModule
+    PublicUsersModule,
+    VendorGalleryModule,
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

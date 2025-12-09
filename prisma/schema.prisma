@@ -36,6 +36,12 @@ model User {
   phone                   String?
   profile_photo_url       String?
   shop_name               String?                 @unique
+  facebook_url            String?                 @map("facebook_url") @db.VarChar(500)
+  instagram_url           String?                 @map("instagram_url") @db.VarChar(500)
+  twitter_url             String?                 @map("twitter_url") @db.VarChar(500)
+  tiktok_url              String?                 @map("tiktok_url") @db.VarChar(500)
+  youtube_url             String?                 @map("youtube_url") @db.VarChar(500)
+  linkedin_url            String?                 @map("linkedin_url") @db.VarChar(500)
   activation_code         String?
   activation_code_expires DateTime?
   is_deleted              Boolean                 @default(false)
@@ -70,6 +76,7 @@ model User {
   vendorEarnings          VendorEarnings?         @relation("VendorEarnings")
   processedFundsRequests  VendorFundsRequest[]    @relation("ProcessedFundsRequests")
   vendorFundsRequests     VendorFundsRequest[]    @relation("VendorFundsRequests")
+  vendorGalleries         VendorGallery[]         @relation("VendorGalleries")
 
   @@index([country])
   @@index([shop_name])
@@ -306,15 +313,15 @@ model Delimitation {
 }
 
 model Order {
-  id                       Int                       @id @default(autoincrement())
-  orderNumber              String                    @unique
+  id                       Int         @id @default(autoincrement())
+  orderNumber              String      @unique
   userId                   Int
-  status                   OrderStatus               @default(PENDING)
+  status                   OrderStatus @default(PENDING)
   totalAmount              Float
   phoneNumber              String
   notes                    String?
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
   validatedAt              DateTime?
   validatedBy              Int?
   shippingName             String?
@@ -330,42 +337,42 @@ model Order {
   paymentStatus            String?
   transactionId            String?
   shippedAt                DateTime?
-  shippingAmount           Float                     @default(0)
+  shippingAmount           Float       @default(0)
   subtotal                 Float?
-  taxAmount                Float                     @default(0)
-  hasInsufficientFunds     Boolean                   @default(false) @map("has_insufficient_funds")
-  lastPaymentAttemptAt     DateTime?                 @map("last_payment_attempt_at")
-  lastPaymentFailureReason String?                   @map("last_payment_failure_reason")
-  paymentAttempts          Int                       @default(0) @map("payment_attempts")
+  taxAmount                Float       @default(0)
+  hasInsufficientFunds     Boolean     @default(false) @map("has_insufficient_funds")
+  lastPaymentAttemptAt     DateTime?   @map("last_payment_attempt_at")
+  lastPaymentFailureReason String?     @map("last_payment_failure_reason")
+  paymentAttempts          Int         @default(0) @map("payment_attempts")
   email                    String?
-  deliveryType             String?                   @map("delivery_type") @db.VarChar(50)
-  deliveryCityId           String?                   @map("delivery_city_id") @db.VarChar(255)
-  deliveryCityName         String?                   @map("delivery_city_name") @db.VarChar(255)
-  deliveryRegionId         String?                   @map("delivery_region_id") @db.VarChar(255)
-  deliveryRegionName       String?                   @map("delivery_region_name") @db.VarChar(255)
-  deliveryZoneId           String?                   @map("delivery_zone_id") @db.VarChar(255)
-  deliveryZoneName         String?                   @map("delivery_zone_name") @db.VarChar(255)
-  transporteurId           String?                   @map("transporteur_id") @db.VarChar(255)
-  transporteurName         String?                   @map("transporteur_name") @db.VarChar(255)
-  transporteurLogo         String?                   @map("transporteur_logo")
-  transporteurPhone        String?                   @map("transporteur_phone") @db.VarChar(50)
-  deliveryFee              Float?                    @default(0) @map("delivery_fee")
-  deliveryTime             String?                   @map("delivery_time") @db.VarChar(100)
-  zoneTarifId              String?                   @map("zone_tarif_id") @db.VarChar(255)
-  deliveryMetadata         Json?                     @map("delivery_metadata")
+  deliveryType             String?     @map("delivery_type") @db.VarChar(50)
+  deliveryCityId           String?     @map("delivery_city_id") @db.VarChar(255)
+  deliveryCityName         String?     @map("delivery_city_name") @db.VarChar(255)
+  deliveryRegionId         String?     @map("delivery_region_id") @db.VarChar(255)
+  deliveryRegionName       String?     @map("delivery_region_name") @db.VarChar(255)
+  deliveryZoneId           String?     @map("delivery_zone_id") @db.VarChar(255)
+  deliveryZoneName         String?     @map("delivery_zone_name") @db.VarChar(255)
+  transporteurId           String?     @map("transporteur_id") @db.VarChar(255)
+  transporteurName         String?     @map("transporteur_name") @db.VarChar(255)
+  transporteurLogo         String?     @map("transporteur_logo")
+  transporteurPhone        String?     @map("transporteur_phone") @db.VarChar(50)
+  deliveryFee              Float?      @default(0) @map("delivery_fee")
+  deliveryTime             String?     @map("delivery_time") @db.VarChar(100)
+  zoneTarifId              String?     @map("zone_tarif_id") @db.VarChar(255)
+  deliveryMetadata         Json?       @map("delivery_metadata")
 
   // Champs de commission figés au moment de la création
-  commissionRate          Float?                    @map("commission_rate")
-  commissionAmount        Float?                    @map("commission_amount")
-  vendorAmount           Float?                    @map("vendor_amount")
-  commissionAppliedAt     DateTime?                 @map("commission_applied_at")
+  commissionRate      Float?    @map("commission_rate")
+  commissionAmount    Float?    @map("commission_amount")
+  vendorAmount        Float?    @map("vendor_amount")
+  commissionAppliedAt DateTime? @map("commission_applied_at")
 
-  user                     User                      @relation(fields: [userId], references: [id])
-  validator                User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
-  orderItems               OrderItem[]
-  paymentAttemptsHistory   PaymentAttempt[]
-  productCustomizations    ProductCustomization[]
-  fundsRequestLinks        VendorFundsRequestOrder[]
+  user                   User                      @relation(fields: [userId], references: [id])
+  validator              User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
+  orderItems             OrderItem[]
+  paymentAttemptsHistory PaymentAttempt[]
+  productCustomizations  ProductCustomization[]
+  fundsRequestLinks      VendorFundsRequestOrder[]
 
   @@index([userId])
   @@index([status])
@@ -725,15 +732,15 @@ model VendorCommission {
 
 /// Logs d'audit pour traçabilité des changements de commission
 model CommissionAuditLog {
-  id            Int              @id @default(autoincrement()) @map("id")
-  vendorId      Int              @map("vendor_id")
-  oldRate       Float?           @map("old_rate")
-  newRate       Float            @map("new_rate")
-  changedBy     Int              @map("changed_by")
-  changedAt     DateTime         @default(now()) @map("changed_at")
-  ipAddress     String?          @map("ip_address")
-  userAgent     String?          @map("user_agent")
-  changedByUser User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
+  id               Int              @id @default(autoincrement()) @map("id")
+  vendorId         Int              @map("vendor_id")
+  oldRate          Float?           @map("old_rate")
+  newRate          Float            @map("new_rate")
+  changedBy        Int              @map("changed_by")
+  changedAt        DateTime         @default(now()) @map("changed_at")
+  ipAddress        String?          @map("ip_address")
+  userAgent        String?          @map("user_agent")
+  changedByUser    User             @relation("CommissionAuditChanger", fields: [changedBy], references: [id], onDelete: Cascade, map: "audit_log_changer_fkey")
   vendorCommission VendorCommission @relation("CommissionAuditVendorUser", fields: [vendorId], references: [vendorId], onDelete: Cascade, map: "audit_log_vendor_commission_fkey")
   vendorUser       User             @relation("CommissionAuditVendorUser", fields: [vendorId], references: [id], onDelete: Cascade, map: "audit_log_vendor_user_fkey")
 
@@ -1108,6 +1115,57 @@ model CategoryToProduct {
   @@id([A, B], map: "_CategoryToProduct_AB_pkey")
   @@index([B], map: "_CategoryToProduct_B_index")
   @@map("_CategoryToProduct")
+}
+
+/// Galeries de vendeurs - Système de présentation de portfolios
+/// Chaque vendeur peut avoir au maximum une galerie active
+model VendorGallery {
+  id          Int            @id @default(autoincrement())
+  vendorId    Int            @unique @map("vendor_id")
+  title       String         @db.VarChar(100)
+  description String?        @db.VarChar(500)
+  status      GalleryStatus  @default(DRAFT)
+  isPublished Boolean        @default(false) @map("is_published")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+  vendor      User           @relation("VendorGalleries", fields: [vendorId], references: [id], onDelete: Cascade)
+  images      GalleryImage[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([isPublished])
+  @@index([vendorId, deletedAt], map: "idx_vendor_gallery_lookup")
+  @@index([isPublished, status, deletedAt], map: "idx_public_galleries")
+  @@map("vendor_galleries")
+}
+
+/// Images des galeries - Exactement 5 images par galerie
+model GalleryImage {
+  id            Int           @id @default(autoincrement())
+  galleryId     Int           @map("gallery_id")
+  imageUrl      String        @map("image_url") @db.VarChar(500)
+  imagePath     String        @map("image_path") @db.VarChar(500)
+  publicId      String        @map("public_id") @db.VarChar(255)
+  caption       String?       @db.VarChar(200)
+  orderPosition Int           @map("order_position")
+  fileSize      Int           @map("file_size")
+  mimeType      String        @map("mime_type") @db.VarChar(50)
+  width         Int?
+  height        Int?
+  createdAt     DateTime      @default(now()) @map("created_at")
+  gallery       VendorGallery @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+
+  @@unique([galleryId, orderPosition], name: "unique_gallery_order")
+  @@index([galleryId])
+  @@index([galleryId, orderPosition])
+  @@map("gallery_images")
+}
+
+enum GalleryStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 enum PublicationStatus {

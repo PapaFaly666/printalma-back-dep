@@ -26,7 +26,7 @@ export class VendorFundsService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Calculer les gains d'un vendeur basés sur les commandes après débit de commission
+   * Calculer les gains d'un vendeur basés sur les commandes confirmées et payées
    */
   async calculateVendorEarnings(vendorId: number): Promise<VendorEarningsData> {
     const now = new Date();
@@ -34,24 +34,15 @@ export class VendorFundsService {
     const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    // Récupérer le taux de commission actuel du vendeur (priorité au taux personnalisé)
-    const vendorCommission = await this.prisma.vendorCommission.findUnique({
-      where: { vendorId: vendorId }
-    });
+    console.log(`[VENDOR ${vendorId}] Début du calcul des gains`);
 
-    const commissionRate = vendorCommission?.commissionRate || 0.10; // Taux par défaut si non spécifié
-
-    console.log(`[VENDOR ${vendorId}] Taux de commission utilisé: ${commissionRate}`);
-
-    // Calculer les gains depuis les commandes confirmées et livrées (commission déjà débitée)
-    // On considère CONFIRMED et DELIVERED car ces statuts indiquent que la commission a été appliquée
+    // Calculer les gains depuis les commandes confirmées ET payées uniquement
+    // Ces commandes ont déjà la commission appliquée et le paiement validé
     const validOrders = await this.prisma.order.findMany({
       where: {
-        status: {
-          in: ['CONFIRMED', 'DELIVERED']
-        },
-        // Ne considérer que les commandes où la commission a été effectivement débitée
-        // Cela signifie que la commande est complètement finalisée ou confirmée
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        // Filtrer les commandes contenant des produits du vendeur
         orderItems: {
           some: {
             product: {
@@ -79,40 +70,46 @@ export class VendorFundsService {
       },
     });
 
-    // Calculer les gains nets après commission
-    let totalEarnings = 0; // Gains nets pour le vendeur (après commission)
-    let totalCommissionAmount = 0; // Commission totale prélevée par l'admin
+    console.log(`[VENDOR ${vendorId}] Nombre de commandes valides trouvées: ${validOrders.length}`);
+
+    // Calculer les gains en utilisant les valeurs déjà calculées dans les commandes
+    let totalEarnings = 0; // Gains nets pour le vendeur (après commission) = somme des vendorAmount
+    let totalCommissionAmount = 0; // Commission totale prélevée par l'admin = somme des commissionAmount
     let thisMonthEarnings = 0;
     let lastMonthEarnings = 0;
+    let totalSalesAmount = 0; // Montant total des ventes avant commission
 
     for (const order of validOrders) {
       for (const item of order.orderItems) {
         if (item.product.vendorProducts.length > 0) {
-          // Si la commission est déjà calculée dans la commande, utiliser ces valeurs
-          // Sinon, la calculer avec le taux par défaut
+          const orderItemTotal = item.unitPrice * item.quantity;
+
+          // Utiliser directement les valeurs pré-calculées dans la commande
           let netEarnings: number;
           let commissionAmount: number;
-          let orderItemTotal: number;
 
-          if (order.commissionAmount && order.vendorAmount) {
-            // Utiliser les valeurs déjà calculées dans la commande
-            orderItemTotal = item.unitPrice * item.quantity;
-            commissionAmount = order.commissionAmount;
-            netEarnings = order.vendorAmount;
+          if (order.vendorAmount && order.commissionAmount) {
+            // Les valeurs sont déjà calculées au niveau de la commande
+            // Répartir proportionnellement par item si plusieurs items
+            const orderTotal = order.orderItems.reduce((sum, oi) => sum + (oi.unitPrice * oi.quantity), 0);
+            const proportion = orderItemTotal / orderTotal;
+
+            netEarnings = order.vendorAmount * proportion;
+            commissionAmount = order.commissionAmount * proportion;
           } else if (order.commissionRate) {
-            // Utiliser le taux de commission de la commande
-            orderItemTotal = item.unitPrice * item.quantity;
+            // Calculer avec le taux de commission de la commande
             commissionAmount = orderItemTotal * order.commissionRate;
             netEarnings = orderItemTotal - commissionAmount;
           } else {
-            // Calcul par défaut
-            orderItemTotal = item.unitPrice * item.quantity;
-            commissionAmount = orderItemTotal * commissionRate;
+            // Calcul par défaut avec taux standard
+            const defaultCommissionRate = 0.10;
+            commissionAmount = orderItemTotal * defaultCommissionRate;
             netEarnings = orderItemTotal - commissionAmount;
           }
 
           totalEarnings += netEarnings;
           totalCommissionAmount += commissionAmount;
+          totalSalesAmount += orderItemTotal;
 
           // Gains de ce mois
           if (order.createdAt >= firstDayThisMonth) {
@@ -124,12 +121,14 @@ export class VendorFundsService {
             lastMonthEarnings += netEarnings;
           }
 
-          console.log(`[VENDOR ${vendorId}] Commande ${order.id}:`, {
+          console.log(`[VENDOR ${vendorId}] Commande ${order.orderNumber} (ID: ${order.id}):`, {
             orderItemTotal,
             commissionAmount,
             netEarnings,
             orderStatus: order.status,
-            commissionRate: order.commissionRate || commissionRate
+            paymentStatus: order.paymentStatus,
+            commissionRate: order.commissionRate || 'non spécifié',
+            vendorAmount: order.vendorAmount || 'non spécifié'
           });
         }
       }
@@ -152,8 +151,11 @@ export class VendorFundsService {
 
     const pendingAmount = pendingRequests.reduce((sum, req) => sum + req.amount, 0);
     const paidAmount = paidRequests.reduce((sum, req) => sum + req.amount, 0);
-    // 💰 Montant disponible pour le vendeur = Total gagné - Commission admin - Déjà retiré - En attente
-    const availableAmount = Math.max(0, totalEarnings - totalCommissionAmount - pendingAmount - paidAmount);
+
+    // 💰 Montant disponible pour le vendeur = Gains nets (commission déjà déduite) - Déjà retiré - En attente
+    const availableAmount = Math.max(0, totalEarnings - pendingAmount - paidAmount);
+
+    const averageCommissionRate = totalSalesAmount > 0 ? totalCommissionAmount / totalSalesAmount : 0;
 
     // Mettre à jour le cache des gains (sans availableAmount qui se calcule dynamiquement)
     await this.prisma.vendorEarnings.upsert({
@@ -163,6 +165,7 @@ export class VendorFundsService {
         thisMonthEarnings,
         lastMonthEarnings,
         totalCommissionPaid: totalCommissionAmount, // Utiliser le montant réel de commission calculée
+        averageCommissionRate: averageCommissionRate,
         lastCalculatedAt: new Date(),
       },
       create: {
@@ -173,15 +176,18 @@ export class VendorFundsService {
         thisMonthEarnings,
         lastMonthEarnings,
         totalCommissionPaid: totalCommissionAmount, // Commission admin réelle
-        averageCommissionRate: 0.10,
+        averageCommissionRate: averageCommissionRate,
       },
     });
 
     console.log(`[VENDOR ${vendorId}] Calcul complet des gains:`, {
+      totalSalesAmount,
       totalEarnings,
+      totalCommissionAmount,
       paidAmount,
       pendingAmount,
-      availableAmount
+      availableAmount,
+      averageCommissionRate: `${(averageCommissionRate * 100).toFixed(2)}%`
     });
 
     return {
@@ -190,9 +196,9 @@ export class VendorFundsService {
       availableAmount,
       thisMonthEarnings,
       lastMonthEarnings,
-      commissionPaid: totalEarnings * 0.10,
-      totalCommission: totalEarnings * 0.10,
-      averageCommissionRate: 0.10,
+      commissionPaid: totalCommissionAmount, // Commission réelle déduite
+      totalCommission: totalCommissionAmount, // Commission totale prélevée
+      averageCommissionRate: averageCommissionRate,
     };
   }
 
@@ -221,9 +227,7 @@ export class VendorFundsService {
       .filter(req => req.status === 'APPROVED')
       .reduce((sum, req) => sum + req.amount, 0);
 
-    // CORRECTION : Si realTimeEarnings.totalEarnings contient déjà les gains nets (après déduction commission),
-    // alors on ne doit PLUS déduire la commission dans le calcul final
-    // totalEarnings = GAINS NETS (commission déjà déduite)
+    // totalEarnings contient déjà les gains nets (commission déjà déduite)
     const availableAmount = Math.max(0, realTimeEarnings.totalEarnings - paidAmount - pendingAmount - approvedAmount);
 
     console.log(`[VENDOR ${vendorId}] Calcul des gains en temps réel:`, {
@@ -240,8 +244,8 @@ export class VendorFundsService {
       pendingAmount: pendingAmount + approvedAmount, // Comprend les montants en attente et approuvés
       thisMonthEarnings: realTimeEarnings.thisMonthEarnings,
       lastMonthEarnings: realTimeEarnings.lastMonthEarnings,
-      commissionPaid: 0, // Commission déjà déduite des gains nets
-      totalCommission: 0, // Commission déjà déduite des gains nets
+      commissionPaid: realTimeEarnings.commissionPaid, // Commission réelle déduite
+      totalCommission: realTimeEarnings.totalCommission, // Commission totale prélevée
       averageCommissionRate: realTimeEarnings.averageCommissionRate,
     };
   }

@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { LoginDto } from './dto/user-dto';
 import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ListClientsResponseDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
+import { SocialMediaValidator } from '../vendor/validators/social-media.validator';
 import { PrismaService } from '../prisma.service';
 import { MailService } from '../core/mail/mail.service';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
@@ -1321,9 +1322,31 @@ export class AuthService {
                 profilePhotoUrl = uploadResult.secure_url;
             }
 
+            // Valider les URLs des réseaux sociaux
+            const socialMediaFields = {
+                facebook_url: updateDto.facebook_url,
+                instagram_url: updateDto.instagram_url,
+                twitter_url: updateDto.twitter_url,
+                tiktok_url: updateDto.tiktok_url,
+                youtube_url: updateDto.youtube_url,
+                linkedin_url: updateDto.linkedin_url,
+            };
+
+            if (Object.values(socialMediaFields).some(url => url && url.trim() !== '')) {
+                try {
+                    SocialMediaValidator.validateAll(socialMediaFields);
+                } catch (error) {
+                    throw new BadRequestException(`Erreur de validation des réseaux sociaux: ${error.message}`);
+                }
+            }
+
+            // Formater les URLs des réseaux sociaux
+            const formattedSocialMedia = SocialMediaValidator.formatSocialMediaUrls(socialMediaFields);
+
             // Préparer les données de mise à jour
             const updateData: any = {
                 ...updateDto,
+                ...formattedSocialMedia,
                 updated_at: new Date()
             };
 
