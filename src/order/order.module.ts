@@ -11,7 +11,7 @@ import { PaytechService } from '../paytech/paytech.service';
 import { PaydunyaModule } from '../paydunya/paydunya.module';
 import { ConfigModule } from '@nestjs/config';
 import { CustomizationModule } from '../customization/customization.module';
-import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
+import { VendorFundsModule } from '../vendor-funds/vendor-funds.module';
 
 @Module({
   imports: [
@@ -22,6 +22,7 @@ import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
     ConfigModule,
     forwardRef(() => PaydunyaModule),
     CustomizationModule, // 🎨 Module de personnalisation
+    VendorFundsModule, // Module de gestion des fonds vendeur
   ],
   controllers: [OrderController],
   providers: [
@@ -32,7 +33,6 @@ import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
     RealBestSellersService,
     SalesStatsUpdaterService,
     PaytechService,
-    VendorFundsService,
   ],
   exports: [OrderService, OrderGateway],
 })

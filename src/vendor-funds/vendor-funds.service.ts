@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { CommissionService } from '../commission/commission.service';
 import { FundsRequestStatus, PaymentMethodType } from '@prisma/client';
 import {
   VendorFundsRequestFiltersDto,
@@ -23,7 +24,10 @@ import {
 export class VendorFundsService {
   private readonly logger = new Logger(VendorFundsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private commissionService: CommissionService,
+  ) {}
 
   /**
    * Calculer les gains d'un vendeur basés sur les commandes confirmées et payées
@@ -34,7 +38,11 @@ export class VendorFundsService {
     const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    console.log(`[VENDOR ${vendorId}] Début du calcul des gains`);
+    // Récupérer le taux de commission personnalisé du vendeur
+    const vendorCommission = await this.commissionService.getCommissionByVendorId(vendorId);
+    const vendorCommissionRate = vendorCommission ? vendorCommission.commissionRate / 100 : 0.4; // Convertir en décimal
+
+    console.log(`[VENDOR ${vendorId}] Début du calcul des gains - Taux commission: ${(vendorCommissionRate * 100).toFixed(2)}%`);
 
     // Calculer les gains depuis les commandes confirmées ET payées uniquement
     // Ces commandes ont déjà la commission appliquée et le paiement validé
@@ -83,52 +91,46 @@ export class VendorFundsService {
       for (const item of order.orderItems) {
         if (item.product.vendorProducts.length > 0) {
           const orderItemTotal = item.unitPrice * item.quantity;
+          const vendorProduct = item.product.vendorProducts[0];
 
-          // Utiliser directement les valeurs pré-calculées dans la commande
-          let netEarnings: number;
-          let commissionAmount: number;
+          // Calculer le bénéfice du vendeur: Prix de vente - Prix de reviens (product.price)
+          const productCost = item.product.price || 0; // Prix de reviens du produit
+          const totalBaseCost = productCost * item.quantity;
 
-          if (order.vendorAmount && order.commissionAmount) {
-            // Les valeurs sont déjà calculées au niveau de la commande
-            // Répartir proportionnellement par item si plusieurs items
-            const orderTotal = order.orderItems.reduce((sum, oi) => sum + (oi.unitPrice * oi.quantity), 0);
-            const proportion = orderItemTotal / orderTotal;
+          // Le bénéfice réel du vendeur = prix de vente - prix de reviens
+          const vendorProfit = orderItemTotal - totalBaseCost;
 
-            netEarnings = order.vendorAmount * proportion;
-            commissionAmount = order.commissionAmount * proportion;
-          } else if (order.commissionRate) {
-            // Calculer avec le taux de commission de la commande
-            commissionAmount = orderItemTotal * order.commissionRate;
-            netEarnings = orderItemTotal - commissionAmount;
-          } else {
-            // Calcul par défaut avec taux standard
-            const defaultCommissionRate = 0.10;
-            commissionAmount = orderItemTotal * defaultCommissionRate;
-            netEarnings = orderItemTotal - commissionAmount;
-          }
+          // Calculer la commission basée sur le bénéfice et le taux de commission
+          const commissionRate = (order.commissionRate || vendorCommissionRate * 100) / 100; // Convertir en décimal
+          const commissionAmount = vendorProfit * commissionRate;
 
-          totalEarnings += netEarnings;
-          totalCommissionAmount += commissionAmount;
+          // Gains nets du vendeur = Bénéfice - Commission admin
+          const vendorNetEarnings = vendorProfit - commissionAmount;
+
+          totalEarnings += vendorNetEarnings; // Gains nets après déduction de la commission
+          totalCommissionAmount += commissionAmount; // Commission prélevée par l'admin
           totalSalesAmount += orderItemTotal;
 
           // Gains de ce mois
           if (order.createdAt >= firstDayThisMonth) {
-            thisMonthEarnings += netEarnings;
+            thisMonthEarnings += vendorNetEarnings;
           }
 
           // Gains du mois dernier
           if (order.createdAt >= firstDayLastMonth && order.createdAt <= lastDayLastMonth) {
-            lastMonthEarnings += netEarnings;
+            lastMonthEarnings += vendorNetEarnings;
           }
 
           console.log(`[VENDOR ${vendorId}] Commande ${order.orderNumber} (ID: ${order.id}):`, {
             orderItemTotal,
+            totalBaseCost,
+            vendorProfit,
             commissionAmount,
-            netEarnings,
+            vendorNetEarnings,
             orderStatus: order.status,
             paymentStatus: order.paymentStatus,
-            commissionRate: order.commissionRate || 'non spécifié',
-            vendorAmount: order.vendorAmount || 'non spécifié'
+            commissionRate: commissionRate,
+            productCost
           });
         }
       }
@@ -155,7 +157,8 @@ export class VendorFundsService {
     // 💰 Montant disponible pour le vendeur = Gains nets (commission déjà déduite) - Déjà retiré - En attente
     const availableAmount = Math.max(0, totalEarnings - pendingAmount - paidAmount);
 
-    const averageCommissionRate = totalSalesAmount > 0 ? totalCommissionAmount / totalSalesAmount : 0;
+    // Utiliser le taux de commission personnalisé du vendeur au lieu de calculer une moyenne
+    const averageCommissionRate = vendorCommissionRate;
 
     // Mettre à jour le cache des gains (sans availableAmount qui se calcule dynamiquement)
     await this.prisma.vendorEarnings.upsert({

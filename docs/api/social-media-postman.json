@@ -1,0 +1,249 @@
+{
+	"info": {
+		"_postman_id": "social-media-vendor-api",
+		"name": "API Réseaux Sociaux Vendeur",
+		"description": "Collection pour tester les endpoints de gestion des réseaux sociaux vendeur",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Récupérer les réseaux sociaux",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media"]
+				},
+				"description": "Récupère les URLs des réseaux sociaux actuels du vendeur connecté"
+			},
+			"response": []
+		},
+		{
+			"name": "Mettre à jour les réseaux sociaux",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"facebook_url\": \"https://facebook.com/maboutique\",\n\t\"instagram_url\": \"https://instagram.com/@maboutique\",\n\t\"twitter_url\": \"https://twitter.com/maboutique\",\n\t\"tiktok_url\": \"https://tiktok.com/@maboutique\",\n\t\"youtube_url\": \"https://youtube.com/channel/maboutique\",\n\t\"linkedin_url\": \"https://linkedin.com/in/maboutique\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media"]
+				},
+				"description": "Met à jour les URLs des réseaux sociaux du vendeur. Tous les champs sont optionnels."
+			},
+			"response": []
+		},
+		{
+			"name": "Supprimer tous les réseaux sociaux",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media"]
+				},
+				"description": "Supprime toutes les URLs des réseaux sociaux du vendeur"
+			},
+			"response": []
+		},
+		{
+			"name": "Valider une URL Facebook",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"platform\": \"facebook\",\n\t\"url\": \"https://facebook.com/maboutique\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media/validate",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media", "validate"]
+				},
+				"description": "Valide si l'URL est correcte pour la plateforme Facebook"
+			},
+			"response": []
+		},
+		{
+			"name": "Valider une URL Instagram",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"platform\": \"instagram\",\n\t\"url\": \"https://instagram.com/@maboutique\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media/validate",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media", "validate"]
+				},
+				"description": "Valide si l'URL est correcte pour la plateforme Instagram"
+			},
+			"response": []
+		},
+		{
+			"name": "Valider une URL Twitter",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"platform\": \"twitter\",\n\t\"url\": \"https://twitter.com/maboutique\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media/validate",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media", "validate"]
+				},
+				"description": "Valide si l'URL est correcte pour la plateforme Twitter/X"
+			},
+			"response": []
+		},
+		{
+			"name": "Valider une URL TikTok",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"platform\": \"tiktok\",\n\t\"url\": \"https://tiktok.com/@maboutique\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media/validate",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media", "validate"]
+				},
+				"description": "Valide si l'URL est correcte pour la plateforme TikTok"
+			},
+			"response": []
+		},
+		{
+			"name": "Valider une URL YouTube",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"platform\": \"youtube\",\n\t\"url\": \"https://youtube.com/channel/UC1234567890\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media/validate",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media", "validate"]
+				},
+				"description": "Valide si l'URL est correcte pour la plateforme YouTube"
+			},
+			"response": []
+		},
+		{
+			"name": "Valider une URL LinkedIn",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"platform\": \"linkedin\",\n\t\"url\": \"https://linkedin.com/in/maboutique\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media/validate",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media", "validate"]
+				},
+				"description": "Valide si l'URL est correcte pour la plateforme LinkedIn"
+			},
+			"response": []
+		},
+		{
+			"name": "Exemple d'URL invalide",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"platform\": \"facebook\",\n\t\"url\": \"https://twitter.com/invalid\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/vendor/social-media/validate",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "vendor", "social-media", "validate"]
+				},
+				"description": "Exemple de validation d'URL invalide (URL Twitter pour plateforme Facebook)"
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3004",
+			"description": "URL de base de l'API"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}

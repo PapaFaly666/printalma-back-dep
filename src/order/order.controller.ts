@@ -418,9 +418,16 @@ export class OrderController {
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
     orders.forEach(order => {
-      // Total amount (uniquement pour les commandes payées)
-      if (order.paymentStatus === 'PAID') {
-        stats.totalAmount += order.totalAmount || 0;
+      // Calculer le bénéfice du vendeur (montant total payé - prix de reviens) pour chaque article payé
+      if (order.paymentStatus === 'PAID' && order.orderItems) {
+        let vendorProfit = 0;
+        order.orderItems.forEach((item: any) => {
+          const sellingPrice = item.unitPrice || 0; // Prix de vente réel payé par le client
+          const productCost = item.product?.price || 0; // Prix de reviens du produit
+          const itemProfit = (sellingPrice - productCost) * item.quantity;
+          vendorProfit += itemProfit;
+        });
+        stats.totalAmount += vendorProfit;
       }
 
       // Status breakdown
@@ -466,22 +473,38 @@ export class OrderController {
 
       // Revenue and commission (for paid orders)
       if (paymentStatus === 'PAID') {
-        stats.totalRevenue += order.totalAmount || 0;
-        stats.totalCommission += order.commissionAmount || 0;
-        stats.totalVendorAmount += order.vendorAmount || 0;
+        // Calculer le bénéfice du vendeur (montant total payé - prix de reviens) pour le revenu
+        let vendorProfit = 0;
+        if (order.orderItems) {
+          order.orderItems.forEach((item: any) => {
+            const sellingPrice = item.unitPrice || 0; // Prix de vente réel payé par le client
+            const productCost = item.product?.price || 0; // Prix de reviens du produit
+            const itemProfit = (sellingPrice - productCost) * item.quantity;
+            vendorProfit += itemProfit;
+          });
+        }
+
+        // Calculer la commission basée sur le bénéfice et le taux de commission
+        const commissionRate = (order.commissionRate || 0) / 100; // Convertir en décimal
+        const calculatedCommission = vendorProfit * commissionRate;
+        const vendorNetGain = vendorProfit - calculatedCommission;
+
+        stats.totalRevenue += vendorProfit;
+        stats.totalCommission += calculatedCommission;
+        stats.totalVendorAmount += vendorNetGain; // Gain net du vendeur après commission
 
         // Annual and monthly revenue calculation
         const orderDate = new Date(order.createdAt);
         const orderYear = orderDate.getFullYear();
         const orderMonth = orderDate.getMonth();
 
-        // Chiffre d'affaires annuel (commandes payées de l'année en cours)
+        // Chiffre d'affaires annuel (bénéfice du vendeur des commandes payées de l'année en cours)
         if (orderYear === currentYear) {
-          stats.annualRevenue += order.totalAmount || 0;
+          stats.annualRevenue += vendorProfit;
 
-          // Chiffre d'affaires mensuel (commandes payées du mois en cours)
+          // Chiffre d'affaires mensuel (bénéfice du vendeur des commandes payées du mois en cours)
           if (orderMonth === currentMonth) {
-            stats.monthlyRevenue += order.totalAmount || 0;
+            stats.monthlyRevenue += vendorProfit;
           }
         }
       }

@@ -1,0 +1,299 @@
+openapi: 3.0.3
+info:
+  title: API Réseaux Sociaux Vendeur
+  description: API pour la gestion des réseaux sociaux des vendeurs
+  version: 1.0.0
+  contact:
+    name: Printalma Backend Team
+    email: support@printalma.com
+
+servers:
+  - url: http://localhost:3004
+    description: Serveur de développement
+
+paths:
+  /auth/vendor/social-media:
+    get:
+      tags:
+        - Social Media Vendor
+      summary: Récupérer les réseaux sociaux du vendeur
+      description: Récupère toutes les URLs des réseaux sociaux configurées pour le vendeur connecté
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Succès - réseaux sociaux récupérés
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialMediaResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Social Media Vendor
+      summary: Mettre à jour les réseaux sociaux
+      description: Met à jour les URLs des réseaux sociaux du vendeur. Seuls les champs fournis sont mis à jour
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSocialMediaDto'
+      responses:
+        '200':
+          description: Succès - réseaux sociaux mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialMediaResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Social Media Vendor
+      summary: Supprimer tous les réseaux sociaux
+      description: Supprime toutes les URLs des réseaux sociaux du vendeur
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Succès - réseaux sociaux supprimés
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialMediaResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /auth/vendor/social-media/validate:
+    post:
+      tags:
+        - Social Media Vendor
+      summary: Valider une URL de réseau social
+      description: Valide si une URL est correcte pour la plateforme spécifiée
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateSocialMediaDto'
+      responses:
+        '200':
+          description: Succès - résultat de la validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialMediaValidationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: Token JWT d'authentification
+
+  schemas:
+    SocialMediaResponse:
+      type: object
+      properties:
+        facebook_url:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://facebook.com/maboutique"
+          description: URL du profil Facebook
+        instagram_url:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://instagram.com/@maboutique"
+          description: URL du profil Instagram
+        twitter_url:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://twitter.com/maboutique"
+          description: URL du profil Twitter/X
+        tiktok_url:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://tiktok.com/@maboutique"
+          description: URL du profil TikTok
+        youtube_url:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://youtube.com/channel/maboutique"
+          description: URL de la chaîne YouTube
+        linkedin_url:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://linkedin.com/in/maboutique"
+          description: URL du profil LinkedIn
+
+    UpdateSocialMediaDto:
+      type: object
+      properties:
+        facebook_url:
+          type: string
+          nullable: true
+          format: uri
+          pattern: '^https?:\/\/(www\.)?(facebook\.com|fb\.me)\/.*'
+          example: "https://facebook.com/maboutique"
+          description: URL du profil Facebook
+        instagram_url:
+          type: string
+          nullable: true
+          format: uri
+          pattern: '^https?:\/\/(www\.)?(instagram\.com|instagr\.am)\/@.*'
+          example: "https://instagram.com/@maboutique"
+          description: URL du profil Instagram
+        twitter_url:
+          type: string
+          nullable: true
+          format: uri
+          pattern: '^https?:\/\/(www\.)?(twitter\.com|x\.com)\/.*'
+          example: "https://twitter.com/maboutique"
+          description: URL du profil Twitter/X
+        tiktok_url:
+          type: string
+          nullable: true
+          format: uri
+          pattern: '^https?:\/\/(www\.)?tiktok\.com\/@.*'
+          example: "https://tiktok.com/@maboutique"
+          description: URL du profil TikTok
+        youtube_url:
+          type: string
+          nullable: true
+          format: uri
+          pattern: '^https?:\/\/(www\.)?youtube\.com\/(channel|c|user)\/.*'
+          example: "https://youtube.com/channel/maboutique"
+          description: URL de la chaîne YouTube
+        linkedin_url:
+          type: string
+          nullable: true
+          format: uri
+          pattern: '^https?:\/\/(www\.)?linkedin\.com\/(in|company)\/.*'
+          example: "https://linkedin.com/in/maboutique"
+          description: URL du profil LinkedIn
+
+    ValidateSocialMediaDto:
+      type: object
+      required:
+        - platform
+        - url
+      properties:
+        platform:
+          type: string
+          enum: [facebook, instagram, twitter, tiktok, youtube, linkedin]
+          example: "facebook"
+          description: Plateforme de réseau social
+        url:
+          type: string
+          format: uri
+          example: "https://facebook.com/maboutique"
+          description: URL à valider
+
+    SocialMediaValidationResponse:
+      type: object
+      properties:
+        isValid:
+          type: boolean
+          example: true
+          description: Indique si l'URL est valide
+        message:
+          type: string
+          example: "URL facebook valide"
+          description: Message de validation
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Message d'erreur
+        error:
+          type: string
+          description: Type d'erreur
+        statusCode:
+          type: integer
+          description: Code HTTP de l'erreur
+
+  responses:
+    UnauthorizedError:
+      description: Non authentifié
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            message: "Unauthorized"
+            error: "Unauthorized"
+            statusCode: 401
+
+    ForbiddenError:
+      description: Accès interdit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            message: "Access denied"
+            error: "Forbidden"
+            statusCode: 403
+
+    NotFoundError:
+      description: Ressource non trouvée
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            message: "Vendor not found"
+            error: "Not Found"
+            statusCode: 404
+
+    ValidationError:
+      description: Erreur de validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            message: "URL Facebook invalide"
+            error: "Bad Request"
+            statusCode: 400
+
+tags:
+  - name: Social Media Vendor
+    description: Gestion des réseaux sociaux des vendeurs

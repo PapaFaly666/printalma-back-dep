@@ -135,6 +135,18 @@ export class VendorOrdersService {
                   id: true,
                   name: true,
                   colorCode: true,
+                  images: {
+                    select: {
+                      id: true,
+                      url: true,
+                    },
+                  },
+                },
+              },
+              customization: true,
+              vendorProduct: {
+                include: {
+                  vendor: true,
                 },
               },
             },
@@ -182,31 +194,24 @@ export class VendorOrdersService {
         },
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            role: true,
-            photo_profil: true,
-          },
-        },
+        user: true,
+        validator: true,
         orderItems: {
           include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                description: true,
-                price: true,
+            product: true,
+            colorVariation: {
+              include: {
+                images: {
+                  include: {
+                    delimitations: true,
+                  },
+                },
               },
             },
-            colorVariation: {
-              select: {
-                id: true,
-                name: true,
-                colorCode: true,
+            customization: true,
+            vendorProduct: {
+              include: {
+                vendor: true,
               },
             },
           },
@@ -441,59 +446,272 @@ export class VendorOrdersService {
 
 
   /**
-   * Formatter une commande selon la structure attendue
+   * Formatter une commande selon la structure attendue (identique à formatOrderResponse)
    */
   private formatOrder(order: any): VendorOrder {
-    return {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      userId: order.userId,
-      user: {
-        id: order.user.id,
-        firstName: order.user.firstName,
-        lastName: order.user.lastName,
-        email: order.user.email,
-        role: order.user.role,
-        photo_profil: order.user.photo_profil,
-      },
-      status: order.status,
-      totalAmount: order.totalAmount,
-      subtotal: order.totalAmount, // TODO: Calculer le sous-total réel
-      taxAmount: 0, // TODO: Calculer la taxe si applicable
-      shippingAmount: 3500, // TODO: Calculer les frais de livraison réels
-      paymentMethod: 'MOBILE_MONEY', // TODO: Ajouter au schéma si nécessaire
-      shippingAddress: this.formatShippingAddress(order),
-      phoneNumber: order.phoneNumber,
-      notes: order.notes,
-      createdAt: order.createdAt.toISOString(),
-      updatedAt: order.updatedAt.toISOString(),
-      confirmedAt: order.confirmedAt?.toISOString() || null,
-      shippedAt: order.shippedAt?.toISOString() || null,
-      deliveredAt: order.deliveredAt?.toISOString() || null,
-      orderItems: order.orderItems.map((item: any) => ({
-        id: item.id,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: item.quantity * item.unitPrice,
-        size: item.size,
-        color: item.colorVariation?.name || item.color,
-        colorId: item.colorId,
-        productId: item.productId,
-        productName: item.product.name,
-        productImage: 'https://cloudinary.com/placeholder.jpg', // TODO: Récupérer l'image réelle
-        product: {
-          id: item.product.id,
-          name: item.product.name,
-          description: item.product.description,
-          price: item.product.price,
-          designName: 'Design Placeholder', // TODO: Récupérer le nom du design réel
-          designDescription: 'Description du design', // TODO: Récupérer la description réelle
-          designImageUrl: 'https://cloudinary.com/design-placeholder.jpg', // TODO: Récupérer l'image du design
-          categoryId: 1, // TODO: Récupérer la catégorie réelle
-          categoryName: 'Vêtements', // TODO: Récupérer le nom de la catégorie
-        },
-      })),
+    // Recalculer les valeurs de commission et vendorAmount avec la nouvelle logique
+    let calculatedVendorAmount = order.vendorAmount;
+    let calculatedCommissionAmount = order.commissionAmount;
+
+    // Recalculer seulement si la commande est payée et a des items
+    if (order.paymentStatus === 'PAID' && order.orderItems && order.orderItems.length > 0) {
+      let totalProfit = 0;
+
+      // Calculer le bénéfice total pour cette commande
+      for (const item of order.orderItems) {
+        const productCost = item.product?.price || 0;
+        const sellingPrice = item.unitPrice || 0;
+        const quantity = item.quantity || 1;
+        const itemProfit = (sellingPrice - productCost) * quantity;
+        totalProfit += itemProfit;
+      }
+
+      // Recalculer la commission sur le bénéfice
+      const commissionRate = (order.commissionRate || 59) / 100;
+      calculatedCommissionAmount = totalProfit * commissionRate;
+      calculatedVendorAmount = totalProfit - calculatedCommissionAmount;
+    }
+
+    // Calculer le bénéfice total de la commande (sans déduire la commission)
+    let beneficeCommande = 0;
+    if (order.orderItems && order.orderItems.length > 0) {
+      for (const item of order.orderItems) {
+        const productCost = item.product?.price || 0;
+        const sellingPrice = item.unitPrice || 0;
+        const quantity = item.quantity || 1;
+        const itemProfit = (sellingPrice - productCost) * quantity;
+        beneficeCommande += itemProfit;
+      }
+    }
+
+    const baseOrder = {
+      ...order,
+      // Ajouter le bénéfice de la commande
+      beneficeCommande: beneficeCommande,
+      // Utiliser les valeurs recalculées
+      vendorAmount: calculatedVendorAmount,
+      commissionAmount: calculatedCommissionAmount,
+      orderItems: order.orderItems.map((item: any) => {
+        return {
+          ...item,
+          // 🆕 Prix et quantité
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice || (item.unitPrice * item.quantity),
+          colorId: item.colorId,
+          color: item.color,
+
+          product: {
+            ...item.product,
+            orderedColorName: item.colorVariation?.name || null,
+            orderedColorHexCode: item.colorVariation?.colorCode || null,
+            orderedColorImageUrl: item.colorVariation?.images?.[0]?.url || null,
+          },
+
+          // 🎨 Inclure les données de personnalisation si présentes
+          customization: item.customization ? {
+            id: item.customization.id,
+            designElements: item.customization.designElements,
+            elementsByView: item.customization.elementsByView,
+            previewImageUrl: item.customization.previewImageUrl,
+            colorVariationId: item.customization.colorVariationId,
+            viewId: item.customization.viewId,
+            sizeSelections: item.customization.sizeSelections,
+            status: item.customization.status,
+            createdAt: item.customization.createdAt,
+            updatedAt: item.customization.updatedAt,
+            // 🎨 Indicateur de produit personnalisé
+            isCustomized: true,
+            hasDesignElements: Array.isArray(item.customization.designElements) && item.customization.designElements.length > 0,
+            hasMultiViewDesign: item.customization.elementsByView && Object.keys(item.customization.elementsByView).length > 0
+          } : null,
+
+          // 🎨 Indicateur rapide de personnalisation
+          isCustomizedProduct: !!item.customization || !!item.customizationId || !!item.customizationIds,
+
+          // 🏪 Ajouter les informations du vendeur si le produit n'est pas personnalisé
+          ...(!!item.customization || !!item.customizationId || !!item.customizationIds ? {} : {
+            vendorInfo: item.vendorProduct?.vendor ? {
+              id: item.vendorProduct.vendor.id,
+              firstName: item.vendorProduct.vendor.firstName,
+              lastName: item.vendorProduct.vendor.lastName,
+              shopName: item.vendorProduct.vendor.shop_name,
+              profilePhotoUrl: item.vendorProduct.vendor.profile_photo_url,
+              email: `${item.vendorProduct.vendor.firstName}.${item.vendorProduct.vendor.lastName}@example.com`,
+              phone: '+221' + '00000000',
+              address: item.vendorProduct.vendor.address || null,
+              country: item.vendorProduct.vendor.country || null,
+              vendorType: item.vendorProduct.vendor.vendeur_type || 'ARTISTE',
+              status: item.vendorProduct.vendor.status ? 'ACTIVE' : 'INACTIVE',
+              createdAt: item.vendorProduct.vendor.created_at,
+              lastLogin: item.vendorProduct.vendor.last_login_at,
+              shopDescription: `Boutique ${item.vendorProduct.vendor.shop_name} - Spécialisé dans les produits personnalisés`,
+              specialties: ['Personnalisation', 'Design personnalisé', 'Impression qualité'],
+              responseTime: 'Quelques heures',
+              rating: 4.5,
+              totalSales: item.vendorProduct.salesCount || 0,
+              totalRevenue: item.vendorProduct.totalRevenue || 0
+            } : null
+          }),
+
+          // 🎨 MULTI-VUES: Métadonnées des vues avec imageUrl (IMPORTANT pour le frontend)
+          viewsMetadata: item.viewsMetadata || null,
+          designElementsByView: item.designElementsByView || null,
+          customizationIds: item.customizationIds || null
+        };
+      })
     };
+
+    // 🆕 Ajouter les informations de paiement enrichies
+    const paymentInfo: any = {
+      status: order.paymentStatus,
+      status_text: this.getPaymentStatusText(order.paymentStatus),
+      status_icon: this.getPaymentStatusIcon(order.paymentStatus),
+      status_color: this.getPaymentStatusColor(order.paymentStatus),
+      method: order.paymentMethod,
+      method_text: this.getPaymentMethodText(order.paymentMethod),
+      transaction_id: order.transactionId,
+      attempts_count: order.paymentAttempts || 0,
+      last_attempt_at: order.lastPaymentAttemptAt,
+    };
+
+    // 🆕 Ajouter détails sur les fonds insuffisants si applicable
+    if (order.hasInsufficientFunds) {
+      paymentInfo.insufficient_funds = {
+        detected: true,
+        last_failure_reason: order.lastPaymentFailureReason,
+        message: '💰 Paiement échoué - Fonds insuffisants',
+        user_message: '❌ Fonds insuffisants. Veuillez vérifier votre solde ou utiliser une autre méthode de paiement.',
+        can_retry: true,
+        retry_available: true,
+      };
+    }
+
+    // 🆕 Inclure historique des tentatives si disponible
+    if (order.paymentAttemptsHistory && order.paymentAttemptsHistory.length > 0) {
+      paymentInfo.recent_attempts = order.paymentAttemptsHistory.slice(0, 3).map((attempt: any) => ({
+        attempt_number: attempt.attemptNumber,
+        status: attempt.status,
+        attempted_at: attempt.attemptedAt,
+        failure_reason: attempt.failureReason,
+        failure_category: attempt.failureCategory,
+        payment_method: attempt.paymentMethod,
+      }));
+    }
+
+    // 🆕 Informations complètes du client pour l'admin
+    const customerInfo: any = {
+      // Informations utilisateur si disponible
+      user_id: order.userId || null,
+      user_firstname: order.user?.firstName || null,
+      user_lastname: order.user?.lastName || null,
+      user_email: order.user?.email || null,
+      user_phone: order.user?.phone || null,
+      user_role: order.user?.role || null,
+
+      // Informations de livraison de la commande
+      shipping_name: order.shippingName || null,
+      shipping_email: order.email || null,
+      shipping_phone: order.phoneNumber || null,
+
+      // Informations de contact principales
+      email: order.email || order.user?.email || null,
+      phone: order.phoneNumber || order.user?.phone || null,
+
+      // Nom complet pour affichage
+      full_name: order.shippingName ||
+        (order.user ? `${order.user.firstName} ${order.user.lastName}`.trim() : 'Client inconnu'),
+
+      // Détails de livraison
+      shipping_address: order.shippingDetails ? {
+        address: order.shippingDetails.address || null,
+        city: order.shippingDetails.city || null,
+        postal_code: order.shippingDetails?.postalCode || null,
+        country: order.shippingDetails.country || null,
+        additional_info: order.shippingDetails.additionalInfo || null,
+      } : null,
+
+      // Notes client
+      notes: order.notes || null,
+
+      // Dates importantes
+      created_at: order.createdAt || null,
+      updated_at: order.updatedAt || null,
+    };
+
+    return {
+      ...baseOrder,
+      // 🆕 Inclure les champs de paiement directement pour le frontend
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      transactionId: order.transactionId,
+      paymentAttempts: order.paymentAttempts || 0,
+      lastPaymentAttemptAt: order.lastPaymentAttemptAt,
+      lastPaymentFailureReason: order.lastPaymentFailureReason,
+      hasInsufficientFunds: order.hasInsufficientFunds || false,
+
+      // 🆕 Garder payment_info pour compatibilité
+      payment_info: paymentInfo,
+
+      // 🆕 Informations complètes du client pour l'admin
+      customer_info: customerInfo,
+
+      // Champs supplémentaires pour correspondre à la réponse attendue
+      user: order.user,
+      validator: order.validator,
+    };
+  }
+
+  /**
+   * Obtenir le texte du statut de paiement
+   */
+  private getPaymentStatusText(status: string): string {
+    switch (status) {
+      case 'PAID': return 'Payé';
+      case 'PENDING': return 'En attente';
+      case 'FAILED': return 'Échoué';
+      case 'CANCELLED': return 'Annulé';
+      default: return status;
+    }
+  }
+
+  /**
+   * Obtenir l'icône du statut de paiement
+   */
+  private getPaymentStatusIcon(status: string): string {
+    switch (status) {
+      case 'PAID': return '✅';
+      case 'PENDING': return '⏳';
+      case 'FAILED': return '❌';
+      case 'CANCELLED': return '🚫';
+      default: return '📄';
+    }
+  }
+
+  /**
+   * Obtenir la couleur du statut de paiement
+   */
+  private getPaymentStatusColor(status: string): string {
+    switch (status) {
+      case 'PAID': return '#28A745';
+      case 'PENDING': return '#FFA500';
+      case 'FAILED': return '#DC3545';
+      case 'CANCELLED': return '#6C757D';
+      default: return '#007BFF';
+    }
+  }
+
+  /**
+   * Obtenir le texte de la méthode de paiement
+   */
+  private getPaymentMethodText(method: string): string {
+    switch (method) {
+      case 'PAYDUNYA': return 'PayDunya';
+      case 'PAYTECH': return 'PayTech';
+      case 'MOBILE_MONEY': return 'Mobile Money';
+      case 'CREDIT_CARD': return 'Carte de crédit';
+      default: return method || 'Non spécifié';
+    }
   }
 
   /**

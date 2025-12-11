@@ -174,15 +174,34 @@ export class OrderService {
           }
         }
 
-        // Calcul du split de revenus
-        const revenueSplit = calculateRevenueSplit(totalAmount, commissionRate);
-        commissionAmount = revenueSplit.commissionAmount;
-        vendorAmount = revenueSplit.vendorRevenue;
+        // Calcul du bénéfice du vendeur et de la commission basée sur le bénéfice
+        let totalProfit = 0;
+
+        // Calculer le bénéfice total pour cette commande
+        for (const item of createOrderDto.orderItems) {
+          // Récupérer le prix de reviens du produit
+          const product = await this.prisma.product.findUnique({
+            where: { id: item.productId },
+            select: { price: true }
+          });
+
+          const productCost = product?.price || 0;
+          const sellingPrice = item.unitPrice || 0;
+          const quantity = item.quantity || 1;
+          const itemProfit = (sellingPrice - productCost) * quantity;
+          totalProfit += itemProfit;
+        }
+
+        // La commission est calculée sur le bénéfice (pas sur le montant total)
+        commissionAmount = totalProfit * (commissionRate / 100);
+        vendorAmount = totalProfit - commissionAmount; // Gain net du vendeur
+
+        this.logger.log(`💰 [COMMISSION] Bénéfice: ${totalProfit} XOF, commission: ${commissionRate}% (${commissionAmount} XOF), vendeur net: ${vendorAmount} XOF`);
 
         this.logger.log(`💰 [COMMISSION] Commande: commission ${commissionRate}% (${commissionAmount} XOF), vendeur: ${vendorAmount} XOF`);
       } catch (error) {
         this.logger.warn(`⚠️ [COMMISSION] Erreur calcul commission, utilisation du taux par défaut ${commissionRate}%:`, error);
-        // En cas d'erreur, on garde les valeurs par défaut
+        // En cas d'erreur, calculer avec le montant total comme fallback (ancienne logique)
         commissionAmount = totalAmount * (commissionRate / 100);
         vendorAmount = totalAmount - commissionAmount;
       }
@@ -1261,8 +1280,48 @@ export class OrderService {
   }
 
   public formatOrderResponse(order: any) {
+    // Recalculer les valeurs de commission et vendorAmount avec la nouvelle logique
+    let calculatedVendorAmount = order.vendorAmount;
+    let calculatedCommissionAmount = order.commissionAmount;
+
+    // Recalculer seulement si la commande est payée et a des items
+    if (order.paymentStatus === 'PAID' && order.orderItems && order.orderItems.length > 0) {
+      let totalProfit = 0;
+
+      // Calculer le bénéfice total pour cette commande
+      for (const item of order.orderItems) {
+        const productCost = item.product?.price || 0;
+        const sellingPrice = item.unitPrice || 0;
+        const quantity = item.quantity || 1;
+        const itemProfit = (sellingPrice - productCost) * quantity;
+        totalProfit += itemProfit;
+      }
+
+      // Recalculer la commission sur le bénéfice
+      const commissionRate = (order.commissionRate || 59) / 100;
+      calculatedCommissionAmount = totalProfit * commissionRate;
+      calculatedVendorAmount = totalProfit - calculatedCommissionAmount;
+    }
+
+    // Calculer le bénéfice total de la commande (sans déduire la commission)
+    let beneficeCommande = 0;
+    if (order.orderItems && order.orderItems.length > 0) {
+      for (const item of order.orderItems) {
+        const productCost = item.product?.price || 0;
+        const sellingPrice = item.unitPrice || 0;
+        const quantity = item.quantity || 1;
+        const itemProfit = (sellingPrice - productCost) * quantity;
+        beneficeCommande += itemProfit;
+      }
+    }
+
     const baseOrder = {
       ...order,
+      // Ajouter le bénéfice de la commande
+      beneficeCommande: beneficeCommande,
+      // Utiliser les valeurs recalculées
+      vendorAmount: calculatedVendorAmount,
+      commissionAmount: calculatedCommissionAmount,
       orderItems: order.orderItems.map((item: any) => {
         console.log('🎨 Données de couleur récupérées:', {
           itemColorId: item.colorId,

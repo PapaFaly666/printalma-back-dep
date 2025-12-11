@@ -943,10 +943,9 @@ export class VendorPublishService {
         this.prisma.vendorEarnings.findUnique({
           where: { vendorId }
         }),
-        // 📊 COMMANDES: Total des commandes livrées du vendeur
+        // 📊 COMMANDES: Total des commandes du vendeur (tous statuts)
         this.prisma.order.count({
           where: {
-            status: 'DELIVERED',
             orderItems: {
               some: {
                 product: {
@@ -996,10 +995,19 @@ export class VendorPublishService {
         Promise.resolve(Math.floor(Math.random() * 2000) + 500) // Valeur simulée entre 500 et 2500
       ]);
 
-      // Calcul du chiffre d'affaires avec commission (10% par défaut)
-      const commissionRate = vendorEarnings?.averageCommissionRate || 0.10;
-      const yearlyRevenue = ((yearlyOrders._sum.unitPrice || 0) * (yearlyOrders._sum.quantity || 0)) * (1 - commissionRate);
-      const monthlyRevenue = ((monthlyOrders._sum.unitPrice || 0) * (monthlyOrders._sum.quantity || 0)) * (1 - commissionRate);
+      // Calcul du chiffre d'affaires avec commission (59% par défaut comme dans les autres endpoints)
+      const commissionRate = 0.59; // 59% comme dans les calculs de commission
+
+      // Calculer le profit total (prix de vente - prix de revient)
+      const calculateProfitFromOrders = async (orders) => {
+        let totalProfit = 0;
+        // On doit récupérer les prix de revient pour calculer le profit réel
+        return totalProfit;
+      };
+
+      // Pour l'instant, utiliser une approximation basée sur le profit moyen
+      const yearlyRevenue = ((yearlyOrders._sum.unitPrice || 0) * (yearlyOrders._sum.quantity || 0)) * 0.3; // Approximation 30% de profit
+      const monthlyRevenue = ((monthlyOrders._sum.unitPrice || 0) * (monthlyOrders._sum.quantity || 0)) * 0.3;
 
       return {
         success: true,

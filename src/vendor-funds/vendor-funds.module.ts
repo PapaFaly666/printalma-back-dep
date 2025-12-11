@@ -4,6 +4,7 @@ import { VendorFundsController } from './vendor-funds.controller';
 import { AdminFundsController } from './admin-funds.controller';
 import { VendorFundsService } from './vendor-funds.service';
 import { PrismaService } from '../prisma.service';
+import { CommissionModule } from '../commission/commission.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { PrismaService } from '../prisma.service';
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '24h' },
     }),
+    CommissionModule,
   ],
   controllers: [VendorFundsController, AdminFundsController],
   providers: [VendorFundsService, PrismaService],

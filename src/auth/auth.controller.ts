@@ -1,8 +1,10 @@
-import { Controller, Post, Body, UseGuards, Get, Put, Req, BadRequestException, Res, Query, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, Put, Delete, Req, BadRequestException, Res, Query, Param, ParseIntPipe } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/user-dto';
-import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, AdminResetPasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
+import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, AdminResetPasswordDto, UpdateVendorProfileDto as UpdateVendorGeneralProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
+import { UpdateSocialMediaDto, SocialMediaResponseDto } from './dto/update-social-media.dto';
+import { UpdateVendorBioProfileDto, VendorProfileResponseDto } from './dto/update-vendor-profile.dto';
 import { FirstLoginDto, FirstLoginResponseDto } from './dto/first-login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AdminGuard } from '../core/guards/admin.guard';
@@ -399,7 +401,7 @@ export class AuthController {
 	@ApiResponse({ status: 400, description: 'Données invalides' })
 	async updateVendorProfile(
 		@Req() req: RequestWithUser,
-		@Body() updateDto: UpdateVendorProfileDto,
+		@Body() updateDto: UpdateVendorGeneralProfileDto,
 		@UploadedFile() profilePhoto?: Express.Multer.File
 	) {
 		return this.authService.updateVendorProfile(req.user.sub, updateDto, profilePhoto);
@@ -567,5 +569,124 @@ export class AuthController {
 	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
 	async restoreVendor(@Param('id', ParseIntPipe) vendorId: number) {
 		return this.authService.restoreVendor(vendorId);
+	}
+
+	// ============================
+	// ENDPOINTS RÉSEAUX SOCIAUX
+	// ============================
+
+	/**
+	 * Vendeur: Mettre à jour les réseaux sociaux
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Put('vendor/social-media')
+	@ApiOperation({ summary: 'Mettre à jour les réseaux sociaux du vendeur' })
+	@ApiResponse({ status: 200, description: 'Réseaux sociaux mis à jour avec succès', type: SocialMediaResponseDto })
+	@ApiResponse({ status: 400, description: 'Données invalides' })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	async updateSocialMedia(
+		@Req() req: RequestWithUser,
+		@Body() updateDto: UpdateSocialMediaDto
+	): Promise<SocialMediaResponseDto> {
+		return this.authService.updateSocialMedia(req.user.sub, updateDto);
+	}
+
+	/**
+	 * Vendeur: Récupérer les réseaux sociaux
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Get('vendor/social-media')
+	@ApiOperation({ summary: 'Récupérer les réseaux sociaux du vendeur' })
+	@ApiResponse({ status: 200, description: 'Réseaux sociaux récupérés avec succès', type: SocialMediaResponseDto })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	async getSocialMedia(@Req() req: RequestWithUser): Promise<SocialMediaResponseDto> {
+		return this.authService.getSocialMedia(req.user.sub);
+	}
+
+	/**
+	 * Vendeur: Supprimer tous les réseaux sociaux
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Delete('vendor/social-media')
+	@ApiOperation({ summary: 'Supprimer tous les réseaux sociaux du vendeur' })
+	@ApiResponse({ status: 200, description: 'Réseaux sociaux supprimés avec succès', type: SocialMediaResponseDto })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	async clearSocialMedia(@Req() req: RequestWithUser): Promise<SocialMediaResponseDto> {
+		return this.authService.clearSocialMedia(req.user.sub);
+	}
+
+	/**
+	 * Vendeur: Valider une URL de réseau social spécifique
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Post('vendor/social-media/validate')
+	@ApiOperation({ summary: 'Valider une URL de réseau social' })
+	@ApiResponse({ status: 200, description: 'URL validée avec succès' })
+	@ApiResponse({ status: 400, description: 'URL invalide' })
+	async validateSocialMediaUrl(
+		@Body() body: { platform: string; url: string }
+	) {
+		return this.authService.validateSocialMediaUrl(body.platform, body.url);
+	}
+
+	/**
+	 * PUBLIC: Récupérer les réseaux sociaux d'un vendeur (sans authentification)
+	 */
+	@Get('public/vendor/:identifier/social-media')
+	@ApiOperation({ summary: 'Récupérer les réseaux sociaux d\'un vendeur' })
+	@ApiResponse({ status: 200, description: 'Réseaux sociaux récupérés avec succès', type: SocialMediaResponseDto })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	@ApiResponse({ status: 400, description: 'Requête invalide' })
+	async getVendorSocialMediaPublic(
+		@Param('identifier') identifier: string
+	): Promise<SocialMediaResponseDto> {
+		return this.authService.getVendorSocialMediaPublic(identifier);
+	}
+
+	/**
+	 * Mettre à jour le profil vendeur (titre et bio)
+	 */
+	@Put('vendor/profile/bio')
+	@UseGuards(JwtAuthGuard)
+	@ApiOperation({ summary: 'Mettre à jour le profil vendeur (titre et bio)' })
+	@ApiResponse({ status: 200, description: 'Profil mis à jour avec succès', type: VendorProfileResponseDto })
+	@ApiResponse({ status: 401, description: 'Non authentifié' })
+	@ApiResponse({ status: 403, description: 'Accès réservé aux vendeurs' })
+	@ApiResponse({ status: 400, description: 'Requête invalide' })
+	async updateVendorBioProfile(
+		@Req() req: RequestWithUser,
+		@Body() updateDto: UpdateVendorBioProfileDto
+	): Promise<VendorProfileResponseDto> {
+		return this.authService.updateVendorBioProfile(req.user.sub, updateDto);
+	}
+
+	/**
+	 * Récupérer le profil vendeur (titre et bio)
+	 */
+	@Get('vendor/profile/bio')
+	@UseGuards(JwtAuthGuard)
+	@ApiOperation({ summary: 'Récupérer le profil vendeur (titre et bio)' })
+	@ApiResponse({ status: 200, description: 'Profil récupéré avec succès', type: VendorProfileResponseDto })
+	@ApiResponse({ status: 401, description: 'Non authentifié' })
+	@ApiResponse({ status: 403, description: 'Accès réservé aux vendeurs' })
+	@ApiResponse({ status: 404, description: 'Profil non trouvé' })
+	async getVendorBioProfile(
+		@Req() req: RequestWithUser
+	): Promise<VendorProfileResponseDto> {
+		return this.authService.getVendorProfile(req.user.sub);
+	}
+
+	/**
+	 * PUBLIC: Récupérer le profil d'un vendeur (sans authentification)
+	 */
+	@Get('public/vendor/:identifier/profile/bio')
+	@ApiOperation({ summary: 'Récupérer le profil d\'un vendeur (titre et bio)' })
+	@ApiResponse({ status: 200, description: 'Profil récupéré avec succès', type: VendorProfileResponseDto })
+	@ApiResponse({ status: 404, description: 'Vendeur non trouvé' })
+	@ApiResponse({ status: 400, description: 'Requête invalide' })
+	async getVendorProfilePublic(
+		@Param('identifier') identifier: string
+	): Promise<VendorProfileResponseDto> {
+		return this.authService.getVendorProfilePublic(identifier);
 	}
 }

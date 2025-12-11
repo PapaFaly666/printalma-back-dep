@@ -42,6 +42,8 @@ model User {
   tiktok_url              String?                 @map("tiktok_url") @db.VarChar(500)
   youtube_url             String?                 @map("youtube_url") @db.VarChar(500)
   linkedin_url            String?                 @map("linkedin_url") @db.VarChar(500)
+  professional_title      String?                 @map("professional_title") @db.VarChar(200)
+  vendor_bio              String?                 @map("vendor_bio") @db.Text
   activation_code         String?
   activation_code_expires DateTime?
   is_deleted              Boolean                 @default(false)

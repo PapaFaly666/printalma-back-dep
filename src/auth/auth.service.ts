@@ -3,7 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { LoginDto } from './dto/user-dto';
-import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ListClientsResponseDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, UpdateVendorProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
+import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ListClientsResponseDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, UpdateVendorProfileDto as UpdateVendorGeneralProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
+import { UpdateSocialMediaDto, SocialMediaResponseDto } from './dto/update-social-media.dto';
+import { UpdateVendorBioProfileDto, VendorProfileResponseDto } from './dto/update-vendor-profile.dto';
 import { SocialMediaValidator } from '../vendor/validators/social-media.validator';
 import { PrismaService } from '../prisma.service';
 import { MailService } from '../core/mail/mail.service';
@@ -1291,7 +1293,7 @@ export class AuthService {
     /**
      * Mettre à jour le profil d'un vendeur avec photo optionnelle
      */
-    async updateVendorProfile(userId: number, updateDto: UpdateVendorProfileDto, newProfilePhoto?: Express.Multer.File) {
+    async updateVendorProfile(userId: number, updateDto: UpdateVendorGeneralProfileDto, newProfilePhoto?: Express.Multer.File) {
         const vendor = await this.prisma.user.findUnique({
             where: { id: userId, role: Role.VENDEUR },
             select: { id: true, profile_photo_url: true, email: true }
@@ -2022,6 +2024,342 @@ export class AuthService {
         } catch (error) {
             console.error('Erreur lors de la récupération de la corbeille:', error);
             throw new BadRequestException('Erreur lors de la récupération de la corbeille');
+        }
+    }
+
+    // ============================
+    // MÉTHODES RÉSEAUX SOCIAUX
+    // ============================
+
+    /**
+     * Mettre à jour les réseaux sociaux du vendeur
+     */
+    async updateSocialMedia(userId: number, updateDto: UpdateSocialMediaDto): Promise<SocialMediaResponseDto> {
+        // Vérifier que l'utilisateur existe et est un vendeur
+        const vendor = await this.prisma.user.findUnique({
+            where: { id: userId, role: Role.VENDEUR },
+            select: { id: true }
+        });
+
+        if (!vendor) {
+            throw new NotFoundException('Vendeur non trouvé');
+        }
+
+        try {
+            // Valider les URLs des réseaux sociaux
+            const socialMediaFields = {
+                facebook_url: updateDto.facebook_url,
+                instagram_url: updateDto.instagram_url,
+                twitter_url: updateDto.twitter_url,
+                tiktok_url: updateDto.tiktok_url,
+                youtube_url: updateDto.youtube_url,
+                linkedin_url: updateDto.linkedin_url,
+            };
+
+            // Valider et formater les URLs
+            const formattedSocialMedia = SocialMediaValidator.formatSocialMediaUrls(socialMediaFields);
+
+            // Mettre à jour les réseaux sociaux
+            const updatedVendor = await this.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    ...formattedSocialMedia,
+                    updated_at: new Date()
+                },
+                select: {
+                    facebook_url: true,
+                    instagram_url: true,
+                    twitter_url: true,
+                    tiktok_url: true,
+                    youtube_url: true,
+                    linkedin_url: true,
+                }
+            });
+
+            return updatedVendor;
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour des réseaux sociaux:', error);
+            if (error.code === 'P2002') {
+                throw new BadRequestException('Une erreur de contrainte de base de données est survenue');
+            }
+            throw new BadRequestException('Erreur lors de la mise à jour des réseaux sociaux');
+        }
+    }
+
+    /**
+     * Récupérer les réseaux sociaux du vendeur
+     */
+    async getSocialMedia(userId: number): Promise<SocialMediaResponseDto> {
+        const vendor = await this.prisma.user.findUnique({
+            where: { id: userId, role: Role.VENDEUR },
+            select: {
+                facebook_url: true,
+                instagram_url: true,
+                twitter_url: true,
+                tiktok_url: true,
+                youtube_url: true,
+                linkedin_url: true,
+            }
+        });
+
+        if (!vendor) {
+            throw new NotFoundException('Vendeur non trouvé');
+        }
+
+        return vendor;
+    }
+
+    /**
+     * Supprimer tous les réseaux sociaux du vendeur
+     */
+    async clearSocialMedia(userId: number): Promise<SocialMediaResponseDto> {
+        const vendor = await this.prisma.user.findUnique({
+            where: { id: userId, role: Role.VENDEUR },
+            select: { id: true }
+        });
+
+        if (!vendor) {
+            throw new NotFoundException('Vendeur non trouvé');
+        }
+
+        try {
+            const updatedVendor = await this.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    facebook_url: null,
+                    instagram_url: null,
+                    twitter_url: null,
+                    tiktok_url: null,
+                    youtube_url: null,
+                    linkedin_url: null,
+                    updated_at: new Date()
+                },
+                select: {
+                    facebook_url: true,
+                    instagram_url: true,
+                    twitter_url: true,
+                    tiktok_url: true,
+                    youtube_url: true,
+                    linkedin_url: true,
+                }
+            });
+
+            return updatedVendor;
+        } catch (error) {
+            console.error('Erreur lors de la suppression des réseaux sociaux:', error);
+            throw new BadRequestException('Erreur lors de la suppression des réseaux sociaux');
+        }
+    }
+
+    /**
+     * Valider une URL de réseau social spécifique
+     */
+    validateSocialMediaUrl(platform: string, url: string): { isValid: boolean; message?: string } {
+        try {
+            const socialMediaFields: any = {};
+            socialMediaFields[`${platform.toLowerCase()}_url`] = url;
+
+            SocialMediaValidator.validateAll(socialMediaFields);
+            const formatted = SocialMediaValidator.formatSocialMediaUrls(socialMediaFields);
+
+            return {
+                isValid: true,
+                message: `URL ${platform} valide`
+            };
+        } catch (error) {
+            return {
+                isValid: false,
+                message: error.message
+            };
+        }
+    }
+
+    /**
+     * PUBLIC: Récupérer les réseaux sociaux d'un vendeur par son ID ou shop_name
+     */
+    async getVendorSocialMediaPublic(identifier: string): Promise<SocialMediaResponseDto> {
+        try {
+            // Chercher le vendeur par ID ou shop_name
+            let vendor;
+
+            // Vérifier si l'identifiant est un nombre (ID) ou une chaîne (shop_name)
+            if (!isNaN(Number(identifier))) {
+                // Recherche par ID
+                vendor = await this.prisma.user.findUnique({
+                    where: {
+                        id: Number(identifier),
+                        role: Role.VENDEUR,
+                        is_deleted: false,
+                        userStatus: 'ACTIVE' // Uniquement les vendeurs actifs
+                    },
+                    select: {
+                        facebook_url: true,
+                        instagram_url: true,
+                        twitter_url: true,
+                        tiktok_url: true,
+                        youtube_url: true,
+                        linkedin_url: true
+                    }
+                });
+            } else {
+                // Recherche par shop_name
+                vendor = await this.prisma.user.findFirst({
+                    where: {
+                        shop_name: identifier,
+                        role: Role.VENDEUR,
+                        is_deleted: false,
+                        userStatus: 'ACTIVE' // Uniquement les vendeurs actifs
+                    },
+                    select: {
+                        facebook_url: true,
+                        instagram_url: true,
+                        twitter_url: true,
+                        tiktok_url: true,
+                        youtube_url: true,
+                        linkedin_url: true
+                    }
+                });
+            }
+
+            if (!vendor) {
+                throw new NotFoundException('Vendeur non trouvé');
+            }
+
+            return vendor;
+        } catch (error) {
+            console.error('Erreur lors de la récupération des réseaux sociaux publics:', error);
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException('Erreur lors de la récupération des réseaux sociaux');
+        }
+    }
+
+    /**
+     * Mettre à jour le profil vendeur (titre et bio)
+     */
+    async updateVendorBioProfile(userId: number, updateDto: UpdateVendorBioProfileDto): Promise<VendorProfileResponseDto> {
+        try {
+            // Vérifier que l'utilisateur est un vendeur
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                select: { role: true }
+            });
+
+            if (!user || user.role !== Role.VENDEUR) {
+                throw new UnauthorizedException('Accès réservé aux vendeurs');
+            }
+
+            // Mettre à jour le profil
+            const updatedProfile = await this.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    professional_title: updateDto.professional_title,
+                    vendor_bio: updateDto.vendor_bio
+                },
+                select: {
+                    professional_title: true,
+                    vendor_bio: true
+                }
+            });
+
+            return updatedProfile;
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour du profil vendeur:', error);
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+            throw new BadRequestException('Erreur lors de la mise à jour du profil');
+        }
+    }
+
+    /**
+     * Récupérer le profil vendeur (titre et bio)
+     */
+    async getVendorProfile(userId: number): Promise<VendorProfileResponseDto> {
+        try {
+            // Vérifier que l'utilisateur est un vendeur
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                select: { role: true }
+            });
+
+            if (!user || user.role !== Role.VENDEUR) {
+                throw new UnauthorizedException('Accès réservé aux vendeurs');
+            }
+
+            // Récupérer le profil
+            const profile = await this.prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    professional_title: true,
+                    vendor_bio: true
+                }
+            });
+
+            if (!profile) {
+                throw new NotFoundException('Profil vendeur non trouvé');
+            }
+
+            return profile;
+        } catch (error) {
+            console.error('Erreur lors de la récupération du profil vendeur:', error);
+            if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException('Erreur lors de la récupération du profil');
+        }
+    }
+
+    /**
+     * Récupérer publiquement le profil vendeur (sans authentification)
+     */
+    async getVendorProfilePublic(identifier: string): Promise<VendorProfileResponseDto> {
+        try {
+            const parsedId = parseInt(identifier);
+            let vendor;
+
+            if (!isNaN(parsedId)) {
+                // Recherche par ID
+                vendor = await this.prisma.user.findFirst({
+                    where: {
+                        id: parsedId,
+                        role: Role.VENDEUR,
+                        is_deleted: false,
+                        userStatus: 'ACTIVE' // Uniquement les vendeurs actifs
+                    },
+                    select: {
+                        professional_title: true,
+                        vendor_bio: true
+                    }
+                });
+            } else {
+                // Recherche par shop_name
+                vendor = await this.prisma.user.findFirst({
+                    where: {
+                        shop_name: identifier,
+                        role: Role.VENDEUR,
+                        is_deleted: false,
+                        userStatus: 'ACTIVE' // Uniquement les vendeurs actifs
+                    },
+                    select: {
+                        professional_title: true,
+                        vendor_bio: true
+                    }
+                });
+            }
+
+            if (!vendor) {
+                throw new NotFoundException('Vendeur non trouvé');
+            }
+
+            return vendor;
+        } catch (error) {
+            console.error('Erreur lors de la récupération du profil vendeur public:', error);
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException('Erreur lors de la récupération du profil vendeur');
         }
     }
 }

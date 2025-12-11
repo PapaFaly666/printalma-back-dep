@@ -122,37 +122,91 @@ export interface OrderItemProduct {
 
 export interface VendorOrderItem {
   id: number;
+  orderId: number;
+  productId: number;
   quantity: number;
   unitPrice: number;
-  totalPrice: number;
   size?: string;
   color?: string;
   colorId?: number;
-  productId: number;
-  productName: string;
-  productImage: string;
-  product: OrderItemProduct;
+  vendorProductId?: number;
+  designId?: number;
+  designMetadata?: any;
+  designPositions?: any;
+  mockupUrl?: string;
+  customizationId?: number;
+  customizationIds?: any;
+  delimitation?: any;
+  designElementsByView?: any;
+  viewsMetadata?: any[];
+  totalPrice: number;
+  delimitations?: any[];
+  colorVariationData?: any;
+  product?: any; // Utiliser any pour la structure complète
+  colorVariation?: any;
+  customization?: any;
+  isCustomizedProduct?: boolean;
 }
 
 export interface VendorOrder {
   id: number;
   orderNumber: string;
   userId: number;
-  user: VendorUser;
+  user: any; // Utiliser any pour correspondre à la structure complète
   status: string;
   totalAmount: number;
-  subtotal: number;
-  taxAmount: number;
-  shippingAmount: number;
-  paymentMethod: string;
-  shippingAddress: ShippingAddress;
   phoneNumber: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  validatedAt?: string;
+  validatedBy?: number;
+  validator?: any;
+  shippingName?: string;
+  shippingStreet?: string;
+  shippingCity?: string;
+  shippingRegion?: string;
+  shippingPostalCode?: string;
+  shippingCountry?: string;
+  shippingAddressFull?: string;
   confirmedAt?: string;
-  shippedAt?: string;
   deliveredAt?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  transactionId?: string;
+  shippedAt?: string;
+  shippingAmount?: number;
+  subtotal?: number;
+  taxAmount?: number;
+  hasInsufficientFunds?: boolean;
+  lastPaymentAttemptAt?: string;
+  lastPaymentFailureReason?: string;
+  paymentAttempts?: number;
+  email?: string;
+  deliveryType?: string;
+  deliveryCityId?: string;
+  deliveryCityName?: string;
+  deliveryRegionId?: string;
+  deliveryRegionName?: string;
+  deliveryZoneId?: string;
+  deliveryZoneName?: string;
+  transporteurId?: string;
+  transporteurName?: string;
+  transporteurLogo?: string;
+  transporteurPhone?: string;
+  deliveryFee?: number;
+  deliveryTime?: string;
+  zoneTarifId?: string;
+  deliveryMetadata?: any;
+  commissionRate?: number;
+  commissionAmount?: number;
+  vendorAmount?: number;
+  commissionAppliedAt?: string;
+  beneficeCommande?: number;
+  deliveryInfo?: any;
+  payment_info?: any;
+  customer_info?: any;
+  paymentAttemptsHistory?: any[];
   orderItems: VendorOrderItem[];
 }
 
