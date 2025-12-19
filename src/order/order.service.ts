@@ -13,6 +13,7 @@ import { CustomizationEnricherHelper } from './helpers/customization-enricher.he
 import { DeliveryValidator } from './validators/delivery.validator';
 import { DeliveryEnricherHelper } from './helpers/delivery-enricher.helper';
 import { calculateRevenueSplit } from '../utils/commission-utils';
+import { DesignUsageTracker } from '../utils/designUsageTracker';
 
 @Injectable()
 export class OrderService {
@@ -447,6 +448,37 @@ export class OrderService {
         // Ne pas faire échouer la création de commande pour cette erreur
       }
 
+      // 🎯 TRACKER LES DESIGNS VENDEURS UTILISÉS
+      try {
+        this.logger.log(`🎨 [Design Revenue] Début tracking des designs pour commande ${order.id}`);
+
+        // Parcourir chaque orderItem pour extraire et enregistrer les designs vendeurs
+        for (const orderItem of order.orderItems) {
+          // Récupérer les customizationIds depuis createOrderDto (données originales)
+          const originalItem = createOrderDto.orderItems.find(
+            item => item.productId === orderItem.productId && item.colorId === orderItem.colorId
+          );
+
+          if (originalItem && originalItem.customizationIds) {
+            this.logger.log(`🎨 [Design Revenue] Analyse orderItem ${orderItem.id} avec ${Object.keys(originalItem.customizationIds).length} customization(s)`);
+
+            await DesignUsageTracker.extractAndRecordDesignUsages(
+              this.prisma,
+              order,
+              orderItem,
+              originalItem.customizationIds
+            );
+          } else {
+            this.logger.debug(`ℹ️ [Design Revenue] Pas de customizations pour orderItem ${orderItem.id}`);
+          }
+        }
+
+        this.logger.log(`✅ [Design Revenue] Tracking designs terminé pour commande ${order.id}`);
+      } catch (error) {
+        this.logger.error(`❌ [Design Revenue] Erreur tracking designs pour commande ${order.id}:`, error);
+        // Ne pas faire échouer la création de commande pour cette erreur
+      }
+
       // 🆕 MISE À JOUR AUTOMATIQUE DES STATISTIQUES - Création de commande
       try {
         await this.salesStatsUpdaterService.updateStatsOnOrderCreation(order.id);
@@ -751,6 +783,22 @@ export class OrderService {
       });
 
       this.logger.log(`✅ Payment status updated for order ${orderNumber}`);
+
+      // 🎯 METTRE À JOUR LE STATUT DES DESIGN USAGES SI PAIEMENT RÉUSSI
+      if (paymentStatus === 'PAID') {
+        try {
+          const updatedCount = await DesignUsageTracker.updatePaymentStatus(
+            this.prisma,
+            order.id,
+            'CONFIRMED'
+          );
+          this.logger.log(`✅ [Design Revenue] ${updatedCount} design usage(s) confirmé(s) pour commande ${orderNumber}`);
+        } catch (error) {
+          this.logger.error(`❌ [Design Revenue] Erreur mise à jour design usages:`, error);
+          // Ne pas faire échouer la mise à jour de commande
+        }
+      }
+
       return this.formatOrderResponse(updatedOrder);
     } catch (error) {
       this.logger.error(`❌ Failed to update payment status: ${error.message}`, error.stack);
@@ -1091,8 +1139,8 @@ export class OrderService {
   }
 
   /**
-   * Récupère toutes les commandes contenant des produits du vendeur
-   * ou les commandes où le vendeur est l'utilisateur (commandes invitées)
+   * Récupère uniquement les commandes contenant des produits du vendeur
+   * Un vendeur ne doit voir que les commandes de ses produits, pas ses commandes personnelles
    */
   async getVendorOrders(vendorId: number) {
     // Récupérer les informations du vendeur
@@ -1121,31 +1169,40 @@ export class OrderService {
       return [];
     }
 
-    // Récupérer toutes les commandes :
-    // 1. Commandes où le vendeur est l'utilisateur (nouvelles commandes invitées)
-    // 2. Commandes contenant les produits vendeur du vendeur (plus précis que baseProductId)
+    // Récupérer uniquement les commandes contenant les produits du vendeur
+    // Un vendeur ne doit voir que les commandes de ses produits, pas ses commandes personnelles de client
     const orders = await this.prisma.order.findMany({
       where: {
-        OR: [
-          {
-            // 🆕 Commandes où le vendeur est l'utilisateur (nouvelles commandes invitées)
-            userId: vendorId
-          },
-          {
-            // 🎯 Commandes contenant spécifiquement les produits vendeur de ce vendeur
-            orderItems: {
-              some: {
-                vendorProduct: {
-                  vendorId: vendorId
-                }
-              }
+        // 🎯 Uniquement les commandes contenant spécifiquement les produits vendeur de ce vendeur
+        orderItems: {
+          some: {
+            vendorProduct: {
+              vendorId: vendorId
             }
           }
-        ]
+        }
       },
-      include: {
+      select: {
+        id: true,
+        orderNumber: true,
+        totalAmount: true,
+        status: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        deliveryFee: true,
+        createdAt: true,
+        updatedAt: true,
+        validatedAt: true,
+        // 🔑 CHAMPS DE COMMISSION EXPLICITES
+        commissionRate: true,
+        commissionAmount: true,
+        vendorAmount: true,
+        commissionAppliedAt: true,
         orderItems: {
-          include: {
+          select: {
+            id: true,
+            quantity: true,
+            unitPrice: true,
             product: true,
             colorVariation: true,
           },
@@ -1182,14 +1239,19 @@ export class OrderService {
     return orders.map(order => {
       // 🛡️ UTILISER LES COMMISSIONS STOCKÉES (protection contre les changements rétroactifs)
       const storedCommissionRate = order.commissionRate || commissionRate;
-      const storedCommissionAmount = order.commissionAmount || 0;
-      const storedVendorAmount = order.vendorAmount || order.totalAmount;
+      const storedCommissionAmount = order.commissionAmount;
+      const storedVendorAmount = order.vendorAmount;
       const storedCommissionAppliedAt = order.commissionAppliedAt;
 
       // Pour les commandes anciennes sans commission stockée, calculer dynamiquement
+      // Vérifier si TOUTES les données de commission sont présentes
       let commissionInfo;
-      if (!order.commissionRate) {
-        // Commande ancienne : calcul dynamique
+      if (!order.commissionRate || storedCommissionAmount == null || storedVendorAmount == null) {
+        // Commande ancienne : calcul dynamique basé sur le bénéfice
+        // Note: Pour les commandes anciennes, on fait un calcul approximatif
+        // Le mieux serait de recalculer le bénéfice réel, mais par défaut on utilise calculateRevenueSplit
+        this.logger.warn(`⚠️ Commande ${order.id} sans commission complète stockée - calcul dynamique`);
+
         const revenueSplit = calculateRevenueSplit(order.totalAmount, commissionRate);
         commissionInfo = {
           commission_rate: commissionRate,
@@ -1202,7 +1264,7 @@ export class OrderService {
           is_legacy_order: true // Marquer comme commande ancienne
         };
       } else {
-        // Commande récente : utiliser les données stockées
+        // Commande récente : utiliser les données stockées (calcul sur bénéfice déjà effectué)
         commissionInfo = {
           commission_rate: storedCommissionRate,
           commission_amount: storedCommissionAmount,
@@ -1539,8 +1601,21 @@ export class OrderService {
           this.logger.error(`❌ Erreur mise à jour statistiques livraison commande ${id}:`, error);
           // Ne pas faire échouer la mise à jour du statut pour cette erreur
         }
+
+        // 🎯 METTRE À JOUR LE STATUT DES DESIGN USAGES À READY_FOR_PAYOUT
+        try {
+          const updatedCount = await DesignUsageTracker.updatePaymentStatus(
+            this.prisma,
+            id,
+            'READY_FOR_PAYOUT'
+          );
+          this.logger.log(`✅ [Design Revenue] ${updatedCount} design usage(s) prêt(s) pour paiement pour commande ${id}`);
+        } catch (error) {
+          this.logger.error(`❌ [Design Revenue] Erreur mise à jour design usages:`, error);
+          // Ne pas faire échouer la mise à jour de commande
+        }
       }
-      
+
       return this.formatOrderResponse(order);
     } catch (error) {
       if (error.code === 'P2025') {
@@ -1571,6 +1646,20 @@ export class OrderService {
           user: true,
         },
       });
+
+      // 🎯 METTRE À JOUR LE STATUT DES DESIGN USAGES À CANCELLED
+      try {
+        const updatedCount = await DesignUsageTracker.updatePaymentStatus(
+          this.prisma,
+          id,
+          'CANCELLED'
+        );
+        this.logger.log(`✅ [Design Revenue] ${updatedCount} design usage(s) annulé(s) pour commande ${id}`);
+      } catch (error) {
+        this.logger.error(`❌ [Design Revenue] Erreur annulation design usages:`, error);
+        // Ne pas faire échouer l'annulation de commande
+      }
+
       return order;
     } catch (error) {
       if (error.code === 'P2025') {

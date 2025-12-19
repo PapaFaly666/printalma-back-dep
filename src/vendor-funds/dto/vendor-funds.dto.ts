@@ -66,7 +66,9 @@ export class CreateFundsRequestDto {
   @IsNotEmpty()
   @Type(() => Number)
   @IsNumber()
-  @Min(1000) // Minimum 1000 FCFA
+  @Min(1000) // 🔒 Minimum 1000 FCFA
+  @Max(10000000) // 🔒 Maximum 10 millions FCFA par retrait (sécurité)
+  @IsInt() // 🔒 Doit être un nombre entier (pas de décimales)
   amount: number;
 
   @IsNotEmpty()

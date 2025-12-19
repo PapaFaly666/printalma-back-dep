@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsUrl, Matches } from 'class-validator';
+import { IsOptional, IsString, IsUrl, Matches, ValidateIf } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -11,6 +11,7 @@ export class UpdateSocialMediaDto {
     required: false
   })
   @IsOptional()
+  @ValidateIf(o => o.facebook_url !== undefined && o.facebook_url !== null && o.facebook_url !== '')
   @IsString()
   @IsUrl({}, { message: 'URL Facebook invalide' })
   @Matches(/^https?:\/\/(www\.)?(facebook\.com|fb\.me)\/.*/, {
@@ -24,6 +25,7 @@ export class UpdateSocialMediaDto {
     required: false
   })
   @IsOptional()
+  @ValidateIf(o => o.instagram_url !== undefined && o.instagram_url !== null && o.instagram_url !== '')
   @IsString()
   @IsUrl({}, { message: 'URL Instagram invalide' })
   @Matches(/^https?:\/\/(www\.)?(instagram\.com|instagr\.am)\/.*/, {
@@ -37,6 +39,7 @@ export class UpdateSocialMediaDto {
     required: false
   })
   @IsOptional()
+  @ValidateIf(o => o.twitter_url !== undefined && o.twitter_url !== null && o.twitter_url !== '')
   @IsString()
   @IsUrl({}, { message: 'URL Twitter/X invalide' })
   @Matches(/^https?:\/\/(www\.)?(twitter\.com|x\.com)\/.*/, {
@@ -50,9 +53,10 @@ export class UpdateSocialMediaDto {
     required: false
   })
   @IsOptional()
+  @ValidateIf(o => o.tiktok_url !== undefined && o.tiktok_url !== null && o.tiktok_url !== '')
   @IsString()
   @IsUrl({}, { message: 'URL TikTok invalide' })
-  @Matches(/^https?:\/\/(www\.)?(tiktok\.com)\/@.+/, {
+  @Matches(/^https?:\/\/(www\.)?(tiktok\.com)\/(@|.).*/, {
     message: 'L\'URL TikTok doit être une URL valide (ex: https://tiktok.com/@maboutique)'
   })
   tiktok_url?: string;
@@ -63,9 +67,10 @@ export class UpdateSocialMediaDto {
     required: false
   })
   @IsOptional()
+  @ValidateIf(o => o.youtube_url !== undefined && o.youtube_url !== null && o.youtube_url !== '')
   @IsString()
   @IsUrl({}, { message: 'URL YouTube invalide' })
-  @Matches(/^https?:\/\/(www\.)?(youtube\.com)\/(channel|c|user)\/.+/, {
+  @Matches(/^https?:\/\/(www\.)?(youtube\.com)\/(channel|c|user|@)\/.+/, {
     message: 'L\'URL YouTube doit être une URL valide (ex: https://youtube.com/channel/maboutique)'
   })
   youtube_url?: string;
@@ -76,6 +81,7 @@ export class UpdateSocialMediaDto {
     required: false
   })
   @IsOptional()
+  @ValidateIf(o => o.linkedin_url !== undefined && o.linkedin_url !== null && o.linkedin_url !== '')
   @IsString()
   @IsUrl({}, { message: 'URL LinkedIn invalide' })
   @Matches(/^https?:\/\/(www\.)?(linkedin\.com)\/(in|company)\/.+/, {

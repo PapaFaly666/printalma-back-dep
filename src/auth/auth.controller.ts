@@ -661,6 +661,32 @@ export class AuthController {
 	}
 
 	/**
+	 * Vérifier si le profil vendeur est complet
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Get('vendor/profile/status')
+	@ApiOperation({ summary: 'Vérifier si le profil vendeur est complet' })
+	@ApiResponse({ status: 200, description: 'Statut du profil récupéré avec succès' })
+	@ApiResponse({ status: 401, description: 'Non authentifié' })
+	@ApiResponse({ status: 403, description: 'Accès réservé aux vendeurs' })
+	async getVendorProfileStatus(@Req() req: RequestWithUser) {
+		return this.authService.getVendorProfileStatus(req.user.sub);
+	}
+
+	/**
+	 * Marquer la première connexion comme complétée
+	 */
+	@UseGuards(JwtAuthGuard)
+	@Post('vendor/first-login-complete')
+	@ApiOperation({ summary: 'Marquer la première connexion comme terminée' })
+	@ApiResponse({ status: 200, description: 'Première connexion marquée comme complétée' })
+	@ApiResponse({ status: 401, description: 'Non authentifié' })
+	@ApiResponse({ status: 403, description: 'Accès réservé aux vendeurs' })
+	async completeFirstLogin(@Req() req: RequestWithUser) {
+		return this.authService.completeFirstLogin(req.user.sub);
+	}
+
+	/**
 	 * Récupérer le profil vendeur (titre et bio)
 	 */
 	@Get('vendor/profile/bio')

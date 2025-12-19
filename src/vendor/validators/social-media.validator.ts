@@ -5,8 +5,8 @@ export class SocialMediaValidator {
     facebook_url: /^(https?:\/\/)?(www\.)?(facebook\.com|fb\.com)\/.+/i,
     instagram_url: /^(https?:\/\/)?(www\.)?(instagram\.com|instagr\.am)\/.+/i,
     twitter_url: /^(https?:\/\/)?(www\.)?(twitter\.com|x\.com)\/.+/i,
-    tiktok_url: /^(https?:\/\/)?(www\.)?(tiktok\.com)\/@.+/i,
-    youtube_url: /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel|c|user)\/.+|youtu\.be\/.+)/i,
+    tiktok_url: /^(https?:\/\/)?(www\.)?(tiktok\.com)\/(@|.).+/i,
+    youtube_url: /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel|c|user|@)\/.+|youtu\.be\/.+)/i,
     linkedin_url: /^(https?:\/\/)?(www\.)?(linkedin\.com\/(in|company)\/.+)/i,
   };
 

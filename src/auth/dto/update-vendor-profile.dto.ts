@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, ValidateIf, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -23,8 +23,8 @@ export class UpdateVendorBioProfileDto {
     required: false,
     maxLength: 2000
   })
-  @IsOptional()
   @IsString()
+  @ValidateIf(o => o.vendor_bio && o.vendor_bio.toString().trim() !== '')
   @MinLength(10, { message: 'La biographie doit contenir au moins 10 caractères' })
   @MaxLength(2000, { message: 'La biographie ne peut pas dépasser 2000 caractères' })
   vendor_bio?: string;

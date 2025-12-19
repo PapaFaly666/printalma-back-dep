@@ -44,6 +44,8 @@ model User {
   linkedin_url            String?                 @map("linkedin_url") @db.VarChar(500)
   professional_title      String?                 @map("professional_title") @db.VarChar(200)
   vendor_bio              String?                 @map("vendor_bio") @db.Text
+  profile_completed       Boolean                 @default(false) @map("profile_completed")
+  first_login_completed   Boolean                 @default(false) @map("first_login_completed")
   activation_code         String?
   activation_code_expires DateTime?
   is_deleted              Boolean                 @default(false)
@@ -79,6 +81,7 @@ model User {
   processedFundsRequests  VendorFundsRequest[]    @relation("ProcessedFundsRequests")
   vendorFundsRequests     VendorFundsRequest[]    @relation("VendorFundsRequests")
   vendorGalleries         VendorGallery[]         @relation("VendorGalleries")
+  vendorDesignUsages      DesignUsage[]           @relation("VendorDesignUsages")
 
   @@index([country])
   @@index([shop_name])
@@ -375,6 +378,7 @@ model Order {
   paymentAttemptsHistory PaymentAttempt[]
   productCustomizations  ProductCustomization[]
   fundsRequestLinks      VendorFundsRequestOrder[]
+  designUsages           DesignUsage[]
 
   @@index([userId])
   @@index([status])
@@ -417,6 +421,7 @@ model OrderItem {
   order                Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product              Product               @relation(fields: [productId], references: [id])
   vendorProduct        VendorProduct?        @relation(fields: [vendorProductId], references: [id])
+  designUsages         DesignUsage[]
 
   @@index([orderId])
   @@index([productId])
@@ -508,6 +513,7 @@ model Design {
   designProductLinks       DesignProductLink[]
   productPositions         ProductDesignPosition[] @relation("DesignToDesignPosition")
   vendorProducts           VendorProduct[]
+  designUsages             DesignUsage[]
 
   @@index([vendorId])
   @@index([categoryId])
@@ -1164,6 +1170,66 @@ model GalleryImage {
   @@map("gallery_images")
 }
 
+/// 🆕 Suivi des utilisations de designs vendeurs pour le calcul des revenus
+/// Enregistre chaque fois qu'un client utilise un design vendeur dans une commande
+model DesignUsage {
+  id                  Int      @id @default(autoincrement())
+
+  // Informations sur le design
+  designId            Int      @map("design_id")
+  designName          String   @map("design_name") @db.VarChar(255)
+  designPrice         Decimal  @map("design_price") @db.Decimal(10, 2)
+
+  // Informations sur le vendeur
+  vendorId            Int      @map("vendor_id")
+
+  // Informations sur la commande
+  orderId             Int      @map("order_id")
+  orderNumber         String   @map("order_number") @db.VarChar(50)
+  orderItemId         Int      @map("order_item_id")
+
+  // Informations sur le client
+  customerName        String   @map("customer_name") @db.VarChar(255)
+  customerEmail       String?  @map("customer_email") @db.VarChar(255)
+
+  // Informations sur le produit
+  productId           Int      @map("product_id")
+  productName         String   @map("product_name") @db.VarChar(255)
+
+  // Calcul des revenus
+  commissionRate      Decimal  @default(70.00) @map("commission_rate") @db.Decimal(5, 2)
+  vendorRevenue       Decimal  @map("vendor_revenue") @db.Decimal(10, 2)
+  platformFee         Decimal  @map("platform_fee") @db.Decimal(10, 2)
+
+  // Statut de paiement
+  paymentStatus       DesignUsagePaymentStatus @default(PENDING) @map("payment_status")
+
+  // Dates importantes
+  usedAt              DateTime  @default(now()) @map("used_at")
+  confirmedAt         DateTime? @map("confirmed_at")
+  readyForPayoutAt    DateTime? @map("ready_for_payout_at")
+  paidAt              DateTime? @map("paid_at")
+
+  // Métadonnées
+  customizationId     Int?     @map("customization_id")
+  viewKey             String?  @map("view_key") @db.VarChar(50)
+
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  design              Design    @relation(fields: [designId], references: [id], onDelete: Cascade)
+  vendor              User      @relation("VendorDesignUsages", fields: [vendorId], references: [id], onDelete: Cascade)
+  order               Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem           OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@map("design_usages")
+  @@index([vendorId, paymentStatus], name: "idx_vendor_payment_status")
+  @@index([orderId], name: "idx_order_id")
+  @@index([designId], name: "idx_design_id")
+  @@unique([designId, orderItemId], name: "unique_design_order_item")
+}
+
 enum GalleryStatus {
   DRAFT
   PUBLISHED
@@ -1290,4 +1356,13 @@ enum PaymentAttemptStatus {
   FAILED
   CANCELLED
   EXPIRED
+}
+
+/// 🆕 Statut de paiement des utilisations de designs vendeurs
+enum DesignUsagePaymentStatus {
+  PENDING         // Commande en attente
+  CONFIRMED       // Commande confirmée (paiement reçu)
+  READY_FOR_PAYOUT // Commande livrée, prêt pour paiement au vendeur
+  PAID            // Vendeur a été payé
+  CANCELLED       // Commande annulée (pas de paiement)
 }

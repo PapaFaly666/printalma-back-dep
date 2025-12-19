@@ -23,10 +23,6 @@
     "transpileOnly": true,
     "files": true,
     "esm": false,
-    "experimentalSpecifierResolution": "node",
-    "compilerOptions": {
-      "target": "ES2020",
-      "module": "CommonJS"
-    }
+    "experimentalSpecifierResolution": "node"
   }
 }

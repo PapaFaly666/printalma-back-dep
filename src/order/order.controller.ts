@@ -215,14 +215,11 @@ export class OrderController {
 
   // Obtenir les commandes de l'utilisateur connecté
   @Get('my-orders')
-  // @UseGuards(JwtAuthGuard) // Temporairement désactivé pour les tests
+  @UseGuards(JwtAuthGuard)
   async getUserOrders(@Request() req: Request & { user: any }) {
     let orders;
 
-    // Temporairement: utiliser un utilisateur factice pour les tests si pas d'authentification
-    if (!req.user) {
-      req.user = { sub: 2, role: 'CLIENT' }; // Utilisateur factice (ID=2, rôle CLIENT)
-    }
+    // L'utilisateur doit être authentifié grâce à JwtAuthGuard
 
     // Si l'utilisateur est un VENDEUR, récupérer les commandes de ses produits
     if (req.user.role === 'VENDEUR') {
@@ -418,16 +415,10 @@ export class OrderController {
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
     orders.forEach(order => {
-      // Calculer le bénéfice du vendeur (montant total payé - prix de reviens) pour chaque article payé
-      if (order.paymentStatus === 'PAID' && order.orderItems) {
-        let vendorProfit = 0;
-        order.orderItems.forEach((item: any) => {
-          const sellingPrice = item.unitPrice || 0; // Prix de vente réel payé par le client
-          const productCost = item.product?.price || 0; // Prix de reviens du produit
-          const itemProfit = (sellingPrice - productCost) * item.quantity;
-          vendorProfit += itemProfit;
-        });
-        stats.totalAmount += vendorProfit;
+      // Pour les commandes payées, utiliser le vendorAmount stocké
+      if (order.paymentStatus === 'PAID') {
+        const orderVendorAmount = order.vendorAmount || 0;
+        stats.totalAmount += orderVendorAmount;
       }
 
       // Status breakdown
@@ -471,40 +462,33 @@ export class OrderController {
         stats.recentOrders++;
       }
 
-      // Revenue and commission (for paid orders)
+      // Revenue and commission (for PAID orders - CONFIRMED or DELIVERED)
+      // Utiliser directement les montants calculés et stockés dans la commande
       if (paymentStatus === 'PAID') {
-        // Calculer le bénéfice du vendeur (montant total payé - prix de reviens) pour le revenu
-        let vendorProfit = 0;
-        if (order.orderItems) {
-          order.orderItems.forEach((item: any) => {
-            const sellingPrice = item.unitPrice || 0; // Prix de vente réel payé par le client
-            const productCost = item.product?.price || 0; // Prix de reviens du produit
-            const itemProfit = (sellingPrice - productCost) * item.quantity;
-            vendorProfit += itemProfit;
-          });
-        }
+        // Utiliser les montants déjà calculés et stockés
+        const orderCommission = order.commissionAmount || 0;
+        const orderVendorAmount = order.vendorAmount || 0;
 
-        // Calculer la commission basée sur le bénéfice et le taux de commission
-        const commissionRate = (order.commissionRate || 0) / 100; // Convertir en décimal
-        const calculatedCommission = vendorProfit * commissionRate;
-        const vendorNetGain = vendorProfit - calculatedCommission;
+        // Calculer le bénéfice total (ce qui a été vendu moins le coût de revient)
+        // Le bénéfice = commission + montant vendeur = beneficeCommande
+        const beneficeCommande = orderCommission + orderVendorAmount;
 
-        stats.totalRevenue += vendorProfit;
-        stats.totalCommission += calculatedCommission;
-        stats.totalVendorAmount += vendorNetGain; // Gain net du vendeur après commission
+        stats.totalRevenue += beneficeCommande; // Chiffre d'affaires = bénéfice total (prix vente - coût revient)
+        stats.totalCommission += orderCommission; // Commission déduite
+        stats.totalVendorAmount += orderVendorAmount; // Montant net pour le vendeur
 
         // Annual and monthly revenue calculation
         const orderDate = new Date(order.createdAt);
         const orderYear = orderDate.getFullYear();
         const orderMonth = orderDate.getMonth();
 
-        // Chiffre d'affaires annuel (bénéfice du vendeur des commandes payées de l'année en cours)
+        // Chiffre d'affaires annuel (bénéfice des commandes payées de l'année en cours)
         if (orderYear === currentYear) {
-          stats.annualRevenue += vendorProfit;
+          stats.annualRevenue += beneficeCommande;
 
-          // Chiffre d'affaires mensuel (bénéfice du vendeur des commandes payées du mois en cours)
+          // Chiffre d'affaires mensuel (bénéfice des commandes payées du mois en cours)
           if (orderMonth === currentMonth) {
-            stats.monthlyRevenue += vendorProfit;
+            stats.monthlyRevenue += beneficeCommande;
           }
         }
       }
@@ -830,13 +814,32 @@ export class OrderController {
   private async calculateVendorAvailableFunds(vendorId: number, orders: any[]) {
     try {
       // 💰 Calculer le montant total des vendorAmount de toutes les commandes LIVRÉES et PAYÉES
-      const totalVendorAmount = orders
+      const totalProductRevenue = orders
         .filter(order =>
           order.status === OrderStatus.DELIVERED &&
           order.paymentStatus === 'PAID' &&
           order.vendorAmount != null
         )
         .reduce((sum, order) => sum + (order.vendorAmount || 0), 0);
+
+      // 🎨 Calculer le montant total des revenus de designs CONFIRMÉS
+      const designUsages = await this.prisma.designUsage.findMany({
+        where: {
+          vendorId,
+          paymentStatus: 'CONFIRMED' // Designs des commandes confirmées et payées
+        },
+        select: {
+          vendorRevenue: true
+        }
+      });
+
+      const totalDesignRevenue = designUsages.reduce(
+        (sum, usage) => sum + parseFloat(usage.vendorRevenue.toString()),
+        0
+      );
+
+      // 💵 Montant total disponible = revenus produits + revenus designs
+      const totalVendorAmount = totalProductRevenue + totalDesignRevenue;
 
       // 📊 Récupérer toutes les demandes de fonds du vendeur
       const fundsRequests = await this.prisma.vendorFundsRequest.findMany({
@@ -869,6 +872,8 @@ export class OrderController {
         .reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
 
       this.logger.log(`💰 [VENDOR ${vendorId}] Calcul des fonds disponibles:`, {
+        totalProductRevenue,
+        totalDesignRevenue,
         totalVendorAmount,
         withdrawnAmount,
         pendingWithdrawalAmount,
@@ -878,6 +883,9 @@ export class OrderController {
       return {
         // Montant total gagné par le vendeur (après commission)
         totalVendorAmount,
+        // 🆕 Répartition par source de revenus
+        totalProductRevenue,
+        totalDesignRevenue,
         // Montant déjà retiré
         withdrawnAmount,
         // Montant en attente de retrait
@@ -905,6 +913,8 @@ export class OrderController {
       // Retourner des valeurs par défaut en cas d'erreur
       return {
         totalVendorAmount: 0,
+        totalProductRevenue: 0,
+        totalDesignRevenue: 0,
         withdrawnAmount: 0,
         pendingWithdrawalAmount: 0,
         availableForWithdrawal: 0,

@@ -944,24 +944,24 @@ export class VendorPublishService {
           where: { vendorId }
         }),
         // 📊 COMMANDES: Total des commandes du vendeur (tous statuts)
+        // Utiliser la même logique que getVendorOrders dans order.service.ts
         this.prisma.order.count({
           where: {
             orderItems: {
               some: {
-                product: {
-                  vendorProducts: {
-                    some: { vendorId }
-                  }
+                vendorProduct: {
+                  vendorId: vendorId
                 }
               }
             }
           }
         }),
-        // 📅 CHIFFRE D'AFFAIRES ANNUEL: Commandes livrées de cette année
+        // 📅 CHIFFRE D'AFFAIRES ANNUEL: Commandes payées de cette année (CONFIRMED + PAID)
         this.prisma.orderItem.aggregate({
           where: {
             order: {
-              status: 'DELIVERED',
+              status: 'CONFIRMED',
+              paymentStatus: 'PAID',
               createdAt: {
                 gte: new Date(new Date().getFullYear(), 0, 1)
               }
@@ -974,11 +974,12 @@ export class VendorPublishService {
           },
           _sum: { unitPrice: true, quantity: true }
         }),
-        // 📅 CHIFFRE D'AFFAIRES MENSUEL: Commandes livrées de ce mois
+        // 📅 CHIFFRE D'AFFAIRES MENSUEL: Commandes payées de ce mois (CONFIRMED + PAID)
         this.prisma.orderItem.aggregate({
           where: {
             order: {
-              status: 'DELIVERED',
+              status: 'CONFIRMED',
+              paymentStatus: 'PAID',
               createdAt: {
                 gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
               }

@@ -44,11 +44,12 @@ export class VendorFundsService {
 
     console.log(`[VENDOR ${vendorId}] Début du calcul des gains - Taux commission: ${(vendorCommissionRate * 100).toFixed(2)}%`);
 
-    // Calculer les gains depuis les commandes confirmées ET payées uniquement
+    // Calculer les gains depuis les commandes LIVRÉES ET PAYÉES uniquement
+    // 🔒 SÉCURITÉ: Le vendeur ne peut retirer que les montants des commandes livrées ET payées
     // Ces commandes ont déjà la commission appliquée et le paiement validé
     const validOrders = await this.prisma.order.findMany({
       where: {
-        status: 'CONFIRMED',
+        status: 'DELIVERED',
         paymentStatus: 'PAID',
         // Filtrer les commandes contenant des produits du vendeur
         orderItems: {
@@ -136,6 +137,39 @@ export class VendorFundsService {
       }
     }
 
+    // 🎨 Ajouter les revenus des designs CONFIRMÉS
+    const designUsages = await this.prisma.designUsage.findMany({
+      where: {
+        vendorId,
+        paymentStatus: 'CONFIRMED' // Designs des commandes confirmées et payées
+      },
+      select: {
+        vendorRevenue: true,
+        usedAt: true
+      }
+    });
+
+    console.log(`[VENDOR ${vendorId}] Nombre de designs utilisés trouvés: ${designUsages.length}`);
+
+    let totalDesignRevenue = 0;
+    for (const designUsage of designUsages) {
+      const designRevenue = parseFloat(designUsage.vendorRevenue.toString());
+      totalDesignRevenue += designRevenue;
+      totalEarnings += designRevenue; // Ajouter aux gains totaux
+
+      // Gains de ce mois
+      if (designUsage.usedAt >= firstDayThisMonth) {
+        thisMonthEarnings += designRevenue;
+      }
+
+      // Gains du mois dernier
+      if (designUsage.usedAt >= firstDayLastMonth && designUsage.usedAt <= lastDayLastMonth) {
+        lastMonthEarnings += designRevenue;
+      }
+    }
+
+    console.log(`[VENDOR ${vendorId}] Total revenus designs: ${totalDesignRevenue} FCFA`);
+
     // Calculer les montants en attente et payés
     const pendingRequests = await this.prisma.vendorFundsRequest.findMany({
       where: {
@@ -186,6 +220,7 @@ export class VendorFundsService {
     console.log(`[VENDOR ${vendorId}] Calcul complet des gains:`, {
       totalSalesAmount,
       totalEarnings,
+      totalDesignRevenue,
       totalCommissionAmount,
       paidAmount,
       pendingAmount,

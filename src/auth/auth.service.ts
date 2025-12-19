@@ -2250,13 +2250,50 @@ export class AuthService {
                 throw new UnauthorizedException('Accès réservé aux vendeurs');
             }
 
+            // Préparer les données de mise à jour
+            const updateData: any = {
+                professional_title: updateDto.professional_title
+            };
+
+            // Ne mettre à jour vendor_bio que si c'est une chaîne non vide
+            if (updateDto.vendor_bio !== undefined) {
+                updateData.vendor_bio = updateDto.vendor_bio.trim() === '' ? null : updateDto.vendor_bio;
+            }
+
+            // Vérifier si le profil est maintenant complet
+            const currentUser = await this.prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    professional_title: true,
+                    vendor_bio: true,
+                    facebook_url: true,
+                    instagram_url: true,
+                    twitter_url: true,
+                    tiktok_url: true,
+                    youtube_url: true,
+                    linkedin_url: true
+                }
+            });
+
+            // Déterminer si le profil est complet
+            const newProfessionalTitle = updateDto.professional_title || currentUser?.professional_title;
+            const newVendorBio = updateData.vendor_bio || currentUser?.vendor_bio;
+
+            const hasSocialMedia = !!(currentUser?.facebook_url ||
+                                      currentUser?.instagram_url ||
+                                      currentUser?.twitter_url ||
+                                      currentUser?.tiktok_url ||
+                                      currentUser?.youtube_url ||
+                                      currentUser?.linkedin_url);
+
+            const isProfileComplete = !!(newProfessionalTitle && newVendorBio && hasSocialMedia);
+
+            updateData.profile_completed = isProfileComplete;
+
             // Mettre à jour le profil
             const updatedProfile = await this.prisma.user.update({
                 where: { id: userId },
-                data: {
-                    professional_title: updateDto.professional_title,
-                    vendor_bio: updateDto.vendor_bio
-                },
+                data: updateData,
                 select: {
                     professional_title: true,
                     vendor_bio: true
@@ -2360,6 +2397,71 @@ export class AuthService {
                 throw error;
             }
             throw new BadRequestException('Erreur lors de la récupération du profil vendeur');
+        }
+    }
+
+    async getVendorProfileStatus(userId: number) {
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    role: true,
+                    first_login_completed: true,
+                    profile_completed: true,
+                    professional_title: true,
+                    vendor_bio: true,
+                    facebook_url: true,
+                    instagram_url: true,
+                    twitter_url: true,
+                    tiktok_url: true,
+                    youtube_url: true,
+                    linkedin_url: true
+                }
+            });
+
+            if (!user || user.role !== Role.VENDEUR) {
+                throw new UnauthorizedException('Accès réservé aux vendeurs');
+            }
+
+            const hasSocialMedia = !!(user.facebook_url ||
+                                      user.instagram_url ||
+                                      user.twitter_url ||
+                                      user.tiktok_url ||
+                                      user.youtube_url ||
+                                      user.linkedin_url);
+
+            const missingItems = [];
+            if (!user.professional_title) missingItems.push('Titre professionnel');
+            if (!user.vendor_bio) missingItems.push('Biographie');
+            if (!hasSocialMedia) missingItems.push('Au moins un réseau social');
+
+            return {
+                isFirstLogin: !user.first_login_completed,
+                isProfileComplete: user.profile_completed,
+                missingItems,
+                profile: {
+                    professional_title: user.professional_title,
+                    vendor_bio: user.vendor_bio,
+                    has_social_media: hasSocialMedia
+                }
+            };
+        } catch (error) {
+            console.error('Erreur lors de la vérification du statut du profil:', error);
+            throw error;
+        }
+    }
+
+    async completeFirstLogin(userId: number) {
+        try {
+            await this.prisma.user.update({
+                where: { id: userId },
+                data: { first_login_completed: true }
+            });
+
+            return { message: 'Première connexion marquée comme complétée' };
+        } catch (error) {
+            console.error('Erreur lors de la finalisation de la première connexion:', error);
+            throw error;
         }
     }
 }
