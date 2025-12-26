@@ -91,7 +91,7 @@ export class CustomizationController {
     const userId = req.user?.id;
     const customizationIdNum = customizationId ? parseInt(customizationId, 10) : undefined;
 
-    return this.customizationService.upsertCustomizationPure(dto, userId, customizationIdNum);
+    return this.customizationService.upsertCustomization(dto, userId, customizationIdNum);
   }
 
   /**
