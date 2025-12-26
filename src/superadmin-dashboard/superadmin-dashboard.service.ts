@@ -70,42 +70,126 @@ export class SuperadminDashboardService {
       },
     });
 
-    // Calculer les revenus de la plateforme ce mois (commissions)
-    const thisMonthOrders = await this.prisma.order.aggregate({
+    // 💰 Récupérer toutes les commandes pour recalculer les commissions sur le bénéfice
+    const allOrders = await this.prisma.order.findMany({
       where: {
-        createdAt: {
-          gte: startOfMonth,
-        },
         status: {
           in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'],
         },
+        paymentStatus: 'PAID',
       },
-      _sum: {
-        commissionAmount: true,
+      include: {
+        orderItems: {
+          include: {
+            product: {
+              select: {
+                price: true,
+              },
+            },
+            customization: {
+              select: {
+                id: true,
+                designElements: true,
+              },
+            },
+          },
+        },
       },
     });
 
-    // Calculer les gains totaux de l'admin (toutes les commissions)
-    const totalAdminGains = await this.prisma.order.aggregate({
-      _sum: {
-        commissionAmount: true,
-      },
-      where: {
-        status: {
-          in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'],
-        },
-      },
-    });
+    // Calculer les gains totaux de l'admin en recalculant sur le bénéfice
+    let totalAdminGains = 0;
+    let thisMonthAdminGains = 0;
+
+    // 💰 Calculer le chiffre d'affaires (CA = montant total des commandes)
+    let totalRevenue = 0;
+    let thisMonthRevenue = 0;
+    let thisYearRevenue = 0;
+
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+    for (const order of allOrders) {
+      // Calculer la base de commission pour cette commande
+      let commissionBase = 0;
+
+      for (const item of order.orderItems) {
+        // 🏪 PARTIE 1 : Commission sur le bénéfice du produit
+        const productCost = item.product?.price || 0;
+        const sellingPrice = item.unitPrice || 0;
+        const quantity = item.quantity || 1;
+        const itemProfit = (sellingPrice - productCost) * quantity;
+        commissionBase += itemProfit;
+
+        // 🎨 PARTIE 2 : Commission sur les designs vendeurs utilisés
+        let itemDesignsTotal = 0;
+
+        // Extraire les designs depuis designElementsByView
+        if (item.designElementsByView && typeof item.designElementsByView === 'object') {
+          const designElementsByView = item.designElementsByView as Record<string, any[]>;
+          for (const viewKey in designElementsByView) {
+            const elements = designElementsByView[viewKey];
+            if (Array.isArray(elements)) {
+              for (const element of elements) {
+                if (element.type === 'image' && element.designPrice) {
+                  itemDesignsTotal += parseFloat(element.designPrice);
+                }
+              }
+            }
+          }
+        }
+
+        // Ou depuis customization.designElements
+        if (itemDesignsTotal === 0 && item.customization?.designElements) {
+          const designElements = item.customization.designElements as any[];
+          if (Array.isArray(designElements)) {
+            for (const element of designElements) {
+              if (element.type === 'image' && element.designPrice) {
+                itemDesignsTotal += parseFloat(element.designPrice);
+              }
+            }
+          }
+        }
+
+        // Ajouter les revenus des designs à la base de commission
+        commissionBase += itemDesignsTotal;
+      }
+
+      // Calculer la commission sur la base appropriée
+      const commissionRate = (order.commissionRate || 40) / 100;
+      const commissionAmount = commissionBase * commissionRate;
+
+      // Ajouter au total des gains admin
+      totalAdminGains += commissionAmount;
+
+      // 💰 Ajouter au chiffre d'affaires total
+      totalRevenue += order.totalAmount;
+
+      // Vérifier si la commande est du mois en cours
+      const orderDate = new Date(order.createdAt);
+      if (orderDate >= startOfMonth) {
+        thisMonthAdminGains += commissionAmount;
+        thisMonthRevenue += order.totalAmount;
+      }
+
+      // Vérifier si la commande est de l'année en cours
+      if (orderDate >= startOfYear) {
+        thisYearRevenue += order.totalAmount;
+      }
+    }
 
     return {
       totalPlatformRevenue: vendorEarnings._sum.totalCommissionPaid || 0,
-      thisMonthPlatformRevenue: thisMonthOrders._sum.commissionAmount || 0,
+      thisMonthPlatformRevenue: thisMonthAdminGains,
       totalVendorEarnings: vendorEarnings._sum.totalEarnings || 0,
       thisMonthVendorEarnings: vendorEarnings._sum.thisMonthEarnings || 0,
       pendingPayouts: vendorEarnings._sum.pendingAmount || 0,
       availableForPayout: vendorEarnings._sum.availableAmount || 0,
       averageCommissionRate: vendorEarnings._avg.averageCommissionRate || 0,
-      totalAdminGains: totalAdminGains._sum.commissionAmount || 0,
+      totalAdminGains: totalAdminGains,
+      // 💰 Nouveaux champs de chiffre d'affaires
+      totalRevenue: totalRevenue,
+      thisMonthRevenue: thisMonthRevenue,
+      thisYearRevenue: thisYearRevenue,
     };
   }
 

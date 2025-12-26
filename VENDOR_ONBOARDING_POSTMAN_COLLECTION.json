@@ -1,0 +1,130 @@
+{
+  "info": {
+    "name": "Vendor Onboarding API",
+    "description": "Collection Postman pour tester l'API d'onboarding vendeur",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Complete Onboarding",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{vendor_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "phones",
+              "value": "[{\"number\":\"+221771234567\",\"isPrimary\":true},{\"number\":\"772345678\",\"isPrimary\":false}]",
+              "type": "text"
+            },
+            {
+              "key": "socialMedia",
+              "value": "[{\"platform\":\"facebook\",\"url\":\"https://facebook.com/myshop\"},{\"platform\":\"instagram\",\"url\":\"https://instagram.com/myshop\"}]",
+              "type": "text"
+            },
+            {
+              "key": "profileImage",
+              "type": "file",
+              "src": "/path/to/profile-image.jpg"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/vendor-onboarding/complete",
+          "host": ["{{base_url}}"],
+          "path": ["vendor-onboarding", "complete"]
+        },
+        "description": "Compléter l'onboarding du vendeur avec numéros de téléphone, réseaux sociaux et photo de profil"
+      },
+      "response": []
+    },
+    {
+      "name": "2. Get Profile Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{vendor_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/vendor-onboarding/profile-status",
+          "host": ["{{base_url}}"],
+          "path": ["vendor-onboarding", "profile-status"]
+        },
+        "description": "Vérifier le statut de complétion du profil vendeur"
+      },
+      "response": []
+    },
+    {
+      "name": "3. Get Onboarding Info",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{vendor_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/vendor-onboarding/info",
+          "host": ["{{base_url}}"],
+          "path": ["vendor-onboarding", "info"]
+        },
+        "description": "Récupérer les informations d'onboarding (numéros, réseaux sociaux, photo)"
+      },
+      "response": []
+    },
+    {
+      "name": "4. Update Phones",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{vendor_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phones\": [\n    {\n      \"number\": \"+221771234567\",\n      \"isPrimary\": true\n    },\n    {\n      \"number\": \"+221773456789\",\n      \"isPrimary\": false\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/vendor-onboarding/phones",
+          "host": ["{{base_url}}"],
+          "path": ["vendor-onboarding", "phones"]
+        },
+        "description": "Mettre à jour les numéros de téléphone du vendeur"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3004",
+      "type": "string"
+    },
+    {
+      "key": "vendor_token",
+      "value": "YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    }
+  ]
+}

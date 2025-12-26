@@ -68,11 +68,12 @@ export class DesignRevenueService {
         whereClause.usedAt = dateFilter;
       }
 
-      // Statistiques globales (uniquement designs CONFIRMED)
+      // ✅ CORRECTION: Statistiques globales (designs CONFIRMED, READY_FOR_PAYOUT et PAID)
+      // Les designs doivent rester visibles même après livraison
       const stats = await this.prisma.designUsage.aggregate({
         where: {
           ...whereClause,
-          paymentStatus: 'CONFIRMED'  // Uniquement les designs avec statut CONFIRMED
+          paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT', 'PAID'] }  // ✅ Inclure tous les statuts sauf PENDING et CANCELLED
         },
         _sum: {
           vendorRevenue: true,
@@ -98,11 +99,11 @@ export class DesignRevenueService {
         _sum: { vendorRevenue: true },
       });
 
-      // Nombre de designs uniques utilisés (uniquement designs CONFIRMED)
+      // ✅ CORRECTION: Nombre de designs uniques utilisés (tous les statuts payés)
       const designUsages = await this.prisma.designUsage.findMany({
         where: {
           ...whereClause,
-          paymentStatus: 'CONFIRMED'
+          paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT', 'PAID'] }  // ✅ Inclure tous les statuts
         },
         select: { designId: true },
         distinct: ['designId'],
@@ -153,11 +154,12 @@ export class DesignRevenueService {
         whereClause.usedAt = dateFilter;
       }
 
-      // Récupérer tous les design usages avec statut CONFIRMED
+      // ✅ CORRECTION: Récupérer tous les design usages (CONFIRMED, READY_FOR_PAYOUT, PAID)
+      // Les designs doivent rester visibles même après livraison de la commande
       const designUsages = await this.prisma.designUsage.findMany({
         where: {
           ...whereClause,
-          paymentStatus: 'CONFIRMED'  // Filtrer uniquement les designs avec statut CONFIRMED
+          paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT', 'PAID'] }  // ✅ Inclure tous les statuts payés
         },
         include: {
           design: {
@@ -297,11 +299,13 @@ export class DesignRevenueService {
     this.logger.log(`📊 [Design Revenue] Récupération historique design ${designId} pour vendeur ${vendorId}`);
 
     try {
+      // ✅ CORRECTION: Récupérer l'historique complet (CONFIRMED, READY_FOR_PAYOUT, PAID)
+      // Les designs doivent être visibles dans l'historique même après livraison
       const usageHistory = await this.prisma.designUsage.findMany({
         where: {
           designId: parseInt(designId.toString()),
           vendorId,
-          paymentStatus: 'CONFIRMED'  // Uniquement les designs avec statut CONFIRMED
+          paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT', 'PAID'] }  // ✅ Inclure tous les statuts payés
         },
         include: {
           order: {

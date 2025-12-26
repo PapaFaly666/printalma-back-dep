@@ -1,0 +1,251 @@
+{
+  "info": {
+    "name": "Sticker API - Printalma",
+    "description": "Collection d'endpoints pour le système de vente de stickers",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3004",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "stickerId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Vendor Endpoints",
+      "item": [
+        {
+          "name": "Create Sticker",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"designId\": 1,\n  \"name\": \"Sticker Logo Premium\",\n  \"description\": \"Sticker haute qualité avec logo personnalisé\",\n  \"size\": {\n    \"id\": \"medium\",\n    \"width\": 10,\n    \"height\": 10\n  },\n  \"finish\": \"glossy\",\n  \"shape\": \"DIE_CUT\",\n  \"price\": 1100,\n  \"minimumQuantity\": 1,\n  \"stockQuantity\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor/stickers",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor", "stickers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List My Stickers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vendor/stickers?page=1&limit=20&sortBy=created_at&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor", "stickers"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PUBLISHED",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "created_at"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "desc"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Sticker Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vendor/stickers/{{stickerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor", "stickers", "{{stickerId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Sticker",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sticker Logo Premium - Édition 2025\",\n  \"description\": \"Sticker haute qualité avec logo personnalisé - Nouvelle collection\",\n  \"price\": 1200,\n  \"stockQuantity\": 150,\n  \"status\": \"PUBLISHED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor/stickers/{{stickerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor", "stickers", "{{stickerId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Sticker",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vendor/stickers/{{stickerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor", "stickers", "{{stickerId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Public Endpoints",
+      "item": [
+        {
+          "name": "List Public Stickers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/stickers?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["public", "stickers"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "logo",
+                  "disabled": true
+                },
+                {
+                  "key": "vendorId",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "size",
+                  "value": "medium",
+                  "disabled": true
+                },
+                {
+                  "key": "finish",
+                  "value": "glossy",
+                  "disabled": true
+                },
+                {
+                  "key": "minPrice",
+                  "value": "500",
+                  "disabled": true
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "2000",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Configurations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/stickers/configurations",
+              "host": ["{{baseUrl}}"],
+              "path": ["public", "stickers", "configurations"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Public Sticker Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/stickers/{{stickerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["public", "stickers", "{{stickerId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

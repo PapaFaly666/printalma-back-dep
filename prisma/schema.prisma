@@ -44,8 +44,9 @@ model User {
   linkedin_url            String?                 @map("linkedin_url") @db.VarChar(500)
   professional_title      String?                 @map("professional_title") @db.VarChar(200)
   vendor_bio              String?                 @map("vendor_bio") @db.Text
-  profile_completed       Boolean                 @default(false) @map("profile_completed")
-  first_login_completed   Boolean                 @default(false) @map("first_login_completed")
+  profile_completed        Boolean                 @default(false) @map("profile_completed")
+  first_login_completed    Boolean                 @default(false) @map("first_login_completed")
+  onboarding_completed_at  DateTime?               @map("onboarding_completed_at")
   activation_code         String?
   activation_code_expires DateTime?
   is_deleted              Boolean                 @default(false)
@@ -82,6 +83,9 @@ model User {
   vendorFundsRequests     VendorFundsRequest[]    @relation("VendorFundsRequests")
   vendorGalleries         VendorGallery[]         @relation("VendorGalleries")
   vendorDesignUsages      DesignUsage[]           @relation("VendorDesignUsages")
+  vendorPhones            VendorPhone[]           @relation("VendorPhones")
+  vendorStickers          StickerProduct[]        @relation("VendorStickers")
+  stickerFavorites        StickerFavorite[]       @relation("UserStickerFavorites")
 
   @@index([country])
   @@index([shop_name])
@@ -379,6 +383,7 @@ model Order {
   productCustomizations  ProductCustomization[]
   fundsRequestLinks      VendorFundsRequestOrder[]
   designUsages           DesignUsage[]
+  stickerOrderItems      StickerOrderItem[]
 
   @@index([userId])
   @@index([status])
@@ -514,6 +519,7 @@ model Design {
   productPositions         ProductDesignPosition[] @relation("DesignToDesignPosition")
   vendorProducts           VendorProduct[]
   designUsages             DesignUsage[]
+  stickerProducts          StickerProduct[]        @relation("StickerDesigns")
 
   @@index([vendorId])
   @@index([categoryId])
@@ -1230,6 +1236,22 @@ model DesignUsage {
   @@unique([designId, orderItemId], name: "unique_design_order_item")
 }
 
+model VendorPhone {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  phoneNumber String   @map("phone_number") @db.VarChar(20)
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  vendor User @relation("VendorPhones", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, phoneNumber], name: "unique_vendor_phone")
+  @@index([vendorId])
+  @@index([vendorId, isPrimary])
+  @@map("vendor_phones")
+}
+
 enum GalleryStatus {
   DRAFT
   PUBLISHED
@@ -1365,4 +1387,166 @@ enum DesignUsagePaymentStatus {
   READY_FOR_PAYOUT // Commande livrée, prêt pour paiement au vendeur
   PAID            // Vendeur a été payé
   CANCELLED       // Commande annulée (pas de paiement)
+}
+
+/// 🆕 Système de vente de stickers personnalisés
+/// Tailles prédéfinies pour les stickers
+model StickerSize {
+  id           String          @id @db.VarChar(50)
+  name         String          @db.VarChar(100)
+  description  String?         @db.Text
+  widthCm      Decimal         @map("width_cm") @db.Decimal(10, 2)
+  heightCm     Decimal         @map("height_cm") @db.Decimal(10, 2)
+  basePrice    Int             @map("base_price")
+  isActive     Boolean         @default(true) @map("is_active")
+  displayOrder Int             @default(0) @map("display_order")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  products     StickerProduct[]
+
+  @@map("sticker_sizes")
+}
+
+/// Finitions disponibles pour les stickers
+model StickerFinish {
+  id              String          @id @db.VarChar(50)
+  name            String          @db.VarChar(100)
+  description     String?         @db.Text
+  priceMultiplier Decimal         @default(1.00) @map("price_multiplier") @db.Decimal(3, 2)
+  isActive        Boolean         @default(true) @map("is_active")
+  displayOrder    Int             @default(0) @map("display_order")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  products        StickerProduct[]
+
+  @@map("sticker_finishes")
+}
+
+/// Produits stickers créés par les vendeurs
+model StickerProduct {
+  id              Int                   @id @default(autoincrement())
+
+  // Références
+  vendorId        Int                   @map("vendor_id")
+  designId        Int                   @map("design_id")
+
+  // Informations du produit
+  name            String                @db.VarChar(255)
+  description     String?               @db.Text
+  sku             String?               @unique @db.VarChar(100)
+
+  // Configuration du sticker
+  sizeId          String                @map("size_id") @db.VarChar(50)
+  widthCm         Decimal               @map("width_cm") @db.Decimal(10, 2)
+  heightCm        Decimal               @map("height_cm") @db.Decimal(10, 2)
+  finish          String                @db.VarChar(50)
+  shape           StickerShape          @default(SQUARE)
+
+  // Prix et stock
+  basePrice       Int                   @map("base_price")
+  finishMultiplier Decimal              @default(1.00) @map("finish_multiplier") @db.Decimal(3, 2)
+  finalPrice      Int                   @map("final_price")
+  minimumQuantity Int                   @default(1) @map("minimum_quantity")
+  stockQuantity   Int                   @default(0) @map("stock_quantity")
+
+  // Métadonnées
+  status          StickerProductStatus  @default(DRAFT)
+  isFeatured      Boolean               @default(false) @map("is_featured")
+  viewCount       Int                   @default(0) @map("view_count")
+  saleCount       Int                   @default(0) @map("sale_count")
+
+  // Timestamps
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  publishedAt     DateTime?             @map("published_at")
+
+  // Relations
+  vendor          User                  @relation("VendorStickers", fields: [vendorId], references: [id], onDelete: Cascade)
+  design          Design                @relation("StickerDesigns", fields: [designId], references: [id], onDelete: Cascade)
+  size            StickerSize           @relation(fields: [sizeId], references: [id])
+  finishConfig    StickerFinish         @relation(fields: [finish], references: [id])
+  orderItems      StickerOrderItem[]
+  views           StickerView[]
+  favorites       StickerFavorite[]
+
+  @@index([vendorId])
+  @@index([designId])
+  @@index([status])
+  @@index([sizeId])
+  @@index([finish])
+  @@index([isFeatured])
+  @@index([publishedAt])
+  @@map("sticker_products")
+}
+
+/// Items de commande pour les stickers
+model StickerOrderItem {
+  id                Int            @id @default(autoincrement())
+  orderId           Int            @map("order_id")
+  stickerProductId  Int            @map("sticker_product_id")
+
+  // Détails de la commande
+  quantity          Int
+  unitPrice         Int            @map("unit_price")
+  totalPrice        Int            @map("total_price")
+
+  // Configuration (snapshot au moment de la commande)
+  sizeName          String?        @map("size_name") @db.VarChar(100)
+  finishName        String?        @map("finish_name") @db.VarChar(100)
+  shapeName         String?        @map("shape_name") @db.VarChar(100)
+  dimensionsCm      String?        @map("dimensions_cm") @db.VarChar(50)
+
+  // Métadonnées
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stickerProduct    StickerProduct @relation(fields: [stickerProductId], references: [id])
+
+  @@index([orderId])
+  @@index([stickerProductId])
+  @@map("sticker_order_items")
+}
+
+/// Analytics - Vues de stickers
+model StickerView {
+  id              Int            @id @default(autoincrement())
+  stickerId       Int            @map("sticker_id")
+  userId          Int?           @map("user_id")
+  sessionId       String?        @map("session_id") @db.VarChar(255)
+  viewedAt        DateTime       @default(now()) @map("viewed_at")
+
+  sticker         StickerProduct @relation(fields: [stickerId], references: [id], onDelete: Cascade)
+
+  @@index([stickerId])
+  @@index([viewedAt])
+  @@map("sticker_views")
+}
+
+/// Analytics - Favoris de stickers
+model StickerFavorite {
+  id              Int            @id @default(autoincrement())
+  stickerId       Int            @map("sticker_id")
+  userId          Int            @map("user_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  sticker         StickerProduct @relation(fields: [stickerId], references: [id], onDelete: Cascade)
+  user            User           @relation("UserStickerFavorites", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([stickerId, userId], name: "unique_sticker_favorite")
+  @@index([stickerId])
+  @@index([userId])
+  @@map("sticker_favorites")
+}
+
+enum StickerShape {
+  SQUARE
+  CIRCLE
+  RECTANGLE
+  DIE_CUT
+}
+
+enum StickerProductStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  REJECTED
 }

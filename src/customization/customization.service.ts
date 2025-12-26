@@ -7,14 +7,6 @@ import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
 export class CustomizationService {
   private readonly logger = new Logger(CustomizationService.name);
 
-  // Liste des polices autorisées
-  private readonly allowedFonts = [
-    'Arial', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald',
-    'Poppins', 'Raleway', 'Inter', 'Nunito', 'Playfair Display',
-    'Merriweather', 'Source Sans Pro', 'PT Sans', 'Ubuntu',
-    'Noto Sans', 'Work Sans', 'Quicksand', 'Archivo', 'Cabin'
-  ];
-
   constructor(
     private prisma: PrismaService,
     private cloudinaryService: CloudinaryService
@@ -585,7 +577,8 @@ export class CustomizationService {
   }
 
   /**
-   * Valider les éléments de design
+   * Valider les éléments de design selon la spécification
+   * IMPORTANT: Les retours à la ligne (\n) dans le texte DOIVENT être préservés
    */
   validateDesignElements(elements: any[]): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
@@ -600,47 +593,85 @@ export class CustomizationService {
     }
 
     elements.forEach((element, index) => {
-      // Vérifier les coordonnées (0-1)
-      if (element.x < 0 || element.x > 1) {
-        errors.push(`Element ${index}: x must be between 0 and 1 (got ${element.x})`);
+      // Champs obligatoires pour tous les éléments
+      if (!element.id || typeof element.id !== 'string') {
+        errors.push(`Element ${index}: id is required and must be a string`);
       }
-      if (element.y < 0 || element.y > 1) {
-        errors.push(`Element ${index}: y must be between 0 and 1 (got ${element.y})`);
+
+      if (!element.type || !['text', 'image'].includes(element.type)) {
+        errors.push(`Element ${index}: type must be "text" or "image"`);
+      }
+
+      // Vérifier les coordonnées (0-1)
+      if (typeof element.x !== 'number' || element.x < 0 || element.x > 1) {
+        errors.push(`Element ${index}: x must be a number between 0 and 1 (got ${element.x})`);
+      }
+      if (typeof element.y !== 'number' || element.y < 0 || element.y > 1) {
+        errors.push(`Element ${index}: y must be a number between 0 and 1 (got ${element.y})`);
       }
 
       // Vérifier les dimensions
-      if (element.width <= 0) {
-        errors.push(`Element ${index}: width must be positive`);
+      if (typeof element.width !== 'number' || element.width <= 0) {
+        errors.push(`Element ${index}: width must be a positive number`);
       }
-      if (element.height <= 0) {
-        errors.push(`Element ${index}: height must be positive`);
+      if (typeof element.height !== 'number' || element.height <= 0) {
+        errors.push(`Element ${index}: height must be a positive number`);
+      }
+
+      // Rotation
+      if (typeof element.rotation !== 'number') {
+        errors.push(`Element ${index}: rotation must be a number`);
+      }
+
+      // zIndex
+      if (typeof element.zIndex !== 'number') {
+        errors.push(`Element ${index}: zIndex must be a number`);
       }
 
       // Validations spécifiques au type
       if (element.type === 'text') {
-        // Texte
-        if (!element.text || element.text.length === 0) {
-          errors.push(`Element ${index}: text cannot be empty`);
+        // Texte - IMPORTANT: peut contenir des \n pour les retours à la ligne
+        if (typeof element.text !== 'string') {
+          errors.push(`Element ${index}: text must be a string`);
         }
         if (element.text && element.text.length > 500) {
           errors.push(`Element ${index}: text exceeds 500 characters`);
         }
 
-        // Taille de police
-        if (element.fontSize < 8 || element.fontSize > 200) {
-          errors.push(`Element ${index}: fontSize must be between 8 and 200`);
+        // Taille de police (10-100 selon la spec)
+        if (typeof element.fontSize !== 'number' || element.fontSize < 10 || element.fontSize > 100) {
+          errors.push(`Element ${index}: fontSize must be a number between 10 and 100 (got ${element.fontSize})`);
         }
 
-        // Couleur (format hex)
-        if (element.color && !/^#[0-9A-Fa-f]{6}$/.test(element.color)) {
-          errors.push(`Element ${index}: invalid color format (expected #RRGGBB)`);
+        // Police
+        if (!element.fontFamily || typeof element.fontFamily !== 'string') {
+          errors.push(`Element ${index}: fontFamily is required and must be a string`);
         }
 
-        // Police (optionnel: vérifier contre liste blanche)
-        // Commenté pour ne pas bloquer si nouvelle police
-        // if (element.fontFamily && !this.allowedFonts.includes(element.fontFamily)) {
-        //   errors.push(`Element ${index}: font '${element.fontFamily}' not allowed`);
-        // }
+        // Couleur (format hex strict)
+        if (!element.color || !/^#[0-9A-Fa-f]{6}$/.test(element.color)) {
+          errors.push(`Element ${index}: color must be a valid hex color (e.g., #000000)`);
+        }
+
+        // fontWeight
+        if (!['normal', 'bold'].includes(element.fontWeight)) {
+          errors.push(`Element ${index}: fontWeight must be "normal" or "bold"`);
+        }
+
+        // fontStyle
+        if (!['normal', 'italic'].includes(element.fontStyle)) {
+          errors.push(`Element ${index}: fontStyle must be "normal" or "italic"`);
+        }
+
+        // textDecoration
+        if (!['none', 'underline'].includes(element.textDecoration)) {
+          errors.push(`Element ${index}: textDecoration must be "none" or "underline"`);
+        }
+
+        // textAlign
+        if (!['left', 'center', 'right'].includes(element.textAlign)) {
+          errors.push(`Element ${index}: textAlign must be "left", "center", or "right"`);
+        }
       }
 
       if (element.type === 'image') {

@@ -12,7 +12,6 @@ import { CustomizationValidator } from './validators/customization.validator';
 import { CustomizationEnricherHelper } from './helpers/customization-enricher.helper';
 import { DeliveryValidator } from './validators/delivery.validator';
 import { DeliveryEnricherHelper } from './helpers/delivery-enricher.helper';
-import { calculateRevenueSplit } from '../utils/commission-utils';
 import { DesignUsageTracker } from '../utils/designUsageTracker';
 
 @Injectable()
@@ -177,6 +176,7 @@ export class OrderService {
 
         // Calcul du bénéfice du vendeur et de la commission basée sur le bénéfice
         let totalProfit = 0;
+        let totalDesignRevenue = 0; // Revenue total des designs utilisés
 
         // Calculer le bénéfice total pour cette commande
         for (const item of createOrderDto.orderItems) {
@@ -191,13 +191,68 @@ export class OrderService {
           const quantity = item.quantity || 1;
           const itemProfit = (sellingPrice - productCost) * quantity;
           totalProfit += itemProfit;
+
+          // 🎨 CALCUL DES REVENUS DESIGNS
+          // Vérifier si cet item utilise des designs vendeurs payants
+          if (item.customizationIds && Object.keys(item.customizationIds).length > 0) {
+            const recordedDesigns = new Set<number>(); // Pour éviter les doublons
+
+            for (const [viewKey, customizationId] of Object.entries(item.customizationIds)) {
+              try {
+                const customization = await this.prisma.productCustomization.findUnique({
+                  where: { id: customizationId as number },
+                  select: {
+                    designElements: true,
+                    elementsByView: true,
+                  },
+                });
+
+                if (customization) {
+                  let designElements: any[] = [];
+
+                  if (customization.elementsByView && typeof customization.elementsByView === 'object') {
+                    const elementsByView = customization.elementsByView as Record<string, any[]>;
+                    designElements = elementsByView[viewKey] || [];
+                  } else if (customization.designElements && Array.isArray(customization.designElements)) {
+                    designElements = customization.designElements as any[];
+                  }
+
+                  // Parcourir les éléments pour trouver les designs payants
+                  for (const element of designElements) {
+                    if (element.type === 'image' && element.designId && element.designPrice) {
+                      const designId = parseInt(element.designId);
+                      const designPrice = parseFloat(element.designPrice);
+
+                      // Éviter les doublons
+                      if (!recordedDesigns.has(designId)) {
+                        totalDesignRevenue += designPrice;
+                        recordedDesigns.add(designId);
+                        this.logger.log(`🎨 [DESIGN COMMISSION] Design ${designId} détecté - Prix: ${designPrice} FCFA`);
+                      }
+                    }
+                  }
+                }
+              } catch (error) {
+                this.logger.error(`❌ Erreur extraction design revenue pour customization ${customizationId}:`, error);
+              }
+            }
+          }
         }
 
-        // La commission est calculée sur le bénéfice (pas sur le montant total)
-        commissionAmount = totalProfit * (commissionRate / 100);
-        vendorAmount = totalProfit - commissionAmount; // Gain net du vendeur
+        // 💰 CALCUL FINAL DE LA COMMISSION
+        // La commission est calculée sur:
+        // 1. Le bénéfice des produits (prix vente - prix reviens)
+        // 2. Le prix total des designs utilisés (100% du prix design)
+        const totalCommissionableAmount = totalProfit + totalDesignRevenue;
+        commissionAmount = totalCommissionableAmount * (commissionRate / 100);
 
-        this.logger.log(`💰 [COMMISSION] Bénéfice: ${totalProfit} XOF, commission: ${commissionRate}% (${commissionAmount} XOF), vendeur net: ${vendorAmount} XOF`);
+        // Le vendeur reçoit:
+        // - Son bénéfice sur les produits APRÈS commission
+        // - Sa part des designs APRÈS commission (les designs sont comptés dans totalDesignRevenue)
+        vendorAmount = totalCommissionableAmount - commissionAmount;
+
+        this.logger.log(`💰 [COMMISSION] Bénéfice produits: ${totalProfit} XOF, Revenue designs: ${totalDesignRevenue} XOF`);
+        this.logger.log(`💰 [COMMISSION] Total commissionable: ${totalCommissionableAmount} XOF, commission: ${commissionRate}% (${commissionAmount} XOF), vendeur net: ${vendorAmount} XOF`);
 
         this.logger.log(`💰 [COMMISSION] Commande: commission ${commissionRate}% (${commissionAmount} XOF), vendeur: ${vendorAmount} XOF`);
       } catch (error) {
@@ -1227,58 +1282,39 @@ export class OrderService {
     // Récupérer les informations de commission du vendeur directement depuis la base de données
     const commissionRecord = await this.prisma.vendorCommission.findUnique({
       where: { vendorId },
-      select: { commissionRate: true, updatedAt: true }
+      select: { commissionRate: true }
     });
 
     const commissionRate = commissionRecord ? commissionRecord.commissionRate : 40.0; // Taux par défaut
-    const commissionUpdatedAt = commissionRecord?.updatedAt || null;
 
     this.logger.log(`Commission pour vendeur ${vendorId}: ${commissionRate}%`);
 
     // Ajouter les informations du vendeur et les détails de commission à chaque commande
     return orders.map(order => {
-      // 🛡️ UTILISER LES COMMISSIONS STOCKÉES (protection contre les changements rétroactifs)
+      // Formatter la commande d'abord pour obtenir les calculs corrects de commission
+      const formattedOrder = this.formatOrderResponse(order);
+
+      // 🛡️ UTILISER LES COMMISSIONS RECALCULÉES DANS formatOrderResponse (basées sur le bénéfice)
+      // formatOrderResponse a déjà recalculé vendorAmount et commissionAmount sur le bénéfice
+      const calculatedCommissionAmount = formattedOrder.commissionAmount;
+      const calculatedVendorAmount = formattedOrder.vendorAmount;
       const storedCommissionRate = order.commissionRate || commissionRate;
-      const storedCommissionAmount = order.commissionAmount;
-      const storedVendorAmount = order.vendorAmount;
       const storedCommissionAppliedAt = order.commissionAppliedAt;
 
-      // Pour les commandes anciennes sans commission stockée, calculer dynamiquement
-      // Vérifier si TOUTES les données de commission sont présentes
-      let commissionInfo;
-      if (!order.commissionRate || storedCommissionAmount == null || storedVendorAmount == null) {
-        // Commande ancienne : calcul dynamique basé sur le bénéfice
-        // Note: Pour les commandes anciennes, on fait un calcul approximatif
-        // Le mieux serait de recalculer le bénéfice réel, mais par défaut on utilise calculateRevenueSplit
-        this.logger.warn(`⚠️ Commande ${order.id} sans commission complète stockée - calcul dynamique`);
-
-        const revenueSplit = calculateRevenueSplit(order.totalAmount, commissionRate);
-        commissionInfo = {
-          commission_rate: commissionRate,
-          commission_amount: revenueSplit.commissionAmount,
-          vendor_amount: revenueSplit.vendorRevenue,
-          total_amount: revenueSplit.totalAmount,
-          applied_rate: commissionRate,
-          has_custom_rate: commissionRecord !== null,
-          commission_applied_at: commissionUpdatedAt,
-          is_legacy_order: true // Marquer comme commande ancienne
-        };
-      } else {
-        // Commande récente : utiliser les données stockées (calcul sur bénéfice déjà effectué)
-        commissionInfo = {
-          commission_rate: storedCommissionRate,
-          commission_amount: storedCommissionAmount,
-          vendor_amount: storedVendorAmount,
-          total_amount: order.totalAmount,
-          applied_rate: storedCommissionRate,
-          has_custom_rate: true, // Si une commission est stockée, c'est qu'elle était personnalisée
-          commission_applied_at: storedCommissionAppliedAt?.toISOString() || null,
-          is_legacy_order: false // Marquer comme commande récente
-        };
-      }
+      // ✅ Toujours utiliser les valeurs calculées (basées sur le bénéfice)
+      const commissionInfo = {
+        commission_rate: storedCommissionRate,
+        commission_amount: calculatedCommissionAmount,
+        vendor_amount: calculatedVendorAmount,
+        total_amount: order.totalAmount,
+        applied_rate: storedCommissionRate,
+        has_custom_rate: commissionRecord !== null,
+        commission_applied_at: storedCommissionAppliedAt?.toISOString() || null,
+        is_legacy_order: !order.commissionRate || order.commissionAmount == null || order.vendorAmount == null
+      };
 
       return {
-        ...this.formatOrderResponse(order),
+        ...formattedOrder,
         vendor: {
           id: vendor.id,
           firstName: vendor.firstName,
@@ -1287,7 +1323,7 @@ export class OrderService {
           shopName: vendor.shop_name,
           role: vendor.role
         },
-        // 🛡️ Commission protégée contre les changements rétroactifs
+        // 🛡️ Commission correcte basée sur le bénéfice
         commission_info: commissionInfo
       };
     });
@@ -1348,32 +1384,104 @@ export class OrderService {
 
     // Recalculer seulement si la commande est payée et a des items
     if (order.paymentStatus === 'PAID' && order.orderItems && order.orderItems.length > 0) {
-      let totalProfit = 0;
+      let totalCommissionBase = 0; // Base sur laquelle on calcule la commission
+      let totalDesignsRevenue = 0; // Revenus des designs de vendeur
 
-      // Calculer le bénéfice total pour cette commande
+      // Calculer la base de commission pour chaque item
       for (const item of order.orderItems) {
-        const productCost = item.product?.price || 0;
-        const sellingPrice = item.unitPrice || 0;
-        const quantity = item.quantity || 1;
-        const itemProfit = (sellingPrice - productCost) * quantity;
-        totalProfit += itemProfit;
+        const isCustomizedProduct = !!(item.customization || item.customizationId || item.customizationIds);
+
+        if (isCustomizedProduct) {
+          // 🎨 PRODUIT CUSTOMISÉ : Commission uniquement sur les designs de vendeur utilisés
+          let itemDesignsTotal = 0;
+
+          // Extraire les designs depuis designElementsByView
+          if (item.designElementsByView) {
+            for (const viewKey in item.designElementsByView) {
+              const elements = item.designElementsByView[viewKey];
+              if (Array.isArray(elements)) {
+                for (const element of elements) {
+                  if (element.type === 'image' && element.designPrice) {
+                    itemDesignsTotal += element.designPrice;
+                  }
+                }
+              }
+            }
+          }
+
+          // Ou depuis customization.designElements
+          if (itemDesignsTotal === 0 && item.customization?.designElements) {
+            for (const element of item.customization.designElements) {
+              if (element.type === 'image' && element.designPrice) {
+                itemDesignsTotal += element.designPrice;
+              }
+            }
+          }
+
+          totalDesignsRevenue += itemDesignsTotal;
+          totalCommissionBase += itemDesignsTotal;
+
+          this.logger.debug(`📊 Item ${item.id} (customisé): Designs = ${itemDesignsTotal} XOF`);
+        } else {
+          // 🏪 PRODUIT VENDEUR : Commission sur le bénéfice (prix vente - prix base)
+          const productCost = item.product?.price || 0;
+          const sellingPrice = item.unitPrice || 0;
+          const quantity = item.quantity || 1;
+          const itemProfit = (sellingPrice - productCost) * quantity;
+          totalCommissionBase += itemProfit;
+
+          this.logger.debug(`📊 Item ${item.id} (vendeur): Profit = ${itemProfit} XOF`);
+        }
       }
 
-      // Recalculer la commission sur le bénéfice
+      // Recalculer la commission sur la base appropriée
       const commissionRate = (order.commissionRate || 59) / 100;
-      calculatedCommissionAmount = totalProfit * commissionRate;
-      calculatedVendorAmount = totalProfit - calculatedCommissionAmount;
+      calculatedCommissionAmount = totalCommissionBase * commissionRate;
+      calculatedVendorAmount = totalCommissionBase - calculatedCommissionAmount;
+
+      this.logger.log(`💰 Commande ${order.id}: Base commission = ${totalCommissionBase}, Commission admin = ${calculatedCommissionAmount}, Revenus vendeur/designer = ${calculatedVendorAmount}`);
     }
 
     // Calculer le bénéfice total de la commande (sans déduire la commission)
     let beneficeCommande = 0;
     if (order.orderItems && order.orderItems.length > 0) {
       for (const item of order.orderItems) {
-        const productCost = item.product?.price || 0;
-        const sellingPrice = item.unitPrice || 0;
-        const quantity = item.quantity || 1;
-        const itemProfit = (sellingPrice - productCost) * quantity;
-        beneficeCommande += itemProfit;
+        const isCustomizedProduct = !!(item.customization || item.customizationId || item.customizationIds);
+
+        if (isCustomizedProduct) {
+          // Pour produits customisés : bénéfice = prix total des designs
+          let itemDesignsTotal = 0;
+
+          if (item.designElementsByView) {
+            for (const viewKey in item.designElementsByView) {
+              const elements = item.designElementsByView[viewKey];
+              if (Array.isArray(elements)) {
+                for (const element of elements) {
+                  if (element.type === 'image' && element.designPrice) {
+                    itemDesignsTotal += element.designPrice;
+                  }
+                }
+              }
+            }
+          }
+
+          if (itemDesignsTotal === 0 && item.customization?.designElements) {
+            for (const element of item.customization.designElements) {
+              if (element.type === 'image' && element.designPrice) {
+                itemDesignsTotal += element.designPrice;
+              }
+            }
+          }
+
+          beneficeCommande += itemDesignsTotal;
+        } else {
+          // Pour produits vendeur : bénéfice = prix vente - prix base
+          const productCost = item.product?.price || 0;
+          const sellingPrice = item.unitPrice || 0;
+          const quantity = item.quantity || 1;
+          const itemProfit = (sellingPrice - productCost) * quantity;
+          beneficeCommande += itemProfit;
+        }
       }
     }
 

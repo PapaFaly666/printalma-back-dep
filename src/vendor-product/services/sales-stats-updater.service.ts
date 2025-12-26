@@ -47,13 +47,16 @@ export class SalesStatsUpdaterService {
 
       // 2. Mettre à jour les statistiques pour chaque produit de la commande
       const updatePromises = order.orderItems.map(async (item) => {
+        // Utiliser vendorProductId s'il existe, sinon essayer productId
+        const vendorProductId = item.vendorProductId || item.productId;
+
         // Vérifier si c'est un VendorProduct
         const vendorProduct = await this.prisma.vendorProduct.findUnique({
-          where: { id: item.productId }
+          where: { id: vendorProductId }
         });
 
         if (!vendorProduct) {
-          this.logger.debug(`🔍 Produit ${item.productId} n'est pas un VendorProduct, ignoré`);
+          this.logger.debug(`🔍 Produit ${vendorProductId} n'est pas un VendorProduct, ignoré`);
           return;
         }
 
@@ -66,7 +69,7 @@ export class SalesStatsUpdaterService {
           revenue
         );
 
-        this.logger.debug(`📊 Stats mises à jour pour VendorProduct ${vendorProduct.id}: +${item.quantity} ventes`);
+        this.logger.debug(`📊 Stats mises à jour pour VendorProduct ${vendorProduct.id}: +${item.quantity} ventes, revenue: +${revenue}`);
       });
 
       await Promise.all(updatePromises);
@@ -105,8 +108,11 @@ export class SalesStatsUpdaterService {
       if (!order) return;
 
       const updateViewsPromises = order.orderItems.map(async (item) => {
+        // Utiliser vendorProductId s'il existe, sinon essayer productId
+        const vendorProductId = item.vendorProductId || item.productId;
+
         const vendorProduct = await this.prisma.vendorProduct.findUnique({
-          where: { id: item.productId }
+          where: { id: vendorProductId }
         });
 
         if (vendorProduct) {

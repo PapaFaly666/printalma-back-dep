@@ -813,7 +813,15 @@ export class OrderController {
    */
   private async calculateVendorAvailableFunds(vendorId: number, orders: any[]) {
     try {
-      // 💰 Calculer le montant total des vendorAmount de toutes les commandes LIVRÉES et PAYÉES
+      // 💰 Calculer le montant total des vendorAmount de toutes les commandes PAYÉES (tous statuts)
+      const totalEarningsAllPaidOrders = orders
+        .filter(order =>
+          order.paymentStatus === 'PAID' &&
+          order.vendorAmount != null
+        )
+        .reduce((sum, order) => sum + (order.vendorAmount || 0), 0);
+
+      // 💰 Calculer le montant total des vendorAmount de toutes les commandes LIVRÉES et PAYÉES (disponible pour retrait)
       const totalProductRevenue = orders
         .filter(order =>
           order.status === OrderStatus.DELIVERED &&
@@ -872,6 +880,7 @@ export class OrderController {
         .reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
 
       this.logger.log(`💰 [VENDOR ${vendorId}] Calcul des fonds disponibles:`, {
+        totalEarningsAllPaidOrders,
         totalProductRevenue,
         totalDesignRevenue,
         totalVendorAmount,
@@ -881,7 +890,9 @@ export class OrderController {
       });
 
       return {
-        // Montant total gagné par le vendeur (après commission)
+        // 💰 Total des gains de toutes les commandes PAYÉES (CONFIRMED, DELIVERED, etc.)
+        totalEarnings: totalEarningsAllPaidOrders,
+        // Montant total gagné par le vendeur sur les commandes LIVRÉES (après commission)
         totalVendorAmount,
         // 🆕 Répartition par source de revenus
         totalProductRevenue,
@@ -906,12 +917,15 @@ export class OrderController {
         // Message d'information pour le frontend
         message: availableForWithdrawal > 0
           ? `Vous avez ${availableForWithdrawal.toLocaleString('fr-FR')} XOF disponibles pour retrait`
+          : totalEarningsAllPaidOrders > 0
+          ? `Vous avez ${totalEarningsAllPaidOrders.toLocaleString('fr-FR')} XOF de gains totaux (commandes en cours de livraison)`
           : 'Aucun montant disponible pour retrait actuellement'
       };
     } catch (error) {
       this.logger.error(`❌ Erreur calcul fonds disponibles pour vendeur ${vendorId}:`, error);
       // Retourner des valeurs par défaut en cas d'erreur
       return {
+        totalEarnings: 0,
         totalVendorAmount: 0,
         totalProductRevenue: 0,
         totalDesignRevenue: 0,

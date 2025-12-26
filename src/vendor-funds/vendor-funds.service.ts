@@ -81,67 +81,39 @@ export class VendorFundsService {
 
     console.log(`[VENDOR ${vendorId}] Nombre de commandes valides trouvées: ${validOrders.length}`);
 
-    // Calculer les gains en utilisant les valeurs déjà calculées dans les commandes
-    let totalEarnings = 0; // Gains nets pour le vendeur (après commission) = somme des vendorAmount
-    let totalCommissionAmount = 0; // Commission totale prélevée par l'admin = somme des commissionAmount
+    // ✅ CORRECTION: Ne calculer les gains QUE sur les revenus de designs, PAS sur les produits complets
+    // Le vendeur ne gagne de l'argent que sur les designs qu'il vend, pas sur les produits de base
+    let totalEarnings = 0; // Gains nets pour le vendeur (après commission) = UNIQUEMENT revenus designs
+    let totalCommissionAmount = 0; // Commission totale prélevée par l'admin
     let thisMonthEarnings = 0;
     let lastMonthEarnings = 0;
     let totalSalesAmount = 0; // Montant total des ventes avant commission
 
+    // ⚠️ IMPORTANT: On ne calcule PLUS les gains sur les VendorProducts
+    // Les vendeurs gagnent uniquement via les designs vendus (table design_usages)
+    // Cette boucle est conservée uniquement pour le tracking/logging si nécessaire
     for (const order of validOrders) {
       for (const item of order.orderItems) {
         if (item.product.vendorProducts.length > 0) {
           const orderItemTotal = item.unitPrice * item.quantity;
-          const vendorProduct = item.product.vendorProducts[0];
 
-          // Calculer le bénéfice du vendeur: Prix de vente - Prix de reviens (product.price)
-          const productCost = item.product.price || 0; // Prix de reviens du produit
-          const totalBaseCost = productCost * item.quantity;
-
-          // Le bénéfice réel du vendeur = prix de vente - prix de reviens
-          const vendorProfit = orderItemTotal - totalBaseCost;
-
-          // Calculer la commission basée sur le bénéfice et le taux de commission
-          const commissionRate = (order.commissionRate || vendorCommissionRate * 100) / 100; // Convertir en décimal
-          const commissionAmount = vendorProfit * commissionRate;
-
-          // Gains nets du vendeur = Bénéfice - Commission admin
-          const vendorNetEarnings = vendorProfit - commissionAmount;
-
-          totalEarnings += vendorNetEarnings; // Gains nets après déduction de la commission
-          totalCommissionAmount += commissionAmount; // Commission prélevée par l'admin
-          totalSalesAmount += orderItemTotal;
-
-          // Gains de ce mois
-          if (order.createdAt >= firstDayThisMonth) {
-            thisMonthEarnings += vendorNetEarnings;
-          }
-
-          // Gains du mois dernier
-          if (order.createdAt >= firstDayLastMonth && order.createdAt <= lastDayLastMonth) {
-            lastMonthEarnings += vendorNetEarnings;
-          }
-
-          console.log(`[VENDOR ${vendorId}] Commande ${order.orderNumber} (ID: ${order.id}):`, {
+          // Log uniquement pour le tracking (pas de calcul de gains)
+          console.log(`[VENDOR ${vendorId}] Commande ${order.orderNumber} (ID: ${order.id}) - Produit vendu (gains via designs uniquement):`, {
             orderItemTotal,
-            totalBaseCost,
-            vendorProfit,
-            commissionAmount,
-            vendorNetEarnings,
             orderStatus: order.status,
             paymentStatus: order.paymentStatus,
-            commissionRate: commissionRate,
-            productCost
           });
         }
       }
     }
 
-    // 🎨 Ajouter les revenus des designs CONFIRMÉS
+    // 🎨 Ajouter les revenus des designs PRÊTS POUR PAIEMENT (commandes livrées)
+    // ✅ CORRECTION: Utiliser READY_FOR_PAYOUT au lieu de CONFIRMED
+    // Les designs ne sont disponibles pour retrait que lorsque la commande est LIVRÉE
     const designUsages = await this.prisma.designUsage.findMany({
       where: {
         vendorId,
-        paymentStatus: 'CONFIRMED' // Designs des commandes confirmées et payées
+        paymentStatus: 'READY_FOR_PAYOUT' // Designs des commandes livrées (pas seulement payées)
       },
       select: {
         vendorRevenue: true,
@@ -152,6 +124,7 @@ export class VendorFundsService {
     console.log(`[VENDOR ${vendorId}] Nombre de designs utilisés trouvés: ${designUsages.length}`);
 
     let totalDesignRevenue = 0;
+    let totalDesignCommission = 0;
     for (const designUsage of designUsages) {
       const designRevenue = parseFloat(designUsage.vendorRevenue.toString());
       totalDesignRevenue += designRevenue;
@@ -168,7 +141,24 @@ export class VendorFundsService {
       }
     }
 
-    console.log(`[VENDOR ${vendorId}] Total revenus designs: ${totalDesignRevenue} FCFA`);
+    // ✅ Calculer la commission totale des designs pour le reporting
+    const designUsagesForCommission = await this.prisma.designUsage.findMany({
+      where: {
+        vendorId,
+        paymentStatus: 'READY_FOR_PAYOUT' // Même filtre que pour les revenus
+      },
+      select: {
+        platformFee: true
+      }
+    });
+
+    for (const usage of designUsagesForCommission) {
+      totalDesignCommission += parseFloat(usage.platformFee.toString());
+    }
+
+    totalCommissionAmount = totalDesignCommission; // Commission totale = somme des platformFee
+
+    console.log(`[VENDOR ${vendorId}] Total revenus designs: ${totalDesignRevenue} FCFA, Commission: ${totalCommissionAmount} FCFA`);
 
     // Calculer les montants en attente et payés
     const pendingRequests = await this.prisma.vendorFundsRequest.findMany({

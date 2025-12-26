@@ -40,6 +40,8 @@ import { PublicUsersModule } from './public-users/public-users.module';
 import { VendorGalleryModule } from './vendor-gallery/vendor-gallery.module';
 import { VendorDesignRevenueModule } from './vendor-design-revenue/vendor-design-revenue.module';
 import { SuperadminDashboardModule } from './superadmin-dashboard/superadmin-dashboard.module';
+import { VendorOnboardingModule } from './vendor-onboarding/vendor-onboarding.module';
+import { StickerModule } from './sticker/sticker.module';
 
 @Module({
   imports: [
@@ -81,6 +83,8 @@ import { SuperadminDashboardModule } from './superadmin-dashboard/superadmin-das
     VendorGalleryModule,
     VendorDesignRevenueModule,
     SuperadminDashboardModule,
+    VendorOnboardingModule,
+    StickerModule,
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

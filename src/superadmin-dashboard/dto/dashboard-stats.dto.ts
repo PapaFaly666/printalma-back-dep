@@ -14,6 +14,9 @@ export class SuperadminDashboardDto {
     availableForPayout: number; // Montants disponibles pour paiement
     averageCommissionRate: number; // Taux de commission moyen
     totalAdminGains: number; // Gains totaux de l'admin (toutes commissions)
+    totalRevenue: number; // Chiffre d'affaires total (montant total des commandes)
+    thisMonthRevenue: number; // CA du mois en cours
+    thisYearRevenue: number; // CA de l'année en cours
   };
 
   // Statistiques vendeurs

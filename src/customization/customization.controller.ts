@@ -62,6 +62,39 @@ export class CustomizationController {
   }
 
   /**
+   * 🎯 PURE STORAGE - Sauvegarder exactement comme localStorage
+   * POST /customizations/pure
+   *
+   * Cette route stocke les données BIT-À-BIT identiques au localStorage du frontend
+   * - Aucune transformation
+   * - Aucune normalisation
+   * - Préserve tous les \n, emojis, accents, décimales
+   *
+   * Utiliser cette route si vous voulez un stockage pur sans aucune modification
+   */
+  @Post('pure')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Save customization with pure storage (bit-to-bit identical to localStorage)',
+    description: 'Stores design elements exactly as received, with no transformations or normalizations'
+  })
+  @ApiResponse({ status: 201, description: 'Customization saved with pure storage' })
+  async saveCustomizationPure(
+    @Body() dto: CreateCustomizationDto,
+    @Query('customizationId') customizationId: string,
+    @Req() req: any
+  ) {
+    this.logger.log(`💾 PURE Storage request:`);
+    this.logger.log(`  - productId: ${dto.productId}`);
+    this.logger.log(`  - designElements: ${dto.designElements?.length || 0} elements`);
+
+    const userId = req.user?.id;
+    const customizationIdNum = customizationId ? parseInt(customizationId, 10) : undefined;
+
+    return this.customizationService.upsertCustomizationPure(dto, userId, customizationIdNum);
+  }
+
+  /**
    * Récupérer une personnalisation par ID
    * GET /customizations/:id
    */
