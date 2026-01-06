@@ -175,6 +175,15 @@ export class VendorPublishDto {
   @Type(() => SelectedSizeDto)
   selectedSizes: SelectedSizeDto[];
 
+  @ApiProperty({
+    example: 30,
+    description: 'ID de la couleur par défaut à afficher en premier aux clients. Doit faire partie des selectedColors.',
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  defaultColorId?: number;
+
   @ApiProperty({ example: 42, description: 'ID du design à utiliser pour ce produit', required: false })
   @IsOptional()
   @IsNumber()

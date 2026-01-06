@@ -29,55 +29,75 @@ export class VendorOnboardingService {
     vendorId: number,
     dto: CompleteOnboardingDto,
     profileImage?: Express.Multer.File,
+    keepExistingImage: boolean = false,
   ) {
-    // 1. Validation des numéros de téléphone
-    this.validatePhones(dto.phones);
+    // 1. Validation et normalisation des numéros de téléphone (si fournis)
+    let normalizedPhones: Array<{ number: string; isPrimary: boolean }> = [];
 
-    // 2. Vérifier qu'il y a exactement un numéro principal
-    const primaryCount = dto.phones.filter((p) => p.isPrimary).length;
-    if (primaryCount !== 1) {
-      throw new BadRequestException(
-        'Vous devez désigner exactement un numéro comme principal',
-      );
+    if (dto.phones && dto.phones.length > 0) {
+      // Validation des numéros
+      this.validatePhones(dto.phones);
+
+      // Vérifier qu'il y a exactement un numéro principal
+      const primaryCount = dto.phones.filter((p) => p.isPrimary).length;
+      if (primaryCount !== 1) {
+        throw new BadRequestException(
+          'Vous devez désigner exactement un numéro comme principal',
+        );
+      }
+
+      // Normaliser les numéros
+      normalizedPhones = dto.phones.map((phone) => ({
+        number: normalizeSenegalPhone(phone.number),
+        isPrimary: phone.isPrimary,
+      }));
+
+      // Vérifier les doublons
+      const phoneNumbers = normalizedPhones.map((p) => p.number);
+      if (new Set(phoneNumbers).size !== phoneNumbers.length) {
+        throw new BadRequestException(
+          'Vous avez fourni le même numéro plusieurs fois',
+        );
+      }
     }
 
-    // 3. Normaliser les numéros
-    const normalizedPhones = dto.phones.map((phone) => ({
-      number: normalizeSenegalPhone(phone.number),
-      isPrimary: phone.isPrimary,
-    }));
-
-    // 4. Vérifier les doublons
-    const phoneNumbers = normalizedPhones.map((p) => p.number);
-    if (new Set(phoneNumbers).size !== phoneNumbers.length) {
-      throw new BadRequestException(
-        'Vous avez fourni le même numéro plusieurs fois',
-      );
-    }
-
-    // 5. Upload de la photo de profil (requis)
-    if (!profileImage) {
-      throw new BadRequestException('La photo de profil est requise');
-    }
-
-    let profileImageUrl: string;
-    try {
-      const uploadResult = await this.cloudinaryService.uploadImage(
-        profileImage,
-        'vendor-profiles',
-      );
-      profileImageUrl = uploadResult.secure_url;
-    } catch (error) {
-      throw new BadRequestException(
-        `Erreur lors de l'upload de l'image: ${error.message}`,
-      );
-    }
-
-    // 6. Récupérer l'ancienne image pour la supprimer
-    const oldVendor = await this.prisma.user.findUnique({
+    // 5. Récupérer le vendeur actuel
+    const currentVendor = await this.prisma.user.findUnique({
       where: { id: vendorId },
       select: { profile_photo_url: true },
     });
+
+    // 6. Gestion de la photo de profil
+    let profileImageUrl: string | undefined;
+    let oldImageUrl: string | undefined;
+
+    if (keepExistingImage) {
+      // Garder l'image existante
+      if (!currentVendor?.profile_photo_url) {
+        throw new BadRequestException(
+          'Aucune image existante à conserver. Veuillez uploader une photo de profil.',
+        );
+      }
+      profileImageUrl = currentVendor.profile_photo_url;
+    } else if (profileImage) {
+      // Upload de la nouvelle image
+      try {
+        const uploadResult = await this.cloudinaryService.uploadImage(
+          profileImage,
+          'vendor-profiles',
+        );
+        profileImageUrl = uploadResult.secure_url;
+        oldImageUrl = currentVendor?.profile_photo_url;
+      } catch (error) {
+        throw new BadRequestException(
+          `Erreur lors de l'upload de l'image: ${error.message}`,
+        );
+      }
+    } else {
+      // Aucune image fournie et keepExistingImage = false
+      // C'est maintenant accepté - la photo est optionnelle
+      profileImageUrl = currentVendor?.profile_photo_url;
+    }
 
     // 7. Transaction pour garantir la cohérence
     const result = await this.prisma.$transaction(async (prisma) => {
@@ -86,18 +106,20 @@ export class VendorOnboardingService {
         where: { vendorId },
       });
 
-      // Insérer les nouveaux numéros
-      await Promise.all(
-        normalizedPhones.map((phone) =>
-          prisma.vendorPhone.create({
-            data: {
-              vendorId,
-              phoneNumber: phone.number,
-              isPrimary: phone.isPrimary,
-            },
-          }),
-        ),
-      );
+      // Insérer les nouveaux numéros (si fournis)
+      if (normalizedPhones.length > 0) {
+        await Promise.all(
+          normalizedPhones.map((phone) =>
+            prisma.vendorPhone.create({
+              data: {
+                vendorId,
+                phoneNumber: phone.number,
+                isPrimary: phone.isPrimary,
+              },
+            }),
+          ),
+        );
+      }
 
       // Préparer les données de réseaux sociaux
       const socialMediaData: any = {};
@@ -125,12 +147,10 @@ export class VendorOnboardingService {
       return updatedVendor;
     });
 
-    // 8. Supprimer l'ancienne image de Cloudinary si elle existe
-    if (oldVendor?.profile_photo_url) {
+    // 8. Supprimer l'ancienne image de Cloudinary si une nouvelle a été uploadée
+    if (oldImageUrl) {
       try {
-        await this.cloudinaryService.deleteImage(
-          oldVendor.profile_photo_url,
-        );
+        await this.cloudinaryService.deleteImage(oldImageUrl);
       } catch (error) {
         console.warn(
           'Erreur lors de la suppression de l\'ancienne image:',
@@ -174,8 +194,9 @@ export class VendorOnboardingService {
       throw new NotFoundException('Vendeur non trouvé');
     }
 
-    const isComplete =
-      vendor.profile_completed && vendor.vendorPhones.length >= 2;
+    // Le profil est considéré complété si le flag profile_completed est true
+    // (même si les champs sont vides, car l'onboarding est optionnel)
+    const isComplete = vendor.profile_completed;
 
     return {
       success: true,

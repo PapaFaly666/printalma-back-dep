@@ -63,7 +63,10 @@ export interface BestSellerProduct {
     profilePhotoUrl?: string;
     businessName?: string;
   };
-  
+
+  // 🆕 Couleur par défaut
+  defaultColorId?: number;
+
   // Métadonnées
   createdAt: Date;
   lastSaleDate?: Date;
@@ -260,7 +263,9 @@ export class BestSellersService {
             profilePhotoUrl: product.vendor.profile_photo_url,
             businessName: product.vendor.shop_name
           },
-          
+
+          defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
+
           createdAt: product.createdAt,
           lastSaleDate: product.lastSaleDate
         };
@@ -438,6 +443,8 @@ export class BestSellersService {
             profilePhotoUrl: product.vendor.profile_photo_url,
             businessName: product.vendor.shop_name
           },
+
+          defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
 
           createdAt: product.createdAt,
           lastSaleDate: product.lastSaleDate

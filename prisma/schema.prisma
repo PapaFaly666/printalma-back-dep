@@ -568,6 +568,7 @@ model VendorProduct {
   designFileSize           Int?                    @map("design_file_size")
   sizes                    Json
   colors                   Json
+  defaultColorId           Int?                    @map("default_color_id")
   vendorName               String?
   vendorDescription        String?
   vendorStock              Int                     @default(0)

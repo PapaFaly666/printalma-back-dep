@@ -44,21 +44,22 @@ export class VendorOnboardingController {
       // Parser les données JSON du body (car envoyé en multipart/form-data)
       const phones = JSON.parse(body.phones || '[]');
       const socialMedia = body.socialMedia ? JSON.parse(body.socialMedia) : undefined;
+      const keepExistingImage = body.keepExistingImage === 'true';
 
       const dto: CompleteOnboardingDto = {
         phones,
         socialMedia,
       };
 
-      // Valider qu'une image est fournie
-      if (!profileImage) {
-        throw new BadRequestException('La photo de profil est requise');
-      }
+      // La photo de profil est désormais complètement optionnelle
+      // Si keepExistingImage est true, on vérifie qu'il y a une image existante (fait dans le service)
+      // Sinon, c'est optionnel
 
       const result = await this.onboardingService.completeOnboarding(
         req.user.id,
         dto,
         profileImage,
+        keepExistingImage,
       );
 
       return result;

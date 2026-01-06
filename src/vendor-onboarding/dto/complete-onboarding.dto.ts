@@ -55,24 +55,22 @@ export class SocialMediaDto {
 
 // DTO principal pour compléter l'onboarding
 export class CompleteOnboardingDto {
-  @ApiProperty({
-    description: 'Liste des numéros de téléphone (minimum 2, maximum 3)',
+  @ApiPropertyOptional({
+    description: 'Liste des numéros de téléphone (optionnel, maximum 3)',
     type: [PhoneNumberDto],
     example: [
       { number: '+221771234567', isPrimary: true },
       { number: '+221772345678', isPrimary: false },
     ],
   })
+  @IsOptional()
   @IsArray({ message: 'Les numéros de téléphone doivent être un tableau' })
-  @ArrayMinSize(2, {
-    message: 'Vous devez fournir au moins 2 numéros de téléphone',
-  })
   @ArrayMaxSize(3, {
     message: 'Vous ne pouvez pas fournir plus de 3 numéros de téléphone',
   })
   @ValidateNested({ each: true })
   @Type(() => PhoneNumberDto)
-  phones: PhoneNumberDto[];
+  phones?: PhoneNumberDto[];
 
   @ApiPropertyOptional({
     description: 'Liste des réseaux sociaux (optionnel)',
@@ -92,11 +90,11 @@ export class CompleteOnboardingDto {
 // DTO pour mettre à jour les numéros de téléphone
 export class UpdatePhonesDto {
   @ApiProperty({
-    description: 'Liste des numéros de téléphone (minimum 2, maximum 3)',
+    description: 'Liste des numéros de téléphone (minimum 1, maximum 3)',
     type: [PhoneNumberDto],
   })
   @IsArray()
-  @ArrayMinSize(2)
+  @ArrayMinSize(1)
   @ArrayMaxSize(3)
   @ValidateNested({ each: true })
   @Type(() => PhoneNumberDto)

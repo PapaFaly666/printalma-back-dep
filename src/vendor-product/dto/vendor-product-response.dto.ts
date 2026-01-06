@@ -234,8 +234,15 @@ export class VendorProductDto {
   @ApiProperty({ type: [VendorProductColorDto] })
   colors: VendorProductColorDto[];
 
+  @ApiProperty({
+    example: 12,
+    required: false,
+    description: 'ID de la couleur par défaut à afficher en premier aux clients'
+  })
+  defaultColorId?: number;
+
   // ✅ NOUVEAUX CHAMPS POUR LES TRANSFORMATIONS ET POSITIONNEMENTS
-  @ApiProperty({ 
+  @ApiProperty({
     type: DesignDetailDto,
     required: false,
     description: 'Informations complètes sur le design utilisé'
@@ -580,13 +587,20 @@ export class VendorProductDetailDto {
   selectedSizes: Array<{ id: number; sizeName: string }>;
 
   // Couleurs sélectionnées (JSON décodé)
-  @ApiProperty({ 
+  @ApiProperty({
     example: [
       { id: 1, name: 'Blanc', colorCode: '#FFFFFF' },
       { id: 2, name: 'Noir', colorCode: '#000000' }
     ]
   })
   selectedColors: Array<{ id: number; name: string; colorCode: string }>;
+
+  @ApiProperty({
+    example: 2,
+    required: false,
+    description: 'ID de la couleur par défaut à afficher en premier aux clients'
+  })
+  defaultColorId?: number;
 
   // Images détaillées
   @ApiProperty({ 

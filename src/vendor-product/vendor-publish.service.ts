@@ -48,6 +48,11 @@ export class VendorPublishService {
       // 🛡️ VALIDATION: Éviter les noms/descriptions auto-générés (toujours stricte maintenant)
       await this.validateVendorProductInfo(publishDto);
 
+      // 🆕 VALIDATION: Couleur par défaut
+      if (publishDto.defaultColorId) {
+        this.validateDefaultColor(publishDto.defaultColorId, publishDto.selectedColors);
+      }
+
       // ✅ VÉRIFIER QUE LE DESIGN EXISTE ET APPARTIENT AU VENDEUR
       const design = await this.prisma.design.findFirst({
         where: {
@@ -168,7 +173,8 @@ export class VendorPublishService {
           // ✅ SÉLECTIONS VENDEUR
           sizes: JSON.stringify(publishDto.selectedSizes),
           colors: JSON.stringify(publishDto.selectedColors),
-          
+          defaultColorId: publishDto.defaultColorId,
+
           // ✅ STATUT ET VALIDATION
           status: publishDto.forcedStatus || (
             design.isValidated ? (
@@ -333,6 +339,25 @@ export class VendorPublishService {
     }
 
     this.logger.log(`✅ Structure admin validée pour produit ${adminProduct.id}`);
+  }
+
+  /**
+   * 🆕 VALIDATION: Couleur par défaut
+   * Vérifie que la couleur par défaut fait partie des couleurs sélectionnées
+   */
+  private validateDefaultColor(
+    defaultColorId: number,
+    selectedColors: Array<{ id: number; name: string; colorCode: string }>
+  ): void {
+    const isColorSelected = selectedColors.some(color => color.id === defaultColorId);
+
+    if (!isColorSelected) {
+      throw new BadRequestException(
+        `La couleur par défaut (ID: ${defaultColorId}) doit faire partie des couleurs sélectionnées`
+      );
+    }
+
+    this.logger.log(`✅ Couleur par défaut validée: ${defaultColorId}`);
   }
 
   /**
@@ -630,6 +655,7 @@ export class VendorPublishService {
         // ✅ SÉLECTIONS VENDEUR
         selectedSizes: this.parseJsonSafely(product.sizes),
         selectedColors: this.parseJsonSafely(product.colors),
+        defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
         designId: product.designId // Expose le designId
       }));
 
@@ -842,6 +868,7 @@ export class VendorPublishService {
         // ✅ SÉLECTIONS
         selectedSizes: this.parseJsonSafely(product.sizes),
         selectedColors: this.parseJsonSafely(product.colors),
+        defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
 
         // ✅ NOUVEAU: Ajout du designId pour compatibilité
         designId: product.designId,
@@ -2889,6 +2916,7 @@ export class VendorPublishService {
         // 📏 SÉLECTIONS VENDEUR
         selectedSizes,
         selectedColors,
+        defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
         designId: product.designId
       };
     } catch (error) {
