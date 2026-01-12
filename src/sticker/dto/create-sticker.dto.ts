@@ -10,16 +10,12 @@ export enum StickerShape {
 }
 
 export class StickerSizeDto {
-  @ApiProperty({ example: 'medium' })
-  @IsString()
-  id: string;
-
-  @ApiProperty({ example: 10 })
+  @ApiProperty({ example: 10, description: 'Largeur en cm' })
   @IsNumber()
   @Min(1)
   width: number;
 
-  @ApiProperty({ example: 10 })
+  @ApiProperty({ example: 10, description: 'Hauteur en cm' })
   @IsNumber()
   @Min(1)
   height: number;
@@ -50,9 +46,14 @@ export class CreateStickerDto {
   @Type(() => StickerSizeDto)
   size: StickerSizeDto;
 
-  @ApiProperty({ example: 'glossy' })
+  @ApiProperty({
+    example: 'glossy',
+    description: 'Finition du sticker (optionnel)',
+    required: false
+  })
+  @IsOptional()
   @IsString()
-  finish: string;
+  finish?: string;
 
   @ApiProperty({ example: 'DIE_CUT', enum: StickerShape })
   @IsEnum(StickerShape)
@@ -73,4 +74,22 @@ export class CreateStickerDto {
   @IsInt()
   @Min(0)
   stockQuantity: number;
+
+  @ApiProperty({
+    example: 'autocollant',
+    description: 'Type de sticker: autocollant (bordure fine) ou pare-chocs (bordure large)',
+    enum: ['autocollant', 'pare-chocs']
+  })
+  @IsOptional()
+  @IsString()
+  stickerType?: 'autocollant' | 'pare-chocs';
+
+  @ApiProperty({
+    example: 'glossy-white',
+    description: 'Couleur de la bordure: white, glossy-white, matte-white, transparent',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  borderColor?: string;
 }

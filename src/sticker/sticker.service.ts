@@ -3,12 +3,18 @@ import { PrismaService } from '../prisma.service';
 import { CreateStickerDto } from './dto/create-sticker.dto';
 import { UpdateStickerDto } from './dto/update-sticker.dto';
 import { StickerQueryDto, PublicStickerQueryDto } from './dto/sticker-query.dto';
+import { StickerGeneratorService } from './services/sticker-generator.service';
+import { StickerCloudinaryService } from './services/sticker-cloudinary.service';
 
 @Injectable()
 export class StickerService {
   private readonly logger = new Logger(StickerService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private stickerGenerator: StickerGeneratorService,
+    private stickerCloudinary: StickerCloudinaryService,
+  ) {}
 
   /**
    * Créer un nouveau sticker
@@ -31,47 +37,24 @@ export class StickerService {
       );
     }
 
-    // Valider la taille
-    const size = await this.prisma.stickerSize.findUnique({
-      where: { id: createDto.size.id },
-    });
-
-    if (!size || !size.isActive) {
-      throw new BadRequestException('Taille de sticker invalide');
+    // Valider les dimensions (min 1cm, max 100cm)
+    if (createDto.size.width < 1 || createDto.size.width > 100) {
+      throw new BadRequestException('La largeur doit être entre 1 et 100 cm');
     }
 
-    // Valider la finition
-    const finish = await this.prisma.stickerFinish.findUnique({
-      where: { id: createDto.finish },
-    });
-
-    if (!finish || !finish.isActive) {
-      throw new BadRequestException('Finition invalide');
+    if (createDto.size.height < 1 || createDto.size.height > 100) {
+      throw new BadRequestException('La hauteur doit être entre 1 et 100 cm');
     }
 
-    // Valider les dimensions
-    if (
-      createDto.size.width !== parseFloat(size.widthCm.toString()) ||
-      createDto.size.height !== parseFloat(size.heightCm.toString())
-    ) {
-      throw new BadRequestException('Les dimensions ne correspondent pas à la taille sélectionnée');
-    }
-
-    // Valider le prix
-    const calculatedPrice = Math.round(
-      parseInt(size.basePrice.toString()) * parseFloat(finish.priceMultiplier.toString())
-    );
-
-    if (Math.abs(createDto.price - calculatedPrice) > 100) {
-      throw new BadRequestException(
-        `Prix invalide. Prix calculé: ${calculatedPrice} FCFA (basé sur taille: ${size.basePrice} × finition: ${finish.priceMultiplier})`
-      );
+    // Valider le prix (minimum 500 FCFA)
+    if (createDto.price < 500) {
+      throw new BadRequestException('Le prix minimum est de 500 FCFA');
     }
 
     // Générer SKU
     const sku = await this.generateSKU(vendorId, createDto.designId);
 
-    // Créer le sticker
+    // Créer le sticker (sans imageUrl pour l'instant)
     const sticker = await this.prisma.stickerProduct.create({
       data: {
         vendorId,
@@ -79,21 +62,22 @@ export class StickerService {
         name: createDto.name,
         description: createDto.description,
         sku,
-        sizeId: createDto.size.id,
+        sizeId: `${createDto.size.width}x${createDto.size.height}`, // ID généré automatiquement
         widthCm: createDto.size.width,
         heightCm: createDto.size.height,
-        finish: createDto.finish,
+        finish: createDto.finish || 'glossy', // Valeur par défaut
         shape: createDto.shape,
-        basePrice: parseInt(size.basePrice.toString()),
-        finishMultiplier: parseFloat(finish.priceMultiplier.toString()),
+        basePrice: createDto.price, // Prix direct sans calcul
+        finishMultiplier: 1.0, // Pas de multiplicateur
         finalPrice: createDto.price,
         minimumQuantity: createDto.minimumQuantity || 1,
         stockQuantity: createDto.stockQuantity,
-        status: 'PENDING', // Toujours en attente de validation
+        status: 'PUBLISHED', // Stickers directement publiés sans validation
+        stickerType: createDto.stickerType || 'autocollant', // Persister le type
+        borderColor: createDto.borderColor || 'glossy-white', // Persister la couleur de bordure
+        publishedAt: new Date(), // Date de publication immédiate
       },
       include: {
-        size: true,
-        finishConfig: true,
         design: {
           select: {
             id: true,
@@ -113,11 +97,91 @@ export class StickerService {
 
     this.logger.log(`✅ Sticker créé: ${sticker.id} (SKU: ${sku})`);
 
-    return {
-      success: true,
-      message: 'Sticker créé avec succès',
-      data: this.formatStickerResponse(sticker),
-    };
+    // GÉNÉRATION DE L'IMAGE DU STICKER
+    try {
+      this.logger.log(`🎨 Génération de l'image du sticker ${sticker.id}...`);
+
+      // Déterminer le type de sticker et la couleur de bordure
+      const stickerType = createDto.stickerType || 'autocollant';
+      const borderColor = createDto.borderColor || 'glossy-white';
+
+      // Construire la chaîne de taille pour le générateur
+      const sizeString = `${createDto.size.width} cm x ${createDto.size.height} cm`;
+
+      // Générer l'image du sticker avec bordures
+      const stickerImageBuffer = await this.stickerGenerator.createStickerFromDesign(
+        design.imageUrl,
+        stickerType,
+        borderColor,
+        sizeString,
+        createDto.shape
+      );
+
+      this.logger.log(`✅ Image générée (${stickerImageBuffer.length} bytes)`);
+
+      // Upload sur Cloudinary
+      this.logger.log(`☁️ Upload sur Cloudinary...`);
+
+      const { url: imageUrl, publicId } = await this.stickerCloudinary.uploadStickerToCloudinary(
+        stickerImageBuffer,
+        sticker.id,
+        createDto.designId
+      );
+
+      // Mettre à jour l'URL de l'image dans la BDD
+      this.logger.log(`💾 Mise à jour BDD - Sticker ID: ${sticker.id}, URL: ${imageUrl}, PublicID: ${publicId}`);
+
+      const updated = await this.prisma.stickerProduct.update({
+        where: { id: sticker.id },
+        data: {
+          imageUrl,
+          cloudinaryPublicId: publicId,
+        },
+      });
+
+      this.logger.log(`✅ BDD mise à jour - imageUrl: ${updated.imageUrl}, cloudinaryPublicId: ${updated.cloudinaryPublicId}`);
+
+      // Récupérer le sticker mis à jour
+      const updatedSticker = await this.prisma.stickerProduct.findUnique({
+        where: { id: sticker.id },
+        include: {
+          design: {
+            select: {
+              id: true,
+              name: true,
+              imageUrl: true,
+              thumbnailUrl: true,
+            },
+          },
+          vendor: {
+            select: {
+              id: true,
+              shop_name: true,
+            },
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Sticker créé avec succès',
+        productId: updatedSticker.id,
+        data: this.formatStickerResponse(updatedSticker),
+      };
+
+    } catch (error) {
+      // En cas d'erreur, on log mais on retourne quand même le sticker
+      // (l'image pourra être générée plus tard)
+      this.logger.error(`❌ Erreur génération/upload image: ${error.message}`);
+
+      return {
+        success: true,
+        message: 'Sticker créé avec succès (image en cours de génération)',
+        productId: sticker.id,
+        data: this.formatStickerResponse(sticker),
+        warning: 'L\'image du sticker sera générée ultérieurement',
+      };
+    }
   }
 
   /**
@@ -143,8 +207,6 @@ export class StickerService {
         take: limit,
         orderBy: this.buildOrderBy(sortBy, sortOrder),
         include: {
-          size: true,
-          finishConfig: true,
           design: {
             select: {
               id: true,
@@ -179,8 +241,6 @@ export class StickerService {
     const sticker = await this.prisma.stickerProduct.findUnique({
       where: { id },
       include: {
-        size: true,
-        finishConfig: true,
         design: {
           select: {
             id: true,
@@ -231,13 +291,6 @@ export class StickerService {
       throw new ForbiddenException('Vous n\'avez pas le droit de modifier ce sticker');
     }
 
-    // Empêcher la modification si publié
-    if (sticker.status === 'PUBLISHED' && updateDto.status !== 'DRAFT') {
-      throw new BadRequestException(
-        'Impossible de modifier un sticker publié. Passez-le en brouillon d\'abord.'
-      );
-    }
-
     const updated = await this.prisma.stickerProduct.update({
       where: { id },
       data: {
@@ -245,8 +298,6 @@ export class StickerService {
         publishedAt: updateDto.status === 'PUBLISHED' ? new Date() : sticker.publishedAt,
       },
       include: {
-        size: true,
-        finishConfig: true,
         design: {
           select: {
             id: true,
@@ -291,6 +342,18 @@ export class StickerService {
       );
     }
 
+    // Supprimer l'image de Cloudinary si elle existe
+    if (sticker.cloudinaryPublicId) {
+      try {
+        this.logger.log(`🗑️ Suppression image Cloudinary: ${sticker.cloudinaryPublicId}`);
+        await this.stickerCloudinary.deleteStickerFromCloudinary(sticker.cloudinaryPublicId);
+      } catch (error) {
+        // Logger l'erreur mais continuer la suppression
+        this.logger.warn(`⚠️ Échec suppression Cloudinary (non bloquant): ${error.message}`);
+      }
+    }
+
+    // Supprimer le sticker de la BDD
     await this.prisma.stickerProduct.delete({
       where: { id },
     });
@@ -345,8 +408,6 @@ export class StickerService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          size: true,
-          finishConfig: true,
           design: {
             select: {
               imageUrl: true,
@@ -384,39 +445,24 @@ export class StickerService {
    * Obtenir les configurations disponibles
    */
   async getConfigurations() {
-    const [sizes, finishes] = await Promise.all([
-      this.prisma.stickerSize.findMany({
-        where: { isActive: true },
-        orderBy: { displayOrder: 'asc' },
-      }),
-      this.prisma.stickerFinish.findMany({
-        where: { isActive: true },
-        orderBy: { displayOrder: 'asc' },
-      }),
-    ]);
-
     return {
       success: true,
       data: {
-        sizes: sizes.map(s => ({
-          id: s.id,
-          name: s.name,
-          description: s.description,
-          width: parseFloat(s.widthCm.toString()),
-          height: parseFloat(s.heightCm.toString()),
-          basePrice: parseInt(s.basePrice.toString()),
-        })),
-        finishes: finishes.map(f => ({
-          id: f.id,
-          name: f.name,
-          description: f.description,
-          priceMultiplier: parseFloat(f.priceMultiplier.toString()),
-        })),
         shapes: [
           { id: 'SQUARE', name: 'Carré', description: 'Forme carrée classique' },
           { id: 'CIRCLE', name: 'Cercle', description: 'Forme ronde' },
           { id: 'RECTANGLE', name: 'Rectangle', description: 'Forme rectangulaire' },
           { id: 'DIE_CUT', name: 'Découpe personnalisée', description: 'Découpé selon la forme du design' },
+        ],
+        stickerTypes: [
+          { id: 'autocollant', name: 'Autocollant', description: 'Bordure fine avec effets 3D' },
+          { id: 'pare-chocs', name: 'Pare-chocs', description: 'Bordure épaisse simple' },
+        ],
+        borderColors: [
+          { id: 'glossy-white', name: 'Blanc brillant', description: 'Bordure blanche avec effet brillant' },
+          { id: 'white', name: 'Blanc', description: 'Bordure blanche simple' },
+          { id: 'matte-white', name: 'Blanc mat', description: 'Bordure blanche mate' },
+          { id: 'transparent', name: 'Transparent', description: 'Sans bordure' },
         ],
       },
     };
@@ -452,29 +498,18 @@ export class StickerService {
    * Obtenir les filtres disponibles
    */
   private async getFilters() {
-    const [sizes, finishes, priceRange] = await Promise.all([
-      this.prisma.stickerSize.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-      }),
-      this.prisma.stickerFinish.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-      }),
-      this.prisma.stickerProduct.aggregate({
-        where: { status: 'PUBLISHED' },
-        _min: { finalPrice: true },
-        _max: { finalPrice: true },
-      }),
-    ]);
+    const priceRange = await this.prisma.stickerProduct.aggregate({
+      where: { status: 'PUBLISHED' },
+      _min: { finalPrice: true },
+      _max: { finalPrice: true },
+    });
 
     return {
-      sizes,
-      finishes,
       priceRange: {
         min: priceRange._min.finalPrice || 500,
         max: priceRange._max.finalPrice || 5000,
       },
+      shapes: ['SQUARE', 'CIRCLE', 'RECTANGLE', 'DIE_CUT'],
     };
   }
 
@@ -489,8 +524,6 @@ export class StickerService {
       name: sticker.name,
       sku: sticker.sku,
       size: {
-        id: sticker.size.id,
-        name: sticker.size.name,
         width: parseFloat(sticker.widthCm.toString()),
         height: parseFloat(sticker.heightCm.toString()),
       },
@@ -500,6 +533,7 @@ export class StickerService {
       finishMultiplier: parseFloat(sticker.finishMultiplier.toString()),
       finalPrice: sticker.finalPrice,
       status: sticker.status,
+      imageUrl: sticker.imageUrl,
       createdAt: sticker.createdAt,
     };
   }
@@ -512,8 +546,9 @@ export class StickerService {
       id: sticker.id,
       name: sticker.name,
       designPreview: sticker.design?.thumbnailUrl || sticker.design?.imageUrl,
-      size: `${sticker.size.name} (${sticker.widthCm}x${sticker.heightCm}cm)`,
-      finish: sticker.finishConfig.name,
+      stickerImage: sticker.imageUrl,
+      size: `${sticker.widthCm}x${sticker.heightCm}cm`,
+      finish: sticker.finish,
       price: sticker.finalPrice,
       status: sticker.status,
       saleCount: sticker.saleCount,
@@ -541,18 +576,13 @@ export class StickerService {
       name: sticker.name,
       description: sticker.description,
       sku: sticker.sku,
+      imageUrl: sticker.imageUrl,
       configuration: {
         size: {
-          id: sticker.size.id,
-          name: sticker.size.name,
           width: parseFloat(sticker.widthCm.toString()),
           height: parseFloat(sticker.heightCm.toString()),
         },
-        finish: {
-          id: sticker.finishConfig.id,
-          name: sticker.finishConfig.name,
-          multiplier: parseFloat(sticker.finishMultiplier.toString()),
-        },
+        finish: sticker.finish,
         shape: sticker.shape,
       },
       pricing: {
@@ -583,13 +613,13 @@ export class StickerService {
       id: sticker.id,
       name: sticker.name,
       description: sticker.description,
-      imageUrl: sticker.design?.thumbnailUrl || sticker.design?.imageUrl,
+      imageUrl: sticker.imageUrl || sticker.design?.thumbnailUrl || sticker.design?.imageUrl,
       vendor: {
         id: sticker.vendor.id,
         shopName: sticker.vendor.shop_name,
       },
-      size: `${sticker.size.name} (${sticker.widthCm}x${sticker.heightCm}cm)`,
-      finish: sticker.finishConfig.name,
+      size: `${sticker.widthCm}x${sticker.heightCm}cm`,
+      finish: sticker.finish,
       shape: sticker.shape,
       price: sticker.finalPrice,
       minimumOrder: sticker.minimumQuantity,

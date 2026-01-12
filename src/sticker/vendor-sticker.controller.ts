@@ -33,7 +33,7 @@ export class VendorStickerController {
   @ApiResponse({ status: 400, description: 'Données invalides' })
   @ApiResponse({ status: 401, description: 'Non authentifié' })
   async create(@Request() req, @Body() createDto: CreateStickerDto) {
-    const vendorId = req.user.userId;
+    const vendorId = req.user.id;
     return this.stickerService.create(vendorId, createDto);
   }
 
@@ -41,7 +41,7 @@ export class VendorStickerController {
   @ApiOperation({ summary: 'Lister les stickers du vendeur' })
   @ApiResponse({ status: 200, description: 'Liste des stickers' })
   async findAll(@Request() req, @Query() query: StickerQueryDto) {
-    const vendorId = req.user.userId;
+    const vendorId = req.user.id;
     return this.stickerService.findAllByVendor(vendorId, query);
   }
 
@@ -50,7 +50,7 @@ export class VendorStickerController {
   @ApiResponse({ status: 200, description: 'Détails du sticker' })
   @ApiResponse({ status: 404, description: 'Sticker introuvable' })
   async findOne(@Request() req, @Param('id', ParseIntPipe) id: number) {
-    const vendorId = req.user.userId;
+    const vendorId = req.user.id;
     return this.stickerService.findOne(id, vendorId);
   }
 
@@ -64,7 +64,7 @@ export class VendorStickerController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateStickerDto,
   ) {
-    const vendorId = req.user.userId;
+    const vendorId = req.user.id;
     return this.stickerService.update(id, vendorId, updateDto);
   }
 
@@ -75,7 +75,7 @@ export class VendorStickerController {
   @ApiResponse({ status: 404, description: 'Sticker introuvable' })
   @ApiResponse({ status: 403, description: 'Accès interdit' })
   async remove(@Request() req, @Param('id', ParseIntPipe) id: number) {
-    const vendorId = req.user.userId;
+    const vendorId = req.user.id;
     return this.stickerService.remove(id, vendorId);
   }
 }
