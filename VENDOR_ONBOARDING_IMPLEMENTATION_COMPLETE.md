@@ -180,7 +180,7 @@ Authorization: Bearer <JWT_TOKEN>
 ### 3. GET /vendor-onboarding/info
 
 Récupérer les informations d'onboarding.
-
+      
 **Headers:**
 ```
 Authorization: Bearer <JWT_TOKEN>

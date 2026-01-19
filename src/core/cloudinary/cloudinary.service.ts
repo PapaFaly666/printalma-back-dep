@@ -84,6 +84,46 @@ export class CloudinaryService {
   }
 
   /**
+   * Upload d'image directement depuis un Buffer
+   * @param buffer - Buffer de l'image
+   * @param options - Options Cloudinary
+   */
+  async uploadBuffer(buffer: Buffer, options: any = {}): Promise<CloudinaryUploadResult> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.ensureConfigured();
+
+        const uploadConfig = {
+          folder: options.folder || 'printalma',
+          resource_type: options.resource_type || 'auto',
+          public_id: options.public_id || `${Date.now()}`,
+          quality: options.quality || 90,
+          ...options,
+        };
+
+        const upload = cloudinary.uploader.upload_stream(
+          uploadConfig,
+          (error, result) => {
+            if (error) {
+              console.error('❌ Cloudinary uploadBuffer error:', error);
+              const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+              return reject(new Error(`Buffer upload failed: ${errorMessage}`));
+            }
+            resolve(result as CloudinaryUploadResult);
+          }
+        );
+
+        const bufferStream = require('stream').Readable.from(buffer);
+        bufferStream.pipe(upload);
+      } catch (error) {
+        console.error('❌ Cloudinary uploadBuffer unexpected error:', error);
+        const errorMessage = error?.message || String(error);
+        reject(new Error(`Buffer upload failed: ${errorMessage}`));
+      }
+    });
+  }
+
+  /**
    * Upload d'image directement depuis base64 avec options de qualité
    * @param base64Data - Données base64 (avec ou sans préfixe data:image/...)
    * @param options - Options Cloudinary

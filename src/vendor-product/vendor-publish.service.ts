@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma.service';
 import * as crypto from 'crypto';
 import { SaveDesignPositionDto } from './dto/save-design-position.dto';
 import { DesignPositionService } from './services/design-position.service';
+import { ProductPreviewGeneratorService } from './services/product-preview-generator.service';
 import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
 import {
   formatDesignPositions,
@@ -23,6 +24,7 @@ export class VendorPublishService {
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly designPositionService: DesignPositionService,
+    private readonly previewGenerator: ProductPreviewGeneratorService,
     private readonly vendorFundsService: VendorFundsService,
   ) {}
 
@@ -208,7 +210,7 @@ export class VendorPublishService {
       }
 
       // Assurer que la position est sauvegardée si elle est fournie
-      const positionData = publishDto.designPosition;
+      let positionData = publishDto.designPosition;
       if (positionData && vendorProduct.id && design.id) {
         await this.designPositionService.upsertPosition(
           vendorId,
@@ -216,15 +218,165 @@ export class VendorPublishService {
           design.id,
           { position: positionData }
         );
+
+        // Récupérer la position normalisée depuis la base de données
+        const savedPosition = await this.designPositionService.getPositionByDesignId(
+          vendorProduct.id,
+          design.id
+        );
+
+        if (savedPosition) {
+          positionData = savedPosition;
+
+          // 🎯 LOGIQUE UNIFIÉE: Le backend calcule designWidth/designHeight avec fit: 'inside'
+          // Plus besoin de corriger ces valeurs - elles sont calculées automatiquement
+
+          this.logger.log(`✅ Position récupérée et normalisée depuis la base de données: ${JSON.stringify(positionData)}`);
+        }
       }
 
-      // ✅ CONSERVATION RÉFÉRENCES IMAGES ADMIN
-      await this.preserveAdminImageStructure(
-        vendorProduct.id,
-        publishDto.productStructure.adminProduct
-      );
+      // 🎨 GÉNÉRATION AUTOMATIQUE DES IMAGES FINALES POUR CHAQUE COULEUR
+      try {
+        this.logger.log(`🎨 Génération images finales pour produit ${vendorProduct.id}...`);
+        this.logger.log(`📊 Nombre de couleurs sélectionnées: ${publishDto.selectedColors.length}`);
+        this.logger.log(`📊 positionData normalisée: ${JSON.stringify(positionData)}`);
+
+        if (!positionData) {
+          this.logger.warn(`⚠️ Aucune position de design fournie`);
+        } else {
+          let firstImageUrl: string | null = null;
+          let firstImagePublicId: string | null = null;
+
+          // Générer une image pour chaque couleur sélectionnée
+          for (const selectedColor of publishDto.selectedColors) {
+            try {
+              this.logger.log(`🎨 Génération image pour couleur ${selectedColor.name} (ID: ${selectedColor.id})...`);
+
+              // Récupérer la variation de couleur avec ses images et délimitations
+              const colorVariation = await this.prisma.colorVariation.findUnique({
+                where: { id: selectedColor.id },
+                include: {
+                  images: {
+                    include: {
+                      delimitations: true,
+                    },
+                    take: 1,
+                  },
+                },
+              });
+
+              if (!colorVariation) {
+                this.logger.warn(`⚠️ ColorVariation ${selectedColor.id} introuvable`);
+                continue;
+              }
+
+              const productImage = colorVariation.images[0];
+              if (!productImage) {
+                this.logger.warn(`⚠️ Aucune image trouvée pour la couleur ${selectedColor.name}`);
+                continue;
+              }
+
+              // Récupérer la délimitation
+              const delimitation = productImage.delimitations?.[0];
+              const delimitationData = delimitation ? {
+                x: delimitation.x,
+                y: delimitation.y,
+                width: delimitation.width,
+                height: delimitation.height,
+                coordinateType: delimitation.coordinateType as 'PERCENTAGE' | 'PIXEL',
+                originalImageWidth: delimitation.originalImageWidth,
+                originalImageHeight: delimitation.originalImageHeight,
+                referenceWidth: delimitation.referenceWidth,
+                referenceHeight: delimitation.referenceHeight,
+              } : {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+                coordinateType: 'PERCENTAGE' as const,
+              };
+
+              // Générer l'image finale
+              // 🔴 DEBUG: showDelimitation=true pour tracer la délimitation en rouge
+              const finalImageBuffer = await this.previewGenerator.generatePreviewFromJson(
+                productImage.url,
+                design.imageUrl,
+                delimitationData,
+                positionData,
+                true  // ⚠️ DEBUG: Afficher la délimitation en rouge
+              );
+
+              this.logger.log(`✅ Image finale générée pour ${selectedColor.name} (${finalImageBuffer.length} bytes)`);
+
+              // Upload sur Cloudinary
+              const uploadResult = await this.cloudinaryService.uploadBuffer(finalImageBuffer, {
+                folder: 'vendor-product-finals',
+                public_id: `final_${vendorProduct.id}_color_${selectedColor.id}_${Date.now()}`,
+                resource_type: 'image',
+              });
+
+              this.logger.log(`☁️ Image uploadée pour ${selectedColor.name}: ${uploadResult.secure_url}`);
+
+              // Sauvegarder la première image dans VendorProduct
+              if (!firstImageUrl) {
+                firstImageUrl = uploadResult.secure_url;
+                firstImagePublicId = uploadResult.public_id;
+              }
+
+              // Créer l'entrée VendorProductImage avec l'image finale dans un champ séparé
+              await this.prisma.vendorProductImage.create({
+                data: {
+                  vendorProductId: vendorProduct.id,
+                  colorId: selectedColor.id,
+                  colorName: selectedColor.name,
+                  colorCode: selectedColor.colorCode,
+                  imageType: 'final',
+                  // Image mockup de référence (sans design)
+                  cloudinaryUrl: productImage.url,
+                  cloudinaryPublicId: this.extractPublicIdFromUrl(productImage.url),
+                  // Image finale avec design positionné
+                  finalImageUrl: uploadResult.secure_url,
+                  finalImagePublicId: uploadResult.public_id,
+                  width: uploadResult.width || null,
+                  height: uploadResult.height || null,
+                },
+              });
+
+              this.logger.log(`💾 Image finale sauvegardée dans VendorProductImage.finalImageUrl pour couleur ${selectedColor.name}`);
+            } catch (colorError) {
+              this.logger.error(`❌ Erreur génération image pour couleur ${selectedColor.name}: ${colorError.message}`);
+            }
+          }
+
+          // Mettre à jour VendorProduct avec la première image générée
+          if (firstImageUrl) {
+            await this.prisma.vendorProduct.update({
+              where: { id: vendorProduct.id },
+              data: {
+                finalImageUrl: firstImageUrl,
+                finalImagePublicId: firstImagePublicId,
+              },
+            });
+            this.logger.log(`💾 Première image sauvegardée dans VendorProduct.finalImageUrl`);
+          }
+        }
+      } catch (imageError) {
+        // Ne pas bloquer la création du produit si la génération d'image échoue
+        this.logger.error(`❌ Erreur génération images finales: ${imageError.message}`);
+        this.logger.error(`❌ Stack: ${imageError.stack}`);
+        this.logger.warn(`⚠️ Produit créé sans images finales, peuvent être régénérées plus tard`);
+      }
+
+      // ✅ Images admin de référence déjà incluses dans VendorProductImage.cloudinaryUrl
+      // Plus besoin de preserveAdminImageStructure car cloudinaryUrl contient le mockup
 
       this.logger.log(`✅ Produit vendeur réel ${vendorProduct.id} créé avec design ${design.id}`);
+
+      // Récupérer le produit mis à jour avec l'image finale
+      const updatedProduct = await this.prisma.vendorProduct.findUnique({
+        where: { id: vendorProduct.id },
+        select: { finalImageUrl: true, finalImagePublicId: true },
+      });
 
       return {
         success: true,
@@ -236,7 +388,8 @@ export class VendorPublishService {
         structure: 'admin_product_preserved',
         designUrl: design.imageUrl,
         designId: design.id,
-        isDesignReused: true
+        isDesignReused: true,
+        finalImageUrl: updatedProduct?.finalImageUrl || null,
       };
 
     } catch (error) {
@@ -2602,6 +2755,18 @@ export class VendorPublishService {
             include: {
               design: true
             }
+          },
+          images: {
+            where: { imageType: 'final' },
+            select: {
+              id: true,
+              colorId: true,
+              colorName: true,
+              colorCode: true,
+              finalImageUrl: true,
+              finalImagePublicId: true,
+              cloudinaryUrl: true
+            }
           }
         }
       });
@@ -2883,25 +3048,35 @@ export class VendorPublishService {
         vendorName: product.name,
         price: product.price,
         status: product.status,
-        
+
         // 🏆 MEILLEURES VENTES
         bestSeller,
-        
+
         // 🎨 STRUCTURE ADMIN CONSERVÉE
         adminProduct,
-        
+
         // 🎨 APPLICATION DESIGN
         designApplication,
-        
+
         // 🎨 DÉLIMITATIONS DU DESIGN
         designDelimitations,
-        
+
         // 🎨 INFORMATIONS DESIGN COMPLÈTES
         design,
-        
+
         // 🎨 POSITIONNEMENTS DU DESIGN
         designPositions,
-        
+
+        // 🖼️ IMAGES FINALES - Mockups avec design positionné pour chaque couleur
+        finalImages: product.images?.map((img: any) => ({
+          id: img.id,
+          colorId: img.colorId,
+          colorName: img.colorName,
+          colorCode: img.colorCode,
+          finalImageUrl: img.finalImageUrl,
+          mockupUrl: img.cloudinaryUrl
+        })) || [],
+
         // 👤 INFORMATIONS VENDEUR
         vendor: {
           id: product.vendor.id,
@@ -2909,10 +3084,10 @@ export class VendorPublishService {
           shop_name: product.vendor.shop_name,
           profile_photo_url: product.vendor.profile_photo_url
         },
-        
+
         // 🖼️ IMAGES ADMIN CONSERVÉES
         images,
-        
+
         // 📏 SÉLECTIONS VENDEUR
         selectedSizes,
         selectedColors,

@@ -1476,11 +1476,8 @@ export class VendorProductValidationService {
         }
       }
 
-      // Conserver références images admin
-      await this.preserveAdminImageStructure(
-        vendorProduct.id,
-        productData.productStructure.adminProduct
-      );
+      // ✅ Images admin de référence déjà incluses dans VendorProductImage.cloudinaryUrl
+      // Plus besoin de preserveAdminImageStructure car cloudinaryUrl contient le mockup
 
       this.logger.log(`✅ Produit ${vendorProduct.id} créé par admin ${adminId} pour vendeur ${vendor.firstName} ${vendor.lastName}`);
 

@@ -566,6 +566,8 @@ model VendorProduct {
   designHeight             Int?                    @map("design_height")
   designFormat             String?                 @map("design_format")
   designFileSize           Int?                    @map("design_file_size")
+  finalImageUrl            String?                 @map("final_image_url")
+  finalImagePublicId       String?                 @map("final_image_public_id")
   sizes                    Json
   colors                   Json
   defaultColorId           Int?                    @map("default_color_id")
@@ -618,6 +620,8 @@ model VendorProductImage {
   imageType          String          @default("color")
   cloudinaryUrl      String
   cloudinaryPublicId String
+  finalImageUrl      String?         @map("final_image_url")
+  finalImagePublicId String?         @map("final_image_public_id")
   originalImageKey   String?
   width              Int?
   height             Int?

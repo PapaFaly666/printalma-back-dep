@@ -317,6 +317,90 @@ export class StickerService {
   }
 
   /**
+   * Régénérer l'image d'un sticker avec les nouveaux paramètres de bordure
+   * Utile pour appliquer de nouvelles épaisseurs de bordure sans recréer le sticker
+   */
+  async regenerateImage(id: number, vendorId: number) {
+    this.logger.log(`🔄 Régénération image sticker ID: ${id}`);
+
+    // Récupérer le sticker avec toutes les infos nécessaires
+    const sticker = await this.prisma.stickerProduct.findUnique({
+      where: { id },
+      include: {
+        design: true,
+      },
+    });
+
+    if (!sticker) {
+      throw new NotFoundException('Sticker introuvable');
+    }
+
+    if (sticker.vendorId !== vendorId) {
+      throw new ForbiddenException('Vous n\'avez pas le droit de modifier ce sticker');
+    }
+
+    // Récupérer le type de sticker depuis les métadonnées
+    const stickerType = sticker.stickerType as 'autocollant' | 'pare-chocs' || 'autocollant';
+    const borderColor = sticker.borderColor as 'transparent' | 'white' | 'glossy-white' | 'matte-white' || 'glossy-white';
+    const shape = sticker.shape as 'SQUARE' | 'CIRCLE' | 'RECTANGLE' | 'DIE_CUT' || 'SQUARE';
+
+    // Taille en cm depuis les dimensions du sticker
+    const sizeString = `${sticker.widthCm} cm x ${sticker.heightCm} cm`;
+
+    // Générer la nouvelle image avec les nouveaux paramètres de bordure
+    this.logger.log(`🎨 Génération nouvelle image avec bordures ${stickerType} (${borderColor})`);
+    const stickerImageBuffer = await this.stickerGenerator.createStickerFromDesign(
+      sticker.design.imageUrl,
+      stickerType,
+      borderColor,
+      sizeString,
+      shape
+    );
+
+    this.logger.log(`✅ Nouvelle image générée (${stickerImageBuffer.length} bytes)`);
+
+    // Supprimer l'ancienne image de Cloudinary
+    if (sticker.cloudinaryPublicId) {
+      this.logger.log(`🗑️ Suppression ancienne image: ${sticker.cloudinaryPublicId}`);
+      await this.stickerCloudinary.deleteStickerFromCloudinary(sticker.cloudinaryPublicId);
+    }
+
+    // Upload la nouvelle image sur Cloudinary
+    this.logger.log(`☁️ Upload nouvelle image sur Cloudinary...`);
+    const { url: imageUrl, publicId } = await this.stickerCloudinary.uploadStickerToCloudinary(
+      stickerImageBuffer,
+      sticker.id,
+      sticker.designId
+    );
+
+    // Mettre à jour l'URL de l'image dans la BDD
+    this.logger.log(`💾 Mise à jour BDD - Sticker ID: ${sticker.id}, URL: ${imageUrl}`);
+    const updated = await this.prisma.stickerProduct.update({
+      where: { id: sticker.id },
+      data: {
+        imageUrl,
+        cloudinaryPublicId: publicId,
+      },
+      include: {
+        design: {
+          select: {
+            id: true,
+            name: true,
+            imageUrl: true,
+            thumbnailUrl: true,
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Image du sticker régénérée avec succès',
+      data: this.formatStickerResponse(updated),
+    };
+  }
+
+  /**
    * Supprimer un sticker
    */
   async remove(id: number, vendorId: number) {
@@ -472,10 +556,17 @@ export class StickerService {
    * Générer un SKU unique
    */
   private async generateSKU(vendorId: number, designId: number): Promise<string> {
+    // Compter le nombre de stickers pour ce vendeur ET ce design
     const count = await this.prisma.stickerProduct.count({
-      where: { vendorId },
+      where: {
+        vendorId,
+        designId,
+      },
     });
-    return `STK-${vendorId}-${designId}-${count + 1}`;
+
+    // Ajouter un timestamp pour garantir l'unicité en cas de création simultanée
+    const timestamp = Date.now().toString().slice(-6);
+    return `STK-${vendorId}-${designId}-${count + 1}-${timestamp}`;
   }
 
   /**

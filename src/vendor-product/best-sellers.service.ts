@@ -384,6 +384,18 @@ export class BestSellersService {
             },
             designPositions: {
               include: { design: true }
+            },
+            images: {
+              where: { imageType: 'final' },
+              select: {
+                id: true,
+                colorId: true,
+                colorName: true,
+                colorCode: true,
+                finalImageUrl: true,
+                finalImagePublicId: true,
+                cloudinaryUrl: true
+              }
             }
           },
           orderBy: [
@@ -421,6 +433,16 @@ export class BestSellersService {
           designScale: product.designScale,
           designPositioning: product.designPositioning,
           designPositions: standardizedDesignPositions,
+
+          // 🆕 Images finales avec design positionné pour chaque couleur
+          finalImages: (product as any).images?.map((img: any) => ({
+            id: img.id,
+            colorId: img.colorId,
+            colorName: img.colorName,
+            colorCode: img.colorCode,
+            finalImageUrl: img.finalImageUrl,
+            mockupUrl: img.cloudinaryUrl
+          })) || [],
 
           baseProduct: {
             id: product.baseProduct.id,

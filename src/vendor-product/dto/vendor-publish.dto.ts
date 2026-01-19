@@ -199,25 +199,46 @@ export class VendorPublishDto {
   @IsString()
   postValidationAction?: 'AUTO_PUBLISH' | 'TO_DRAFT';
 
-  @ApiProperty({ 
-    example: { x: 0, y: 0, scale: 1, rotation: 0, design_width: 1200, design_height: 1200 }, 
+  @ApiProperty({
+    example: {
+      x: 60,
+      y: -30,
+      scale: 0.8,
+      rotation: 0,
+      positionUnit: 'PIXEL',
+      delimitationWidth: 600,
+      delimitationHeight: 600
+    },
     required: false,
-    description: 'Position du design sur le produit (depuis localStorage) avec dimensions' 
+    description: '🎯 Position du design avec logique unifiée frontend ↔ backend. ' +
+      'delimitationWidth/Height sont OBLIGATOIRES pour la cohérence.'
   })
   @IsOptional()
   @IsObject()
   designPosition?: {
+    /** Offset X depuis le centre de la délimitation (en pixels) */
     x: number;
+    /** Offset Y depuis le centre de la délimitation (en pixels) */
     y: number;
+    /** Échelle appliquée à la délimitation (0.8 = 80%) */
     scale: number;
+    /** Rotation en degrés */
     rotation: number;
-    constraints?: any;
-    design_width?: number;
-    design_height?: number;
-    designWidth?: number;
-    designHeight?: number;
-    width?: number;
-    height?: number;
+    /** Unité de position (toujours 'PIXEL' pour la logique unifiée) */
+    positionUnit?: 'PIXEL' | 'PERCENTAGE';
+    /** ✅ OBLIGATOIRE: Largeur de la délimitation en pixels */
+    delimitationWidth?: number;
+    /** ✅ OBLIGATOIRE: Hauteur de la délimitation en pixels */
+    delimitationHeight?: number;
+
+    // ❌ OBSOLÈTE: Ces champs ne sont plus utilisés
+    // constraints?: any;
+    // design_width?: number;
+    // design_height?: number;
+    // designWidth?: number;
+    // designHeight?: number;
+    // width?: number;
+    // height?: number;
   };
 
   @ApiProperty({ 
@@ -260,6 +281,11 @@ export class VendorPublishResponseDto {
   @ApiProperty({ example: 42, required: false })
   @IsOptional()
   designId?: number;
+
+  @ApiProperty({ example: 'https://res.cloudinary.com/.../final_123_1234567890.png', required: false })
+  @IsOptional()
+  @IsString()
+  finalImageUrl?: string;
 
   @ApiProperty({ example: true, required: false })
   @IsOptional()
