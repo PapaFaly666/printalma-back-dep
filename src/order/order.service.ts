@@ -275,6 +275,9 @@ export class OrderService {
       // 📦 VALIDATION DU STOCK PAR TAILLE
       await this.validateStockForOrderItems(createOrderDto.orderItems);
 
+      // ✅ VALIDATION DES STICKERS (quantités min/max, statut, prix)
+      const validatedOrderItems = await this.validateStickerOrderItems(createOrderDto.orderItems);
+
       const order = await this.prisma.order.create({
         data: {
           orderNumber: `ORD-${Date.now()}`,
@@ -321,7 +324,7 @@ export class OrderService {
           deliveryMetadata: deliveryMetadata,
 
           orderItems: {
-            create: await Promise.all(createOrderDto.orderItems.map(async (item) => {
+            create: await Promise.all(validatedOrderItems.map(async (item) => {
               // 🎨 VALIDATION DES DONNÉES DE CUSTOMISATION
               if (item.customizationIds || item.designElementsByView) {
                 try {
@@ -379,34 +382,52 @@ export class OrderService {
               // 🆕 Calcul du prix total pour cet item
               const itemTotalPrice = (item.unitPrice || 0) * item.quantity;
 
+              // 🎯 DÉTERMINER LE TYPE D'ITEM (STICKER ou PRODUIT NORMAL)
+              const isSticker = !!item.stickerId;
+
               // 🆕 ENRICHISSEMENT DES DONNÉES DE CUSTOMISATION
-              let enrichedItem = {
-                productId: finalProductId,
-                vendorProductId: item.vendorProductId || null,
+              // Initialiser de manière conditionnelle selon le type (sticker ou produit)
+              let enrichedItem: any = {
                 quantity: item.quantity,
                 unitPrice: item.unitPrice || 0,
                 totalPrice: itemTotalPrice,
-                size: item.size || null,
-                color: item.color || null,
-                colorId: item.colorId || null,
-                // 🎨 Design et mockup
-                mockupUrl: item.mockupUrl || null,
-                designId: item.designId || null,
-                designPositions: item.designPositions || null,
-                designMetadata: item.designMetadata || null,
-                customizationId: item.customizationId || null,
-                // 🎨 Système multi-vues - Données de base
-                customizationIds: item.customizationIds ? JSON.parse(JSON.stringify(item.customizationIds)) : null,
-                designElementsByView: item.designElementsByView ? JSON.parse(JSON.stringify(item.designElementsByView)) : null,
-                viewsMetadata: item.viewsMetadata ? JSON.parse(JSON.stringify(item.viewsMetadata)) : null,
-                delimitation: item.delimitation ? JSON.parse(JSON.stringify(item.delimitation)) : null,
-                // 🆕 NOUVEAUX CHAMPS
-                delimitations: item.delimitations ? JSON.parse(JSON.stringify(item.delimitations)) : null,
-                colorVariationData: item.colorVariationData ? JSON.parse(JSON.stringify(item.colorVariationData)) : null,
               };
 
-              // 🆕 ENRICHIR avec colorVariation complète si colorId présent
-              if (item.colorId && (item.designElementsByView || item.customizationIds)) {
+              if (isSticker) {
+                // ✅ POUR LES STICKERS: Structure simplifiée
+                // ⚠️ IMPORTANT: Ne PAS inclure productId du tout (même pas null) pour éviter l'erreur de contrainte FK
+                this.logger.log(`🎯 [STICKER] Item avant transformation:`, JSON.stringify(item));
+                enrichedItem.stickerId = item.stickerId;
+                enrichedItem.size = item.size || null;
+                enrichedItem.color = item.color || 'N/A'; // Valeur par défaut pour les stickers
+                // Ne pas définir les champs optionnels pour les stickers
+                // Prisma gérera automatiquement les valeurs null/undefined
+                this.logger.log(`🎯 [STICKER] enrichedItem après transformation:`, JSON.stringify(enrichedItem));
+              } else {
+                // ✅ POUR LES PRODUITS NORMAUX: Structure complète avec personnalisations
+                enrichedItem.productId = finalProductId;
+                enrichedItem.vendorProductId = item.vendorProductId || null;
+                enrichedItem.size = item.size || null;
+                enrichedItem.color = item.color || null;
+                enrichedItem.colorId = item.colorId || null;
+                // 🎨 Design et mockup
+                enrichedItem.mockupUrl = item.mockupUrl || null;
+                enrichedItem.designId = item.designId || null;
+                enrichedItem.designPositions = item.designPositions || null;
+                enrichedItem.designMetadata = item.designMetadata || null;
+                enrichedItem.customizationId = item.customizationId || null;
+                // 🎨 Système multi-vues - Données de base
+                enrichedItem.customizationIds = item.customizationIds ? JSON.parse(JSON.stringify(item.customizationIds)) : null;
+                enrichedItem.designElementsByView = item.designElementsByView ? JSON.parse(JSON.stringify(item.designElementsByView)) : null;
+                enrichedItem.viewsMetadata = item.viewsMetadata ? JSON.parse(JSON.stringify(item.viewsMetadata)) : null;
+                enrichedItem.delimitation = item.delimitation ? JSON.parse(JSON.stringify(item.delimitation)) : null;
+                // 🆕 NOUVEAUX CHAMPS
+                enrichedItem.delimitations = item.delimitations ? JSON.parse(JSON.stringify(item.delimitations)) : null;
+                enrichedItem.colorVariationData = item.colorVariationData ? JSON.parse(JSON.stringify(item.colorVariationData)) : null;
+              }
+
+              // 🆕 ENRICHIR avec colorVariation complète si colorId présent (uniquement pour produits normaux)
+              if (!isSticker && item.colorId && (item.designElementsByView || item.customizationIds)) {
                 try {
                   const enrichedData = await CustomizationEnricherHelper.enrichOrderItemWithColorVariation(
                     enrichedItem,
@@ -439,6 +460,23 @@ export class OrderService {
           orderItems: {
             include: {
               product: true,
+              stickerProduct: { // 🆕 Inclure le sticker pour les commandes de stickers
+                include: {
+                  vendor: {
+                    select: {
+                      id: true,
+                      shop_name: true,
+                    }
+                  },
+                  design: {
+                    select: {
+                      id: true,
+                      name: true,
+                      imageUrl: true,
+                    }
+                  }
+                }
+              },
               colorVariation: true,
               vendorProduct: { // 🆕 Inclure le produit vendeur
                 include: {
@@ -872,6 +910,23 @@ export class OrderService {
           orderItems: {
             include: {
               product: true,
+              stickerProduct: { // 🆕 Inclure le sticker
+                include: {
+                  vendor: {
+                    select: {
+                      id: true,
+                      shop_name: true,
+                    }
+                  },
+                  design: {
+                    select: {
+                      id: true,
+                      name: true,
+                      imageUrl: true,
+                    }
+                  }
+                }
+              },
               colorVariation: true,
               vendorProduct: {
                 include: {
@@ -1174,6 +1229,23 @@ export class OrderService {
         orderItems: {
           include: {
             product: true,
+            stickerProduct: { // 🆕 Inclure le sticker
+              include: {
+                vendor: {
+                  select: {
+                    id: true,
+                    shop_name: true,
+                  }
+                },
+                design: {
+                  select: {
+                    id: true,
+                    name: true,
+                    imageUrl: true,
+                  }
+                }
+              }
+            },
             colorVariation: true,
           },
         },
@@ -1341,6 +1413,23 @@ export class OrderService {
         orderItems: {
           include: {
             product: true,
+            stickerProduct: { // 🆕 Inclure le sticker
+              include: {
+                vendor: {
+                  select: {
+                    id: true,
+                    shop_name: true,
+                  }
+                },
+                design: {
+                  select: {
+                    id: true,
+                    name: true,
+                    imageUrl: true,
+                  }
+                }
+              }
+            },
             colorVariation: true,
             // 🎨 Inclure les données de personnalisation client
             customization: {
@@ -1493,13 +1582,19 @@ export class OrderService {
       vendorAmount: calculatedVendorAmount,
       commissionAmount: calculatedCommissionAmount,
       orderItems: order.orderItems.map((item: any) => {
+        // 🎯 DÉTERMINER LE TYPE D'ITEM
+        const isSticker = !!item.stickerId;
+
         console.log('🎨 Données de couleur récupérées:', {
           itemColorId: item.colorId,
           itemColor: item.color,
-          colorFromJoin: item.colorVariation
+          colorFromJoin: item.colorVariation,
+          isSticker: isSticker,
+          stickerId: item.stickerId
         });
 
-        return {
+        // 🎯 STRUCTURE DE BASE COMMUNE
+        const baseItem = {
           ...item,
           // 🆕 Prix et quantité
           quantity: item.quantity,
@@ -1507,7 +1602,43 @@ export class OrderService {
           totalPrice: item.totalPrice || (item.unitPrice * item.quantity), // 🆕 Prix total = unitPrice * quantity
           colorId: item.colorId,
           color: item.color,
+        };
 
+        // ✅ POUR LES STICKERS
+        if (isSticker) {
+          return {
+            ...baseItem,
+            // Type d'item
+            itemType: 'STICKER',
+            // Informations du sticker
+            stickerProduct: item.stickerProduct ? {
+              id: item.stickerProduct.id,
+              name: item.stickerProduct.name,
+              imageUrl: item.stickerProduct.imageUrl,
+              finalPrice: item.stickerProduct.finalPrice,
+              minQuantity: item.stickerProduct.minQuantity,
+              maxQuantity: item.stickerProduct.maxQuantity,
+              shape: item.stickerProduct.shape,
+              finish: item.stickerProduct.finish,
+            } : null,
+            // Design associé (si chargé)
+            design: item.stickerProduct?.design ? {
+              id: item.stickerProduct.design.id,
+              name: item.stickerProduct.design.name,
+              imageUrl: item.stickerProduct.design.imageUrl,
+            } : null,
+            // Vendeur
+            vendor: item.stickerProduct?.vendor ? {
+              id: item.stickerProduct.vendor.id,
+              shopName: item.stickerProduct.vendor.shop_name,
+            } : null,
+          };
+        }
+
+        // ✅ POUR LES PRODUITS NORMAUX
+        return {
+          ...baseItem,
+          itemType: 'PRODUCT',
           product: {
             ...item.product,
             orderedColorName: item.colorVariation?.name || null,
@@ -1690,6 +1821,23 @@ export class OrderService {
           orderItems: {
             include: {
               product: true,
+              stickerProduct: { // 🆕 Inclure le sticker
+                include: {
+                  vendor: {
+                    select: {
+                      id: true,
+                      shop_name: true,
+                    }
+                  },
+                  design: {
+                    select: {
+                      id: true,
+                      name: true,
+                      imageUrl: true,
+                    }
+                  }
+                }
+              },
               colorVariation: true,
             },
           },
@@ -2329,6 +2477,12 @@ export class OrderService {
     const stockRequirements = new Map<string, { productId: number; colorId: number; sizeName: string; totalQuantity: number }>();
 
     for (const item of orderItems) {
+      // 🎯 Skip les stickers (pas de gestion de stock traditionnelle)
+      if (item.stickerId) {
+        this.logger.debug(`📦 Skip validation stock pour sticker: stickerId=${item.stickerId}`);
+        continue;
+      }
+
       if (!item.size || !item.colorId) {
         // Si pas de taille ou colorId, skip la validation de stock
         this.logger.debug(`📦 Skip validation stock pour item sans taille/colorId: productId=${item.productId}`);
@@ -2393,6 +2547,11 @@ export class OrderService {
     const stockDecrements = new Map<string, { productId: number; colorId: number; sizeName: string; totalQuantity: number }>();
 
     for (const item of orderItems) {
+      // 🎯 Skip les stickers (pas de gestion de stock traditionnelle)
+      if (item.stickerId) {
+        continue;
+      }
+
       if (!item.size || !item.colorId) {
         // Si pas de taille ou colorId, skip la décrémentation
         continue;
@@ -2504,6 +2663,95 @@ export class OrderService {
     }
 
     this.logger.log(`📦 Stock restauré pour commande ${order.orderNumber}`);
+  }
+
+  /**
+   * ✅ VALIDATION DES ITEMS DE COMMANDE STICKERS
+   * Valide les quantités min/max, le statut et le prix pour chaque item sticker
+   */
+  private async validateStickerOrderItems(orderItems: any[]): Promise<any[]> {
+    const validatedItems: any[] = [];
+
+    for (const item of orderItems) {
+      // 🔍 DÉTECTION AUTOMATIQUE: Si productId pointe vers un sticker, corriger
+      let itemToValidate = { ...item };
+
+      if (item.productId && !item.stickerId) {
+        // Vérifier si ce productId est en fait un sticker
+        const possibleSticker = await this.prisma.stickerProduct.findUnique({
+          where: { id: item.productId },
+          select: { id: true }
+        });
+
+        if (possibleSticker) {
+          this.logger.warn(
+            `⚠️ ProductId ${item.productId} détecté comme sticker - correction automatique`
+          );
+          itemToValidate.stickerId = item.productId;
+          delete itemToValidate.productId;
+        }
+      }
+
+      // Si c'est un sticker
+      if (itemToValidate.stickerId) {
+        const sticker = await this.prisma.stickerProduct.findUnique({
+          where: { id: itemToValidate.stickerId },
+          select: {
+            id: true,
+            finalPrice: true,
+            minQuantity: true,
+            maxQuantity: true,
+            status: true,
+            name: true,
+          }
+        });
+
+        if (!sticker) {
+          throw new NotFoundException(`Sticker ${item.stickerId} introuvable`);
+        }
+
+        // Vérifier le statut (PUBLISHED ou DRAFT validé)
+        if (sticker.status !== 'PUBLISHED') {
+          throw new BadRequestException(
+            `Le sticker "${sticker.name}" n'est pas disponible à la vente`
+          );
+        }
+
+        // ✅ Valider les quantités min/max
+        if (item.quantity < sticker.minQuantity) {
+          throw new BadRequestException(
+            `La quantité minimale pour "${sticker.name}" est de ${sticker.minQuantity} autocollant(s)`
+          );
+        }
+
+        if (item.quantity > sticker.maxQuantity) {
+          throw new BadRequestException(
+            `La quantité maximale pour "${sticker.name}" est de ${sticker.maxQuantity} autocollants`
+          );
+        }
+
+        // Vérifier et corriger le prix si nécessaire
+        if (itemToValidate.unitPrice !== sticker.finalPrice) {
+          this.logger.warn(
+            `⚠️ Prix unitaire incorrect pour sticker ${itemToValidate.stickerId}: ` +
+            `reçu ${itemToValidate.unitPrice}, attendu ${sticker.finalPrice}`
+          );
+          // Utiliser le prix de la base de données
+          itemToValidate.unitPrice = sticker.finalPrice;
+        }
+
+        this.logger.log(`✅ Sticker validé: ${sticker.name} (qty: ${itemToValidate.quantity}, prix: ${itemToValidate.unitPrice})`);
+
+        // ✅ IMPORTANT: Supprimer productId pour les stickers (éviter l'erreur de FK)
+        const { productId, vendorProductId, ...stickerItem } = itemToValidate;
+        validatedItems.push(stickerItem);
+      } else {
+        // Ce n'est pas un sticker, garder l'item tel quel
+        validatedItems.push(itemToValidate);
+      }
+    }
+
+    return validatedItems;
   }
 
 } 

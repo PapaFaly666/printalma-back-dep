@@ -82,7 +82,7 @@ export class VendorDesignTransformService {
       const result = await this.prisma.vendorDesignTransform.update({
           where: { id: existing.id },
           data: {
-            transforms,
+            transforms: transforms as Prisma.InputJsonValue,
             lastModified: new Date(lastModified),
           },
         });
@@ -109,14 +109,14 @@ export class VendorDesignTransformService {
         },
       },
       update: {
-        transforms,
+        transforms: transforms as Prisma.InputJsonValue,
         lastModified: new Date(lastModified),
       },
       create: {
         vendorId,
         vendorProductId,
         designUrl,
-        transforms,
+        transforms: transforms as Prisma.InputJsonValue,
         lastModified: new Date(lastModified),
       },
     });

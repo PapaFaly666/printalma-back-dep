@@ -46,9 +46,28 @@ export class StickerService {
       throw new BadRequestException('La hauteur doit être entre 1 et 100 cm');
     }
 
-    // Valider le prix (minimum 500 FCFA)
-    if (createDto.price < 500) {
-      throw new BadRequestException('Le prix minimum est de 500 FCFA');
+    // Valider le prix (minimum 100 FCFA)
+    if (createDto.price < 100) {
+      throw new BadRequestException('Le prix minimum est de 100 FCFA');
+    }
+
+    // Valider le prix maximum (100000 FCFA)
+    if (createDto.price > 100000) {
+      throw new BadRequestException('Le prix maximum est de 100000 FCFA');
+    }
+
+    // Valider les quantités min/max
+    const minQuantity = createDto.minQuantity ?? 1;
+    const maxQuantity = createDto.maxQuantity ?? 100;
+
+    if (minQuantity < 1) {
+      throw new BadRequestException('La quantité minimale doit être au moins 1');
+    }
+
+    if (maxQuantity < minQuantity) {
+      throw new BadRequestException(
+        `La quantité maximale (${maxQuantity}) doit être supérieure ou égale à la quantité minimale (${minQuantity})`
+      );
     }
 
     // Générer SKU
@@ -70,8 +89,8 @@ export class StickerService {
         basePrice: createDto.price, // Prix direct sans calcul
         finishMultiplier: 1.0, // Pas de multiplicateur
         finalPrice: createDto.price,
-        minimumQuantity: createDto.minimumQuantity || 1,
-        stockQuantity: createDto.stockQuantity,
+        minQuantity,
+        maxQuantity,
         status: 'PUBLISHED', // Stickers directement publiés sans validation
         stickerType: createDto.stickerType || 'autocollant', // Persister le type
         borderColor: createDto.borderColor || 'glossy-white', // Persister la couleur de bordure
@@ -682,9 +701,9 @@ export class StickerService {
         finalPrice: sticker.finalPrice,
         currency: 'FCFA',
       },
-      stock: {
-        quantity: sticker.stockQuantity,
-        minimumOrder: sticker.minimumQuantity,
+      quantity: {
+        min: sticker.minQuantity,
+        max: sticker.maxQuantity,
       },
       status: sticker.status,
       stats: {
@@ -713,7 +732,10 @@ export class StickerService {
       finish: sticker.finish,
       shape: sticker.shape,
       price: sticker.finalPrice,
-      minimumOrder: sticker.minimumQuantity,
+      quantity: {
+        min: sticker.minQuantity,
+        max: sticker.maxQuantity,
+      },
       viewCount: sticker.viewCount,
       saleCount: sticker.saleCount,
     };

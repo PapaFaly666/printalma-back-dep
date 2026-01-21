@@ -108,10 +108,29 @@ export class DeliveryInfoDto {
 }
 
 export class CreateOrderItemDto {
-  @IsNotEmpty()
+  @ApiProperty({
+    example: 1,
+    description: 'ID du produit admin (optionnel si stickerId fourni)',
+    required: false
+  })
+  @IsOptional()
   @IsNumber()
-  productId: number;
+  productId?: number;
 
+  @ApiProperty({
+    example: 75,
+    description: 'ID du sticker (optionnel si productId fourni)',
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  stickerId?: number;
+
+  @ApiProperty({
+    example: 2,
+    description: 'ID du produit vendeur (optionnel)',
+    required: false
+  })
   @IsOptional()
   @IsNumber()
   vendorProductId?: number; // 🆕 ID du produit vendeur

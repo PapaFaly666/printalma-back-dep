@@ -18,6 +18,12 @@ export interface Delimitation {
   width: number;
   height: number;
   coordinateType: 'PIXEL' | 'PERCENTAGE';
+
+  // Dimensions de l'image originale (pour conversion de pourcentages stockés)
+  originalImageWidth?: number;
+  originalImageHeight?: number;
+  referenceWidth?: number;
+  referenceHeight?: number;
 }
 
 /**
@@ -97,7 +103,56 @@ export function convertDelimitationToPixels(
     };
   }
 
-  // Conversion pourcentage → pixels
+  // ⚠️ CAS SPÉCIAL: Si marqué PERCENTAGE mais valeurs > 100,
+  // ce sont probablement des pixels absolus enregistrés sur une image de référence
+  if (
+    delimitation.coordinateType === 'PERCENTAGE' &&
+    (delimitation.x > 100 || delimitation.y > 100 ||
+     delimitation.width > 100 || delimitation.height > 100)
+  ) {
+    // Tenter de convertir depuis les dimensions de l'image originale si disponibles
+    if (delimitation.originalImageWidth && delimitation.originalImageHeight) {
+      const percentX = (delimitation.x / delimitation.originalImageWidth) * 100;
+      const percentY = (delimitation.y / delimitation.originalImageHeight) * 100;
+      const percentWidth = (delimitation.width / delimitation.originalImageWidth) * 100;
+      const percentHeight = (delimitation.height / delimitation.originalImageHeight) * 100;
+
+      return {
+        x: (percentX / 100) * imageWidth,
+        y: (percentY / 100) * imageHeight,
+        width: (percentWidth / 100) * imageWidth,
+        height: (percentHeight / 100) * imageHeight,
+      };
+    }
+
+    // Fallback: traiter comme pixels absolus (échelle si nécessaire)
+    // Si les valeurs semblent être pour une image différente de l'actuelle
+    const maxDimension = Math.max(imageWidth, imageHeight);
+    if (delimitation.x > maxDimension || delimitation.y > maxDimension) {
+      // Les valeurs sont trop grandes, elles doivent être mises à l'échelle
+      // Supposer qu'elles étaient pour une image de 6000x6000 (valeur arbitraire mais raisonnable)
+      const refDimension = 6000;
+      const scaleX = imageWidth / refDimension;
+      const scaleY = imageHeight / refDimension;
+
+      return {
+        x: delimitation.x * scaleX,
+        y: delimitation.y * scaleY,
+        width: delimitation.width * scaleX,
+        height: delimitation.height * scaleY,
+      };
+    }
+
+    // Sinon, utiliser directement les valeurs (elles sont peut-être déjà correctes)
+    return {
+      x: delimitation.x,
+      y: delimitation.y,
+      width: delimitation.width,
+      height: delimitation.height,
+    };
+  }
+
+  // Conversion pourcentage → pixels (cas normal, valeurs entre 0-100)
   return {
     x: (delimitation.x / 100) * imageWidth,
     y: (delimitation.y / 100) * imageHeight,

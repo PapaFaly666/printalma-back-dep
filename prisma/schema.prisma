@@ -402,7 +402,8 @@ model Order {
 model OrderItem {
   id                   Int                   @id @default(autoincrement())
   orderId              Int
-  productId            Int
+  productId            Int?
+  stickerId            Int?                  @map("sticker_id")
   quantity             Int
   unitPrice            Float
   size                 String?
@@ -424,12 +425,14 @@ model OrderItem {
   colorVariation       ColorVariation?       @relation(fields: [colorId], references: [id])
   customization        ProductCustomization? @relation(fields: [customizationId], references: [id])
   order                Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product              Product               @relation(fields: [productId], references: [id])
+  product              Product?              @relation(fields: [productId], references: [id])
   vendorProduct        VendorProduct?        @relation(fields: [vendorProductId], references: [id])
+  stickerProduct       StickerProduct?       @relation("StickerOrderItems", fields: [stickerId], references: [id])
   designUsages         DesignUsage[]
 
   @@index([orderId])
   @@index([productId])
+  @@index([stickerId])
   @@index([colorId])
   @@index([vendorProductId])
   @@index([designId])
@@ -1445,12 +1448,12 @@ model StickerProduct {
   finish          String                @db.VarChar(50)
   shape           StickerShape          @default(SQUARE)
 
-  // Prix et stock
+  // Prix et quantités
   basePrice       Int                   @map("base_price")
   finishMultiplier Decimal              @default(1.00) @map("finish_multiplier") @db.Decimal(3, 2)
   finalPrice      Int                   @map("final_price")
-  minimumQuantity Int                   @default(1) @map("minimum_quantity")
-  stockQuantity   Int                   @default(0) @map("stock_quantity")
+  minQuantity     Int                   @default(1) @map("min_quantity")
+  maxQuantity     Int                   @default(100) @map("max_quantity")
 
   // Configuration de génération d'image
   stickerType     String?               @map("sticker_type") @db.VarChar(50)      // 'autocollant' | 'pare-chocs'
@@ -1472,6 +1475,7 @@ model StickerProduct {
   vendor          User                  @relation("VendorStickers", fields: [vendorId], references: [id], onDelete: Cascade)
   design          Design                @relation("StickerDesigns", fields: [designId], references: [id], onDelete: Cascade)
   orderItems      StickerOrderItem[]
+  orderLineItems  OrderItem[]           @relation("StickerOrderItems")
   views           StickerView[]
   favorites       StickerFavorite[]
 

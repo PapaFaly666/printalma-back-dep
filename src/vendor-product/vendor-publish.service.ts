@@ -278,6 +278,23 @@ export class VendorPublishService {
 
               // Récupérer la délimitation
               const delimitation = productImage.delimitations?.[0];
+
+              this.logger.log(`🔍 DÉLIMITATION:`, {
+                found: !!delimitation,
+                delimitationsCount: productImage.delimitations?.length || 0,
+                data: delimitation ? {
+                  x: delimitation.x,
+                  y: delimitation.y,
+                  width: delimitation.width,
+                  height: delimitation.height,
+                  coordinateType: delimitation.coordinateType,
+                } : null
+              });
+
+              this.logger.log(`🔍 DESIGN URL: ${design.imageUrl}`);
+              this.logger.log(`🔍 PRODUCT IMAGE URL: ${productImage.url}`);
+              this.logger.log(`🔍 POSITION DATA:`, JSON.stringify(positionData));
+
               const delimitationData = delimitation ? {
                 x: delimitation.x,
                 y: delimitation.y,
@@ -298,6 +315,7 @@ export class VendorPublishService {
 
               // Générer l'image finale
               // 🔴 DEBUG: showDelimitation=true pour tracer la délimitation en rouge
+              this.logger.log(`🎨 Génération image finale avec showDelimitation=true...`);
               const finalImageBuffer = await this.previewGenerator.generatePreviewFromJson(
                 productImage.url,
                 design.imageUrl,

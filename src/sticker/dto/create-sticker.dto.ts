@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsString, IsOptional, Min, IsEnum, IsInt, MinLength, MaxLength } from 'class-validator';
+import { IsNumber, IsString, IsOptional, Min, Max, IsEnum, IsInt, MinLength, MaxLength, IsPositive } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum StickerShape {
@@ -59,21 +59,40 @@ export class CreateStickerDto {
   @IsEnum(StickerShape)
   shape: StickerShape;
 
-  @ApiProperty({ example: 1100 })
+  @ApiProperty({
+    example: 2500,
+    description: 'Prix de vente en FCFA (défini par le vendeur)',
+    minimum: 100,
+    maximum: 100000
+  })
   @IsInt()
-  @Min(500)
+  @IsPositive()
+  @Min(100)
+  @Max(100000)
   price: number;
 
-  @ApiProperty({ example: 1, default: 1 })
+  @ApiProperty({
+    example: 1,
+    description: 'Quantité minimale par commande (minimum 1)',
+    minimum: 1
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1, { message: 'La quantité minimale doit être au moins 1' })
+  minQuantity?: number;
+
+  @ApiProperty({
+    example: 100,
+    description: 'Quantité maximale par commande',
+    minimum: 1,
+    maximum: 10000,
+    default: 100
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
-  minimumQuantity?: number;
-
-  @ApiProperty({ example: 100 })
-  @IsInt()
-  @Min(0)
-  stockQuantity: number;
+  @Max(10000)
+  maxQuantity?: number;
 
   @ApiProperty({
     example: 'autocollant',
