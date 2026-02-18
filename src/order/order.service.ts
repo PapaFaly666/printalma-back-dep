@@ -1444,6 +1444,64 @@ export class OrderService {
     return this.formatOrderResponse(order);
   }
 
+  async getOrderByNumber(orderNumber: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { orderNumber },
+      include: {
+        orderItems: {
+          include: {
+            product: true,
+            stickerProduct: {
+              include: {
+                vendor: {
+                  select: {
+                    id: true,
+                    shop_name: true,
+                  }
+                },
+                design: {
+                  select: {
+                    id: true,
+                    name: true,
+                    imageUrl: true,
+                  }
+                }
+              }
+            },
+            colorVariation: true,
+            customization: {
+              select: {
+                id: true,
+                designElements: true,
+                elementsByView: true,
+                previewImageUrl: true,
+                colorVariationId: true,
+                viewId: true,
+                sizeSelections: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true
+              }
+            }
+          },
+        },
+        user: true,
+        validator: true,
+        paymentAttemptsHistory: {
+          orderBy: {
+            attemptedAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Commande ${orderNumber} non trouvée`);
+    }
+
+    return this.formatOrderResponse(order);
+  }
+
   public formatOrderResponse(order: any) {
     // Recalculer les valeurs de commission et vendorAmount avec la nouvelle logique
     let calculatedVendorAmount = order.vendorAmount;

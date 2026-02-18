@@ -289,6 +289,17 @@ export class OrderController {
     };
   }
 
+  // Obtenir une commande par son numéro (public - utilisé après redirection PayDunya)
+  @Get('number/:orderNumber')
+  @HttpCode(HttpStatus.OK)
+  async getOrderByNumber(@Param('orderNumber') orderNumber: string) {
+    return {
+      success: true,
+      message: 'Commande récupérée avec succès',
+      data: await this.orderService.getOrderByNumber(orderNumber)
+    };
+  }
+
   // Obtenir une commande spécifique
   @Get(':id')
   @UseGuards(JwtAuthGuard)
