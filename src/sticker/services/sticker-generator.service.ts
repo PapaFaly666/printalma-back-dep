@@ -114,105 +114,154 @@ export class StickerGeneratorService {
   }
 
   /**
-   * Ajouter un contour blanc à l'image (effet stroke/bordure interne)
+   * Ajouter un contour blanc suivant la forme de l'image (effet sticker) - VERSION OPTIMISÉE
    *
-   * Cette méthode utilise Sharp pour créer proprement un contour blanc
-   * autour de l'image SANS dégrader la qualité.
+   * Cette méthode crée une bordure blanche qui suit parfaitement les contours
+   * du design (pas rectangulaire), en utilisant SVG feMorphology pour dilater
+   * le canal alpha de l'image.
    *
-   * Technique : Utilisation de feMorphology dilate pour étendre les contours
-   * de l'image alpha, puis composition propre.
+   * Optimisations:
+   * - Résolution adaptative (redimensionnement si > 1200px)
+   * - Compression PNG optimisée
+   * - Densité SVG réduite (150 DPI)
    *
    * @param imageBuffer - Buffer de l'image originale
-   * @param strokeWidth - Épaisseur du contour en pixels (default: 4px)
-   * @returns Buffer de l'image avec contour
+   * @param strokeWidth - Épaisseur du contour en pixels
+   * @returns Buffer de l'image avec contour suivant la forme
    */
   private async addWhiteStroke(
     imageBuffer: Buffer,
-    strokeWidth: number = 4
+    strokeWidth: number
   ): Promise<Buffer> {
     const dims = await this.getDimensions(imageBuffer);
 
-    this.logger.log(`✏️ Ajout contour blanc propre (${strokeWidth}px)`);
+    this.logger.log(`✏️ Ajout contour blanc suivant la forme (${strokeWidth}px)`);
 
     try {
-      // Pour les grandes bordures (>50px), on applique plusieurs fois feMorphology
-      // car il y a une limite pratique sur le radius
-      const maxRadius = 50;
-      const iterations = Math.ceil(strokeWidth / maxRadius);
-      const radiusPerIteration = strokeWidth / iterations;
+      // Optimisation: redimensionner si l'image est trop grande
+      const maxDimension = Math.max(dims.width, dims.height);
+      const needsResize = maxDimension > 1200;
+      let workingBuffer = imageBuffer;
+      let scale = 1;
 
-      this.logger.log(`📐 Application contour en ${iterations} itération(s) de ${radiusPerIteration}px`);
+      if (needsResize) {
+        scale = 1200 / maxDimension;
+        const resizedWidth = Math.round(dims.width * scale);
+        const resizedHeight = Math.round(dims.height * scale);
 
-      let processedBuffer = imageBuffer;
+        this.logger.log(`⚡ Optimisation: ${dims.width}x${dims.height} → ${resizedWidth}x${resizedHeight}`);
 
-      // Appliquer le dilate progressivement
-      for (let i = 0; i < iterations; i++) {
-        const currentDims = await this.getDimensions(processedBuffer);
-        const svgStroke = `
-          <svg width="${currentDims.width + radiusPerIteration * 2}" height="${currentDims.height + radiusPerIteration * 2}">
-            <defs>
-              <filter id="white-border-${i}" x="-50%" y="-50%" width="200%" height="200%">
-                <feMorphology operator="dilate" radius="${radiusPerIteration}" in="SourceAlpha" result="expanded-alpha"/>
-                <feFlood flood-color="white" result="white-color"/>
-                <feComposite in="white-color" in2="expanded-alpha" operator="in" result="white-border"/>
-                <feMerge>
-                  <feMergeNode in="white-border"/>
-                  <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-              </filter>
-            </defs>
-            <image x="${radiusPerIteration}" y="${radiusPerIteration}"
-                   width="${currentDims.width}" height="${currentDims.height}"
-                   href="data:image/png;base64,${processedBuffer.toString('base64')}"
-                   filter="url(#white-border-${i})" />
-          </svg>
-        `;
-
-        processedBuffer = await sharp(Buffer.from(svgStroke))
+        workingBuffer = await sharp(imageBuffer)
+          .resize(resizedWidth, resizedHeight, {
+            fit: 'inside',
+            kernel: 'mitchell'
+          })
           .png()
+          .toBuffer();
+      }
+
+      const workingDims = await this.getDimensions(workingBuffer);
+      const scaledStrokeWidth = Math.round(strokeWidth * scale);
+      const paddingSize = scaledStrokeWidth * 2;
+      const svgWidth = workingDims.width + paddingSize * 2;
+      const svgHeight = workingDims.height + paddingSize * 2;
+
+      // SVG avec feMorphology pour créer une bordure suivant la forme
+      const svgStroke = `
+        <svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="white-stroke" x="-100%" y="-100%" width="300%" height="300%">
+              <feColorMatrix in="SourceAlpha" type="matrix"
+                values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="alpha-only"/>
+              <feMorphology operator="dilate" radius="${scaledStrokeWidth}" in="alpha-only" result="expanded"/>
+              <feGaussianBlur stdDeviation="0.5" in="expanded" result="smoothed"/>
+              <feFlood flood-color="white" flood-opacity="1" result="white"/>
+              <feComposite in="white" in2="smoothed" operator="in" result="white-border"/>
+              <feMerge>
+                <feMergeNode in="white-border"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          <image x="${paddingSize}" y="${paddingSize}"
+                 width="${workingDims.width}" height="${workingDims.height}"
+                 href="data:image/png;base64,${workingBuffer.toString('base64')}"
+                 filter="url(#white-stroke)"/>
+        </svg>
+      `;
+
+      // Conversion SVG → PNG optimisée
+      let processedBuffer = await sharp(Buffer.from(svgStroke), {
+        density: 150,
+        limitInputPixels: false
+      })
+        .png({
+          quality: 90,
+          compressionLevel: 6,
+          effort: 5
+        })
+        .toBuffer();
+
+      // Restaurer les dimensions originales si redimensionnement
+      if (needsResize) {
+        const targetWidth = Math.round(dims.width + (strokeWidth * 2));
+        const targetHeight = Math.round(dims.height + (strokeWidth * 2));
+
+        this.logger.log(`📐 Restauration dimensions: ${targetWidth}x${targetHeight}px`);
+
+        processedBuffer = await sharp(processedBuffer)
+          .resize(targetWidth, targetHeight, {
+            fit: 'contain',
+            kernel: 'mitchell',
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+          })
+          .png({
+            quality: 90,
+            compressionLevel: 6,
+            effort: 5
+          })
           .toBuffer();
       }
 
       return processedBuffer;
     } catch (error) {
       this.logger.error(`❌ Erreur ajout contour: ${error.message}`);
-      // En cas d'erreur, retourner l'image originale
       return imageBuffer;
     }
   }
 
   /**
-   * Ajouter un contour gris fin interne (simule le trait de découpe)
+   * Ajouter un contour gris fin interne (simule le trait de découpe) - VERSION OPTIMISÉE
    *
    * @param imageBuffer - Buffer de l'image
    * @returns Buffer de l'image avec contour gris
    */
   private async addGrayStroke(imageBuffer: Buffer): Promise<Buffer> {
-    this.logger.log(`✏️ Ajout contour gris MASSIF (5px)`);
+    this.logger.log(`✏️ Ajout contour gris optimisé (3px)`);
 
     try {
       const dims = await this.getDimensions(imageBuffer);
-      const svgBorder = `
-        <svg width="${dims.width + 12}" height="${dims.height + 12}">
-          <defs>
-            <filter id="gray-stroke">
-              <feMorphology operator="dilate" radius="5" in="SourceAlpha" result="expanded"/>
-              <feFlood flood-color="rgb(50, 50, 50)" flood-opacity="0.9" result="gray-color"/>
-              <feComposite in="gray-color" in2="expanded" operator="in" result="stroke"/>
-              <feMerge>
-                <feMergeNode in="stroke"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
-            </filter>
-          </defs>
-          <image x="6" y="6" width="${dims.width}" height="${dims.height}"
-                 href="data:image/png;base64,${imageBuffer.toString('base64')}"
-                 filter="url(#gray-stroke)" />
-        </svg>
-      `;
+      const strokeWidth = 3;
+      const newWidth = dims.width + (strokeWidth * 2);
+      const newHeight = dims.height + (strokeWidth * 2);
 
-      return await sharp(Buffer.from(svgBorder))
-        .png()
+      // Méthode directe avec Sharp (beaucoup plus rapide que SVG)
+      return await sharp({
+        create: {
+          width: newWidth,
+          height: newHeight,
+          channels: 4,
+          background: { r: 50, g: 50, b: 50, alpha: 0.9 }
+        }
+      })
+        .composite([
+          {
+            input: imageBuffer,
+            left: strokeWidth,
+            top: strokeWidth
+          }
+        ])
+        .png({ compressionLevel: 6, effort: 4 })
         .toBuffer();
     } catch (error) {
       this.logger.error(`❌ Erreur ajout contour gris: ${error.message}`);
@@ -262,35 +311,61 @@ export class StickerGeneratorService {
   }
 
   /**
-   * Ajouter une ombre portée (drop shadow) pour effet "autocollant décollé"
+   * Ajouter une ombre portée (drop shadow) pour effet "autocollant décollé" - VERSION OPTIMISÉE
    *
    * @param imageBuffer - Buffer de l'image
    * @returns Buffer de l'image avec ombre portée
    */
   private async addDropShadow(imageBuffer: Buffer): Promise<Buffer> {
-    this.logger.log(`🌑 Ajout ombre portée`);
+    this.logger.log(`🌑 Ajout ombre portée optimisée`);
 
     try {
       const dims = await this.getDimensions(imageBuffer);
-      const shadowOffset = 5;
-      const shadowBlur = 5;
+      const shadowOffset = 4;
+      const shadowSize = 8;
+      const canvasWidth = dims.width + shadowSize * 2;
+      const canvasHeight = dims.height + shadowSize * 2;
 
-      const svgShadow = `
-        <svg width="${dims.width + shadowOffset + shadowBlur}" height="${dims.height + shadowOffset + shadowBlur}">
-          <defs>
-            <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-              <feDropShadow dx="2" dy="3" stdDeviation="3" flood-opacity="0.3"/>
-            </filter>
-          </defs>
-          <image x="${shadowOffset / 2}" y="${shadowOffset / 2}"
-                 width="${dims.width}" height="${dims.height}"
-                 href="data:image/png;base64,${imageBuffer.toString('base64')}"
-                 filter="url(#shadow)" />
-        </svg>
-      `;
-
-      return await sharp(Buffer.from(svgShadow))
+      // Créer une ombre avec Sharp (méthode native beaucoup plus rapide)
+      // 1. Créer un canvas noir semi-transparent pour l'ombre
+      const shadow = await sharp({
+        create: {
+          width: dims.width,
+          height: dims.height,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0.25 }
+        }
+      })
         .png()
+        .toBuffer();
+
+      // 2. Flouter l'ombre
+      const blurredShadow = await sharp(shadow)
+        .blur(2)
+        .toBuffer();
+
+      // 3. Composer: ombre floutée + image originale
+      return await sharp({
+        create: {
+          width: canvasWidth,
+          height: canvasHeight,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        }
+      })
+        .composite([
+          {
+            input: blurredShadow,
+            left: shadowSize + shadowOffset,
+            top: shadowSize + shadowOffset
+          },
+          {
+            input: imageBuffer,
+            left: shadowSize,
+            top: shadowSize
+          }
+        ])
+        .png({ compressionLevel: 6, effort: 4 })
         .toBuffer();
     } catch (error) {
       this.logger.error(`❌ Erreur ajout ombre portée: ${error.message}`);
@@ -350,13 +425,13 @@ export class StickerGeneratorService {
     if (borderColor !== 'transparent') {
       this.logger.log(`🎨 Application effets autocollant (border: ${borderColor})`);
 
-      // 3. Ajouter contour blanc ULTRA MASSIF (suit la forme de l'image)
-      // Épaisseur fixe et bien visible pour tous les stickers
-      // - autocollant: 150px (contour bien visible)
-      // - pare-chocs: 120px (contour visible)
-      const strokeWidth = stickerType === 'autocollant' ? 150 : 120;
+      // 3. Ajouter contour blanc optimisé (suit la forme de l'image)
+      // Épaisseur réduite pour meilleure performance tout en restant visible
+      // - autocollant: 80px (contour visible, optimisé)
+      // - pare-chocs: 60px (contour visible, optimisé)
+      const strokeWidth = stickerType === 'autocollant' ? 80 : 60;
 
-      this.logger.log(`📏 Contour blanc fixe: ${strokeWidth}px`);
+      this.logger.log(`📏 Contour blanc optimisé: ${strokeWidth}px`);
       // Utiliser addWhiteStroke qui suit la forme de l'image (pas un cadre rectangulaire)
       processedBuffer = await this.addWhiteStroke(processedBuffer, strokeWidth);
 
@@ -451,12 +526,12 @@ export class StickerGeneratorService {
         finalImage = sharp(masked);
       }
 
-      // 4. Retourner le buffer final en PNG haute qualité
+      // 4. Retourner le buffer final en PNG avec compression optimisée
       const finalBuffer = await finalImage
         .png({
-          quality: 100,
-          compressionLevel: 0,
-          effort: 1
+          quality: 90,           // Réduction de 100 → 90 (quasi imperceptible, gain énorme)
+          compressionLevel: 6,   // Compression PNG modérée (0=aucune, 9=max)
+          effort: 5              // Effort de compression réduit pour vitesse
         })
         .toBuffer();
 

@@ -48,6 +48,7 @@ interface ProductPreviewConfig {
   delimitation: Delimitation;  // Zone imprimable (OBLIGATOIRE)
   position: DesignPosition;    // Position du design dans la délimitation
   showDelimitation?: boolean;  // ⚠️ DEBUG: Afficher un contour rouge autour de la délimitation
+  isSticker?: boolean;         // 🎨 Si true, applique une bordure blanche au design (style autocollant)
 }
 
 @Injectable()
@@ -63,31 +64,59 @@ export class ProductPreviewGeneratorService {
       this.logger.log(`📥 Téléchargement de l'image: ${url}`);
       const response = await axios.get(url, {
         responseType: 'arraybuffer',
-        timeout: 30000,
+        timeout: 120000, // 2 minutes - timeout augmenté pour les connexions lentes
       });
+
+      this.logger.log(`✅ Téléchargement réussi - Status: ${response.status}, Taille: ${response.data.byteLength} bytes`);
 
       const buffer = Buffer.from(response.data);
 
       // Si c'est un SVG, le convertir immédiatement en PNG avec Sharp
       if (url.includes('.svg')) {
-        this.logger.log(`🔄 Conversion SVG → PNG avec Sharp`);
+        this.logger.log(`🔄 Conversion SVG → PNG avec Sharp (taille SVG: ${buffer.length} bytes)`);
         try {
           // Sharp peut lire les SVG et les convertir en PNG
-          const pngBuffer = await sharp(buffer)
-            .png()
+          // Définir une taille raisonnable pour le SVG (2000px max)
+          // Augmenter la limite de densité pour les SVG complexes
+          const pngBuffer = await sharp(buffer, {
+            density: 300,  // DPI pour la conversion SVG → PNG
+            limitInputPixels: false  // Pas de limite pour les grands SVG
+          })
+            .resize(2000, 2000, {
+              fit: 'inside',
+              withoutEnlargement: false,
+              background: { r: 0, g: 0, b: 0, alpha: 0 }
+            })
+            .png({
+              quality: 90,
+              compressionLevel: 6,
+              effort: 5
+            })
             .toBuffer();
           this.logger.log(`✅ SVG converti en PNG (${pngBuffer.length} bytes)`);
           return pngBuffer;
         } catch (svgError) {
-          this.logger.error(`❌ Erreur conversion SVG: ${svgError.message}`);
+          this.logger.error(`❌ Erreur conversion SVG:`, {
+            message: svgError.message,
+            stack: svgError.stack,
+            bufferLength: buffer.length,
+            bufferStart: buffer.slice(0, 200).toString('utf-8').substring(0, 200)
+          });
           throw new Error(`Impossible de convertir le SVG: ${svgError.message}`);
         }
       }
 
       return buffer;
     } catch (error) {
-      this.logger.error(`❌ Erreur téléchargement image: ${error.message}`);
-      throw new Error(`Impossible de télécharger l'image: ${error.message}`);
+      this.logger.error(`❌ Erreur téléchargement image DÉTAILS:`, {
+        url,
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        stack: error.stack
+      });
+      throw new Error(`Impossible de télécharger l'image: ${error.message || error.code || 'Erreur inconnue'}`);
     }
   }
 
@@ -100,6 +129,119 @@ export class ProductPreviewGeneratorService {
       width: metadata.width || 0,
       height: metadata.height || 0
     };
+  }
+
+  /**
+   * Ajouter un contour blanc au design (effet autocollant) - SUIT LES CONTOURS
+   *
+   * Cette méthode crée une bordure blanche qui suit la forme du design
+   * en utilisant une dilatation du canal alpha avec Sharp + SVG.
+   *
+   * @param imageBuffer - Buffer de l'image du design
+   * @param strokeWidth - Épaisseur du contour en pixels
+   * @returns Buffer de l'image avec contour blanc suivant la forme
+   */
+  private async addWhiteStrokeToDesign(
+    imageBuffer: Buffer,
+    strokeWidth: number = 80
+  ): Promise<Buffer> {
+    const dims = await this.getDimensions(imageBuffer);
+
+    this.logger.log(`🎨🎨🎨 ===== DÉBUT AJOUT BORDURE BLANCHE AUTOCOLLANT ===== 🎨🎨🎨`);
+    this.logger.log(`✏️ Contour blanc autocollant suivant les contours (${strokeWidth}px)`);
+    this.logger.log(`📐 Dimensions design original: ${dims.width}x${dims.height}px`);
+
+    try {
+      const newWidth = dims.width + (strokeWidth * 2);
+      const newHeight = dims.height + (strokeWidth * 2);
+
+      this.logger.log(`📏 Dimensions finales avec bordure: ${newWidth}x${newHeight}px`);
+
+      // STRATÉGIE: Utiliser SVG avec feMorphology pour dilater l'alpha
+      // Cette approche suit parfaitement les contours du design
+      const svgFilter = `
+        <svg width="${newWidth}" height="${newHeight}" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="white-border" x="-50%" y="-50%" width="200%" height="200%">
+              <!-- Extraire le canal alpha (la forme du design) -->
+              <feColorMatrix in="SourceAlpha" type="matrix"
+                values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="alpha"/>
+
+              <!-- Dilater pour créer la bordure -->
+              <feMorphology operator="dilate" radius="${strokeWidth}" in="alpha" result="expanded"/>
+
+              <!-- Remplir avec du blanc -->
+              <feFlood flood-color="white" result="white"/>
+              <feComposite in="white" in2="expanded" operator="in" result="whiteBorder"/>
+
+              <!-- Superposer le design original sur la bordure blanche -->
+              <feMerge>
+                <feMergeNode in="whiteBorder"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+
+          <!-- Appliquer le filtre au design -->
+          <image x="${strokeWidth}" y="${strokeWidth}"
+                 width="${dims.width}" height="${dims.height}"
+                 href="data:image/png;base64,${imageBuffer.toString('base64')}"
+                 filter="url(#white-border)"/>
+        </svg>
+      `;
+
+      this.logger.log(`🔄 Application filtre SVG avec feMorphology...`);
+
+      // Convertir le SVG en PNG
+      const withBorder = await sharp(Buffer.from(svgFilter), {
+        density: 150
+      })
+      .png({
+        quality: 90,
+        compressionLevel: 6
+      })
+      .toBuffer();
+
+      const finalDims = await this.getDimensions(withBorder);
+      const sizeBefore = Math.round(imageBuffer.length / 1024);
+      const sizeAfter = Math.round(withBorder.length / 1024);
+
+      this.logger.log(`✅ Bordure blanche suivant les contours appliquée!`);
+      this.logger.log(`📊 ${dims.width}x${dims.height}px → ${finalDims.width}x${finalDims.height}px`);
+      this.logger.log(`📦 Taille: ${sizeBefore}KB → ${sizeAfter}KB`);
+      this.logger.log(`🎨🎨🎨 ===== FIN BORDURE AUTOCOLLANT ===== 🎨🎨🎨`);
+
+      return withBorder;
+    } catch (error) {
+      this.logger.error(`❌ Erreur ajout bordure autocollant: ${error.message}`);
+      this.logger.error(`Stack trace:`, error.stack);
+
+      // FALLBACK: Bordure rectangulaire simple si le filtre SVG échoue
+      this.logger.warn(`⚠️ Utilisation fallback: bordure rectangulaire simple`);
+      try {
+        const newWidth = dims.width + (strokeWidth * 2);
+        const newHeight = dims.height + (strokeWidth * 2);
+
+        return await sharp({
+          create: {
+            width: newWidth,
+            height: newHeight,
+            channels: 4,
+            background: { r: 255, g: 255, b: 255, alpha: 1 }
+          }
+        })
+        .composite([{
+          input: imageBuffer,
+          left: strokeWidth,
+          top: strokeWidth
+        }])
+        .png()
+        .toBuffer();
+      } catch (fallbackError) {
+        this.logger.error(`❌ Même le fallback a échoué: ${fallbackError.message}`);
+        return imageBuffer;
+      }
+    }
   }
 
   /**
@@ -310,10 +452,14 @@ export class ProductPreviewGeneratorService {
       // ÉTAPE 1: Télécharger les images
       // ========================================================================
       this.logger.log(`📥 Téléchargement des images...`);
-      const [productBuffer, designBuffer] = await Promise.all([
+      const [productBuffer, rawDesignBuffer] = await Promise.all([
         this.downloadImage(productImageUrl),
         this.downloadImage(designImageUrl),
       ]);
+
+      // Note: La bordure blanche pour autocollants sera appliquée APRÈS le redimensionnement
+      // pour garantir une épaisseur visible proportionnelle à la taille finale
+      const designBuffer = rawDesignBuffer;
 
       const productMetadata = await sharp(productBuffer).metadata();
       const designMetadata = await sharp(designBuffer).metadata();
@@ -322,6 +468,7 @@ export class ProductPreviewGeneratorService {
 
       this.logger.log(`✅ Mockup: ${imageWidth}x${imageHeight}px`);
       this.logger.log(`✅ Design: ${designMetadata.width}x${designMetadata.height}px`);
+      this.logger.log(`🔍 DEBUG: config.isSticker = ${config.isSticker}`);
 
       // ========================================================================
       // ÉTAPE 2: Calculer TOUTES les informations de positionnement
@@ -359,13 +506,30 @@ export class ProductPreviewGeneratorService {
       // ========================================================================
       // ÉTAPE 3: Redimensionner le Design avec fit: 'inside'
       // ✅ CRITIQUE: fit: 'inside' équivaut à CSS object-fit: contain
+      // Pour les autocollants, on réduit la taille pour laisser de la place à la bordure
       // ========================================================================
       this.logger.log(`🖼️ Redimensionnement design avec fit: 'inside'...`);
 
-      const resizedDesign = await sharp(designBuffer)
+      // Pour les autocollants, calculer la bordure et réduire la zone de design
+      const BORDER_RATIO = 0.08; // 8% de bordure blanche
+      let targetWidth = boundingBox.width;
+      let targetHeight = boundingBox.height;
+      let borderWidth = 0;
+
+      if (config.isSticker) {
+        // Réduire la zone de design pour laisser de la place à la bordure (2x car bordure des 2 côtés)
+        const reductionFactor = 1 - (BORDER_RATIO * 2);
+        targetWidth = Math.round(boundingBox.width * reductionFactor);
+        targetHeight = Math.round(boundingBox.height * reductionFactor);
+
+        this.logger.log(`🎨 AUTOCOLLANT: Réduction zone design pour bordure (facteur: ${reductionFactor.toFixed(2)})`);
+        this.logger.log(`📏 Zone ajustée: ${boundingBox.width}x${boundingBox.height} → ${targetWidth}x${targetHeight}px`);
+      }
+
+      let resizedDesign = await sharp(designBuffer)
         .resize({
-          width: boundingBox.width,
-          height: boundingBox.height,
+          width: targetWidth,
+          height: targetHeight,
           fit: 'inside',              // ✅ ESSENTIEL: préserve le ratio (comme object-fit: contain)
           withoutEnlargement: false,
           position: 'center',
@@ -374,27 +538,87 @@ export class ProductPreviewGeneratorService {
         .toBuffer();
 
       // Obtenir les dimensions réelles après resize
-      const actualMetadata = await sharp(resizedDesign).metadata();
-      const actualDesignWidth = actualMetadata.width || 0;
-      const actualDesignHeight = actualMetadata.height || 0;
+      let actualMetadata = await sharp(resizedDesign).metadata();
+      let actualDesignWidth = actualMetadata.width || 0;
+      let actualDesignHeight = actualMetadata.height || 0;
 
       this.logger.log(`🖼️ Design après resize: ${actualDesignWidth}x${actualDesignHeight}px ` +
         `(ratio préservé: ${(actualDesignWidth / actualDesignHeight).toFixed(3)})`);
 
+      // 🎨 ÉTAPE 3.5: Appliquer la bordure blanche APRÈS redimensionnement pour autocollants
+      if (config.isSticker) {
+        this.logger.log(`🎨 ✅ AUTOCOLLANT DÉTECTÉ: Application bordure blanche`);
+
+        // Calculer la taille de bordure proportionnelle à la zone de design
+        const avgDimension = (actualDesignWidth + actualDesignHeight) / 2;
+        borderWidth = Math.max(Math.round(avgDimension * BORDER_RATIO), 12); // Minimum 12px
+
+        this.logger.log(`📏 Bordure calculée: ${borderWidth}px (${BORDER_RATIO*100}% de ${Math.round(avgDimension)}px)`);
+
+        const beforeSize = resizedDesign.length;
+        resizedDesign = await this.addWhiteStrokeToDesign(resizedDesign, borderWidth);
+        const afterSize = resizedDesign.length;
+
+        // Recalculer les dimensions après ajout de la bordure
+        actualMetadata = await sharp(resizedDesign).metadata();
+        actualDesignWidth = actualMetadata.width || 0;
+        actualDesignHeight = actualMetadata.height || 0;
+
+        this.logger.log(`✅ Bordure appliquée - Nouvelles dimensions: ${actualDesignWidth}x${actualDesignHeight}px`);
+        this.logger.log(`📦 Taille: ${Math.round(beforeSize/1024)}KB → ${Math.round(afterSize/1024)}KB`);
+        this.logger.log(`🔍 Vérification: Design+bordure rentre dans boundingBox? ` +
+          `${actualDesignWidth}x${actualDesignHeight} vs ${boundingBox.width}x${boundingBox.height}`);
+      } else {
+        this.logger.log(`🔍 DEBUG: Pas d'autocollant (isSticker=false), pas de bordure`);
+      }
+
       // ========================================================================
       // ÉTAPE 4: Centrer le Design dans le Conteneur
       // Le design peut être plus petit que le conteneur (à cause de fit: 'inside')
+      // Pour les autocollants, le design avec bordure peut être plus grand que le boundingBox
       // ========================================================================
-      const designOffsetX = Math.round((boundingBox.width - actualDesignWidth) / 2);
-      const designOffsetY = Math.round((boundingBox.height - actualDesignHeight) / 2);
 
+      // Pour les autocollants, le conteneur doit être au moins aussi grand que le design avec bordure
+      // MAIS ne doit pas dépasser les dimensions du mockup!
+      const maxContainerWidth = imageWidth;
+      const maxContainerHeight = imageHeight;
+
+      const containerWidth = config.isSticker
+        ? Math.min(Math.max(boundingBox.width, actualDesignWidth), maxContainerWidth)
+        : boundingBox.width;
+      const containerHeight = config.isSticker
+        ? Math.min(Math.max(boundingBox.height, actualDesignHeight), maxContainerHeight)
+        : boundingBox.height;
+
+      // Si le design est plus grand que le conteneur (après limitation), il faut le redimensionner
+      if (actualDesignWidth > containerWidth || actualDesignHeight > containerHeight) {
+        this.logger.warn(`⚠️ Design+bordure (${actualDesignWidth}x${actualDesignHeight}) plus grand que le conteneur max (${containerWidth}x${containerHeight}), redimensionnement nécessaire`);
+        const scaleFactor = Math.min(containerWidth / actualDesignWidth, containerHeight / actualDesignHeight);
+        const newWidth = Math.round(actualDesignWidth * scaleFactor);
+        const newHeight = Math.round(actualDesignHeight * scaleFactor);
+
+        resizedDesign = await sharp(resizedDesign)
+          .resize(newWidth, newHeight, { fit: 'inside', withoutEnlargement: false })
+          .toBuffer();
+
+        const resizedMetadata = await sharp(resizedDesign).metadata();
+        actualDesignWidth = resizedMetadata.width || newWidth;
+        actualDesignHeight = resizedMetadata.height || newHeight;
+
+        this.logger.log(`📐 Design redimensionné pour tenir dans le conteneur: ${actualDesignWidth}x${actualDesignHeight}px`);
+      }
+
+      const designOffsetX = Math.max(0, Math.round((containerWidth - actualDesignWidth) / 2));
+      const designOffsetY = Math.max(0, Math.round((containerHeight - actualDesignHeight) / 2));
+
+      this.logger.log(`📐 Conteneur: ${containerWidth}x${containerHeight}px (boundingBox: ${boundingBox.width}x${boundingBox.height}px)`);
       this.logger.log(`📐 Centrage design dans conteneur: offsetX=${designOffsetX}, offsetY=${designOffsetY}`);
 
       // Créer un canvas transparent aux dimensions du conteneur
       const designInContainer = await sharp({
         create: {
-          width: boundingBox.width,
-          height: boundingBox.height,
+          width: containerWidth,
+          height: containerHeight,
           channels: 4,
           background: { r: 0, g: 0, b: 0, alpha: 0 }
         }
@@ -411,8 +635,18 @@ export class ProductPreviewGeneratorService {
       // ÉTAPE 5: Appliquer la Rotation si nécessaire
       // ========================================================================
       let processedDesign = designInContainer;
-      let finalLeft = boundingBox.left;
-      let finalTop = boundingBox.top;
+
+      // Pour les autocollants, le conteneur peut être plus grand que le boundingBox
+      // Il faut ajuster la position pour centrer le conteneur sur le centre prévu
+      const containerMetadata = await sharp(processedDesign).metadata();
+      const actualContainerWidth = containerMetadata.width || containerWidth;
+      const actualContainerHeight = containerMetadata.height || containerHeight;
+
+      // Ajuster la position initiale en fonction de la différence entre conteneur et boundingBox
+      let finalLeft = centerContainer.x - (actualContainerWidth / 2);
+      let finalTop = centerContainer.y - (actualContainerHeight / 2);
+
+      this.logger.log(`📍 Position initiale (avant rotation): (${Math.round(finalLeft)}, ${Math.round(finalTop)})`);
 
       if (transform.rotation !== 0) {
         this.logger.log(`🔄 Application rotation: ${transform.rotation}°`);
@@ -430,7 +664,7 @@ export class ProductPreviewGeneratorService {
         finalTop = centerContainer.y - ((rotatedMetadata.height || 0) / 2);
 
         this.logger.log(`🔄 Après rotation: ${rotatedMetadata.width}x${rotatedMetadata.height}px`);
-        this.logger.log(`📍 Position ajustée: (${Math.round(finalLeft)}, ${Math.round(finalTop)})`);
+        this.logger.log(`📍 Position ajustée après rotation: (${Math.round(finalLeft)}, ${Math.round(finalTop)})`);
 
         processedDesign = rotatedDesign;
       }
@@ -447,7 +681,11 @@ export class ProductPreviewGeneratorService {
           top: Math.round(finalTop),
           blend: 'over',
         }])
-        .png({ quality: 95 })
+        .png({
+          quality: 85,           // Réduction de 95 → 85 pour fichiers plus légers
+          compressionLevel: 6,   // Compression modérée (0-9, défaut: 6)
+          effort: 5              // Effort de compression (1-10, défaut: 7, réduit à 5 pour vitesse)
+        })
         .toBuffer();
 
       // ⚠️ DEBUG: Tracer la délimitation si demandé
@@ -476,6 +714,7 @@ export class ProductPreviewGeneratorService {
    * @param delimitation - Délimitation (zone imprimable)
    * @param positionJson - JSON de position (format ProductDesignPosition)
    * @param showDelimitation - ⚠️ DEBUG: Afficher un contour rouge autour de la délimitation
+   * @param isSticker - 🎨 Si true, applique une bordure blanche au design (style autocollant)
    * @returns Buffer de l'image PNG générée
    */
   async generatePreviewFromJson(
@@ -483,8 +722,11 @@ export class ProductPreviewGeneratorService {
     designImageUrl: string,
     delimitation: Delimitation,
     positionJson: any,
-    showDelimitation = false
+    showDelimitation = false,
+    isSticker = false
   ): Promise<Buffer> {
+    this.logger.log(`🔍 DEBUG generatePreviewFromJson: isSticker = ${isSticker}`);
+
     // Parser le JSON si c'est une string
     const position = typeof positionJson === 'string'
       ? JSON.parse(positionJson)
@@ -509,7 +751,8 @@ export class ProductPreviewGeneratorService {
         delimitationWidth,
         delimitationHeight,
       },
-      showDelimitation
+      showDelimitation,
+      isSticker
     };
 
     return this.generateProductPreview(config);

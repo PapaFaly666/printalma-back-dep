@@ -119,7 +119,7 @@ const designUsages = await this.prisma.designUsage.findMany({
 const designUsages = await this.prisma.designUsage.findMany({
   where: {
     ...whereClause,
-    paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT', 'PAID'] } 
+    paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT', 'PAID'] }
   },
   select: { designId: true },
   distinct: ['designId'],

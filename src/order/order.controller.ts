@@ -236,6 +236,14 @@ export class OrderController {
     let vendorFinances = null;
     if (req.user.role === 'VENDEUR') {
       vendorFinances = await this.calculateVendorAvailableFunds(req.user.sub, orders);
+
+      // ✅ Mettre à jour les statistiques avec les revenus designs
+      // Les statistics.totalVendorAmount ne contient que les produits, il faut ajouter les designs
+      if (vendorFinances) {
+        // Recalculer totalRevenue et totalVendorAmount en incluant les designs
+        stats.totalVendorAmount = vendorFinances.totalEarnings; // Total incluant produits + designs
+        stats.totalRevenue = stats.totalCommission + vendorFinances.totalEarnings; // Commission + gains vendeur
+      }
     }
 
     return {
@@ -830,24 +838,51 @@ export class OrderController {
         )
         .reduce((sum, order) => sum + (order.vendorAmount || 0), 0);
 
-      // 🎨 Calculer le montant total des revenus de designs CONFIRMÉS
-      const designUsages = await this.prisma.designUsage.findMany({
+      // 🎨 Calculer le montant total des revenus de designs en fonction du statut de la commande
+      // ✅ CORRECTION: Récupérer les designs avec la relation Order pour filtrer par statut de commande
+      const designUsagesDelivered = await this.prisma.designUsage.findMany({
         where: {
           vendorId,
-          paymentStatus: 'CONFIRMED' // Designs des commandes confirmées et payées
+          paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT'] }, // Designs payés
+          order: {
+            status: 'DELIVERED', // Seulement les commandes livrées
+            paymentStatus: 'PAID'
+          }
         },
         select: {
           vendorRevenue: true
         }
       });
 
-      const totalDesignRevenue = designUsages.reduce(
+      const totalDesignRevenue = designUsagesDelivered.reduce(
         (sum, usage) => sum + parseFloat(usage.vendorRevenue.toString()),
         0
       );
 
-      // 💵 Montant total disponible = revenus produits + revenus designs
+      // 💵 Montant total disponible = revenus produits livrés + revenus designs livrés
       const totalVendorAmount = totalProductRevenue + totalDesignRevenue;
+
+      // 🎨 Calculer le montant total des revenus de designs PAYÉS (tous statuts) pour le calcul du pending
+      const designUsagesAllPaid = await this.prisma.designUsage.findMany({
+        where: {
+          vendorId,
+          paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT'] }, // Designs payés
+          order: {
+            paymentStatus: 'PAID' // Toutes les commandes payées (peu importe le statut)
+          }
+        },
+        select: {
+          vendorRevenue: true
+        }
+      });
+
+      const totalDesignRevenueAllPaid = designUsagesAllPaid.reduce(
+        (sum, usage) => sum + parseFloat(usage.vendorRevenue.toString()),
+        0
+      );
+
+      // 💰 Total des gains de toutes les commandes payées (produits + designs)
+      const totalEarningsAllPaidIncludingDesigns = totalEarningsAllPaidOrders + totalDesignRevenueAllPaid;
 
       // 📊 Récupérer toutes les demandes de fonds du vendeur
       const fundsRequests = await this.prisma.vendorFundsRequest.findMany({
@@ -879,34 +914,46 @@ export class OrderController {
         .filter(order => order.status === OrderStatus.DELIVERED && order.paymentStatus === 'PAID')
         .reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
 
+      // 💰 Calculer le montant en attente de livraison (payé mais pas encore livré)
+      const pendingOrdersAmount = Math.max(0, totalEarningsAllPaidIncludingDesigns - totalVendorAmount);
+
       this.logger.log(`💰 [VENDOR ${vendorId}] Calcul des fonds disponibles:`, {
         totalEarningsAllPaidOrders,
+        totalDesignRevenueAllPaid,
+        totalEarningsAllPaidIncludingDesigns,
         totalProductRevenue,
         totalDesignRevenue,
         totalVendorAmount,
+        pendingOrdersAmount,
         withdrawnAmount,
         pendingWithdrawalAmount,
         availableForWithdrawal
       });
 
       return {
-        // 💰 Total des gains de toutes les commandes PAYÉES (CONFIRMED, DELIVERED, etc.)
-        totalEarnings: totalEarningsAllPaidOrders,
+        // 💰 Total des gains de toutes les commandes PAYÉES (produits + designs, tous statuts)
+        totalEarnings: totalEarningsAllPaidIncludingDesigns,
         // Montant total gagné par le vendeur sur les commandes LIVRÉES (après commission)
         totalVendorAmount,
-        // 🆕 Répartition par source de revenus
+        // 🆕 Montant des gains livrés (disponible pour calcul de retrait)
+        deliveredVendorAmount: totalVendorAmount,
+        // 🆕 Montant en attente de livraison (payé mais pas encore livré)
+        pendingOrdersAmount,
+        // 🆕 Répartition par source de revenus (LIVRÉS uniquement)
         totalProductRevenue,
         totalDesignRevenue,
-        // Montant déjà retiré
+        // 💸 Montant déjà retiré
         withdrawnAmount,
-        // Montant en attente de retrait
+        // ⏰ Montant en attente de retrait
         pendingWithdrawalAmount,
-        // Montant disponible pour un nouveau retrait
+        // ✅ Montant disponible pour un nouveau retrait
         availableForWithdrawal,
-        // Statistiques additionnelles
+        // 💰 Montant disponible pour appel de fonds (même valeur que availableForWithdrawal)
+        fundsRequestAvailableAmount: availableForWithdrawal,
+        // 📈 Statistiques additionnelles
         deliveredOrdersCount,
         totalCommissionDeducted,
-        // Nombre de demandes de fonds par statut
+        // 📋 Nombre de demandes de fonds par statut
         fundsRequestsSummary: {
           total: fundsRequests.length,
           paid: fundsRequests.filter(r => r.status === 'PAID').length,
@@ -914,12 +961,12 @@ export class OrderController {
           approved: fundsRequests.filter(r => r.status === 'APPROVED').length,
           rejected: fundsRequests.filter(r => r.status === 'REJECTED').length
         },
-        // Message d'information pour le frontend
+        // 💬 Message d'information pour le frontend
         message: availableForWithdrawal > 0
-          ? `Vous avez ${availableForWithdrawal.toLocaleString('fr-FR')} XOF disponibles pour retrait`
-          : totalEarningsAllPaidOrders > 0
-          ? `Vous avez ${totalEarningsAllPaidOrders.toLocaleString('fr-FR')} XOF de gains totaux (commandes en cours de livraison)`
-          : 'Aucun montant disponible pour retrait actuellement'
+          ? `Vous pouvez faire un appel de fonds de ${availableForWithdrawal.toLocaleString('fr-FR')} FCFA (${deliveredOrdersCount} commande${deliveredOrdersCount > 1 ? 's' : ''} livrée${deliveredOrdersCount > 1 ? 's' : ''})`
+          : pendingOrdersAmount > 0
+          ? `Vous avez ${totalEarningsAllPaidIncludingDesigns.toLocaleString('fr-FR')} FCFA de gains totaux dont ${pendingOrdersAmount.toLocaleString('fr-FR')} FCFA en attente de livraison. Aucun montant disponible pour appel de fonds actuellement.`
+          : 'Aucun montant disponible pour appel de fonds actuellement. Vous devez avoir au moins une commande livrée.'
       };
     } catch (error) {
       this.logger.error(`❌ Erreur calcul fonds disponibles pour vendeur ${vendorId}:`, error);
@@ -927,11 +974,14 @@ export class OrderController {
       return {
         totalEarnings: 0,
         totalVendorAmount: 0,
+        deliveredVendorAmount: 0,
+        pendingOrdersAmount: 0,
         totalProductRevenue: 0,
         totalDesignRevenue: 0,
         withdrawnAmount: 0,
         pendingWithdrawalAmount: 0,
         availableForWithdrawal: 0,
+        fundsRequestAvailableAmount: 0,
         deliveredOrdersCount: 0,
         totalCommissionDeducted: 0,
         fundsRequestsSummary: {
@@ -941,8 +991,7 @@ export class OrderController {
           approved: 0,
           rejected: 0
         },
-        message: 'Erreur lors du calcul des fonds disponibles',
-        error: error.message
+        message: 'Erreur lors du calcul des fonds disponibles'
       };
     }
   }

@@ -28,54 +28,12 @@ export class OrderService {
   ) {}
 
   async createGuestOrder(createOrderDto: CreateOrderDto) {
-    // Pour les commandes invitées, utiliser l'ID du vendeur du premier produit
-    // au lieu d'un ID fixe (3)
-    if (createOrderDto.orderItems && createOrderDto.orderItems.length > 0) {
-      const firstItem = createOrderDto.orderItems[0];
-
-      // Si l'item a un vendorProductId, récupérer l'ID du vendeur
-      if (firstItem.vendorProductId) {
-        try {
-          const vendorProduct = await this.prisma.vendorProduct.findUnique({
-            where: { id: firstItem.vendorProductId },
-            select: { vendorId: true }
-          });
-
-          if (vendorProduct) {
-            this.logger.log(`👤 Guest order using vendor ID: ${vendorProduct.vendorId} for vendorProduct: ${firstItem.vendorProductId}`);
-            return this.createOrder(vendorProduct.vendorId, createOrderDto);
-          }
-        } catch (error) {
-          this.logger.error(`❌ Erreur récupération vendeur pour vendorProduct ${firstItem.vendorProductId}:`, error);
-        }
-      }
-
-      // Si pas de vendorProductId, essayer de trouver un produit vendeur pour ce produit de base
-      try {
-        const vendorProduct = await this.prisma.vendorProduct.findFirst({
-          where: {
-            baseProductId: firstItem.productId,
-            isValidated: true
-          },
-          select: { vendorId: true },
-          orderBy: { createdAt: 'asc' }
-        });
-
-        if (vendorProduct) {
-          this.logger.log(`👤 Guest order using vendor ID: ${vendorProduct.vendorId} for baseProduct: ${firstItem.productId}`);
-          return this.createOrder(vendorProduct.vendorId, createOrderDto);
-        }
-      } catch (error) {
-        this.logger.error(`❌ Erreur récupération vendeur pour baseProduct ${firstItem.productId}:`, error);
-      }
-    }
-
-    // En dernier recours, utiliser l'ID par défaut 3
-    this.logger.warn(`⚠️ Aucun vendeur trouvé, utilisation de l'ID par défaut 3 pour la commande invitée`);
-    return this.createOrder(3, createOrderDto);
+    // Pour les commandes invitées, userId doit être null (pas d'utilisateur connecté)
+    this.logger.log(`👤 Création d'une commande invité (userId = null)`);
+    return this.createOrder(null, createOrderDto);
   }
 
-  async createOrder(userId: number, createOrderDto: CreateOrderDto) {
+  async createOrder(userId: number | null, createOrderDto: CreateOrderDto) {
     try {
       // 📦 LOG DÉTAILLÉ POUR MULTI-TAILLES
       const itemsSummary = createOrderDto.orderItems.reduce((acc, item) => {
@@ -325,13 +283,30 @@ export class OrderService {
 
           orderItems: {
             create: await Promise.all(validatedOrderItems.map(async (item) => {
+              // 🔍 DEBUG: Log complet des données de customisation AVANT validation
+              console.log(`🔍 [DEBUG] Données customisation reçues:`, {
+                productId: item.productId,
+                vendorProductId: item.vendorProductId,
+                hasCustomizationIds: !!item.customizationIds,
+                customizationIds: item.customizationIds,
+                hasDesignElementsByView: !!item.designElementsByView,
+                designElementsByViewKeys: item.designElementsByView ? Object.keys(item.designElementsByView) : [],
+                hasViewsMetadata: !!item.viewsMetadata,
+                hasDelimitation: !!item.delimitation,
+                hasDelimitations: !!item.delimitations
+              });
+
               // 🎨 VALIDATION DES DONNÉES DE CUSTOMISATION
               if (item.customizationIds || item.designElementsByView) {
                 try {
                   CustomizationValidator.validateOrThrow(item);
                   this.logger.log(`✅ Validation customisation réussie pour productId ${item.productId}`);
                 } catch (error) {
-                  this.logger.error(`❌ Validation customisation échouée:`, error);
+                  this.logger.error(`❌ Validation customisation échouée pour productId ${item.productId}:`, error);
+                  // Log détaillé des erreurs
+                  if (error.response && error.response.errors) {
+                    console.error(`❌ Erreurs de validation:`, JSON.stringify(error.response.errors, null, 2));
+                  }
                   throw error;
                 }
               }
@@ -649,24 +624,27 @@ export class OrderService {
             }
           });
 
-          // Générer l'URL de redirection en utilisant la même logique que PaydunyaController
-          let paymentUrl: string;
+          // 🔧 CORRECTION: Toujours construire l'URL nous-mêmes en utilisant la config BDD
+          // PayDunya retourne parfois des URLs avec "paydunya.com" au lieu de "app.paydunya.com"
+          // ce qui cause des erreurs en production
 
-          if (paymentResponse.response_text && paymentResponse.response_text.startsWith('http')) {
-            // PayDunya a retourné l'URL complète dans response_text
-            paymentUrl = paymentResponse.response_text;
-            this.logger.log(`Using PayDunya provided URL: ${paymentUrl}`);
-          } else {
-            // Construire l'URL selon la documentation Paydunya
-            const paydunyaMode = this.configService.get('PAYDUNYA_MODE', 'test');
-            const baseUrl = paydunyaMode === 'test'
-              ? 'https://app.paydunya.com/sandbox-checkout/invoice'
-              : 'https://app.paydunya.com/checkout/invoice';
-            paymentUrl = `${baseUrl}/${paymentResponse.token}`;
-            this.logger.log(`Constructed payment URL: ${paymentUrl}`);
-          }
+          // Récupérer le mode actif depuis la configuration de la base de données
+          const paymentConfig = await this.prisma.paymentConfig.findFirst({
+            where: {
+              provider: 'PAYDUNYA',
+              isActive: true
+            }
+          });
 
-          this.logger.log(`Final payment URL: ${paymentUrl}`);
+          // Utiliser le mode de la config BDD (priorité) ou fallback sur les variables d'environnement
+          const paydunyaMode = paymentConfig?.activeMode || this.configService.get('PAYDUNYA_MODE', 'test');
+          const baseUrl = paydunyaMode === 'live'
+            ? 'https://paydunya.com/checkout/invoice'
+            : 'https://app.paydunya.com/sandbox-checkout/invoice';
+          const paymentUrl = `${baseUrl}/${paymentResponse.token}`;
+
+          this.logger.log(`🔗 PayDunya mode: ${paydunyaMode} (from ${paymentConfig ? 'database' : 'env'})`);
+          this.logger.log(`🔗 Constructed payment URL: ${paymentUrl}`);
 
           // 🆕 Sauvegarder le token PayDunya dans transactionId pour le cron job
           await this.prisma.order.update({
@@ -693,7 +671,7 @@ export class OrderService {
             token: paymentResponse.token,
             redirect_url: paymentUrl,
             payment_url: paymentUrl,
-            mode: this.configService.get('PAYDUNYA_MODE', 'test')
+            mode: paydunyaMode
           };
 
           this.logger.log(`💳 PayDunya payment initialized successfully: ${paymentResponse.token}`);
@@ -2038,40 +2016,106 @@ export class OrderService {
         throw new BadRequestException('Cannot retry payment for cancelled order');
       }
 
-      // Initialize new payment with PayTech
-      this.logger.log(`💳 Initializing retry payment for order: ${orderNumber}`);
+      // Déterminer la méthode de paiement (PayDunya ou PayTech)
+      const isPayDunya = order.paymentMethod === 'PAYDUNYA';
+      this.logger.log(`💳 Initializing retry payment for order: ${orderNumber} (${isPayDunya ? 'PayDunya' : 'PayTech'})`);
 
-      const paymentResponse = await this.paytechService.requestPayment({
-        item_name: `Order ${order.orderNumber} (Retry)`,
-        item_price: order.totalAmount,
-        ref_command: order.orderNumber,
-        command_name: `Printalma Order - ${order.orderNumber} (Retry Payment)`,
-        currency: PayTechCurrency.XOF,
-        env: (this.configService.get('PAYTECH_ENVIRONMENT') === 'test'
-          ? PayTechEnvironment.TEST
-          : PayTechEnvironment.PROD),
-        ipn_url: this.configService.get('PAYTECH_IPN_URL'),
-        success_url: this.configService.get('PAYTECH_SUCCESS_URL'),
-        cancel_url: this.configService.get('PAYTECH_CANCEL_URL'),
-        custom_field: JSON.stringify({
-          orderId: order.id,
-          userId: order.userId,
-          retryAttempt: true,
-          previousFailure: order.notes?.includes('INSUFFICIENT FUNDS') ? 'insufficient_funds' : 'unknown'
-        }),
-        ...(paymentMethod && { target_payment: paymentMethod })
-      });
+      let paymentResponse: any;
+      let redirectUrl: string;
+      let token: string;
 
-      // Update order notes with retry attempt
-      const retryNote = `\n\n🔄 Payment retry initiated at ${new Date().toISOString()}\nNew token: ${paymentResponse.token}`;
+      if (isPayDunya) {
+        // Incrémenter le compteur de tentatives
+        const attemptNumber = order.paymentAttempts + 1;
+
+        // Créer un nouveau paiement PayDunya
+        const paydunyaPayload = {
+          invoice: {
+            total_amount: order.totalAmount,
+            description: `Commande ${order.orderNumber} - Tentative ${attemptNumber}`,
+            customer: {
+              name: order.shippingName || order.user?.firstName || 'Client Printalma',
+              email: order.email || order.user?.email,
+              phone: order.phoneNumber || order.user?.phone
+            }
+          },
+          store: {
+            name: 'Printalma',
+            website_url: this.configService.get('FRONTEND_URL', 'http://localhost:5174'),
+          },
+          actions: {
+            callback_url: this.configService.get('PAYDUNYA_CALLBACK_URL'),
+            return_url: this.configService.get('PAYDUNYA_SUCCESS_URL'),
+            cancel_url: this.configService.get('PAYDUNYA_CANCEL_URL'),
+          },
+          custom_data: {
+            order_number: order.orderNumber,
+            order_id: order.id,
+            user_id: order.userId,
+            retry_attempt: true,
+            attempt_number: attemptNumber,
+            previous_failure: order.notes?.includes('INSUFFICIENT FUNDS') ? 'insufficient_funds' : 'unknown'
+          }
+        };
+
+        paymentResponse = await this.paydunyaService.createInvoice(paydunyaPayload);
+        token = paymentResponse.token;
+
+        // 🔧 Récupérer le mode actif depuis la configuration de la base de données
+        const paymentConfig = await this.prisma.paymentConfig.findFirst({
+          where: {
+            provider: 'PAYDUNYA',
+            isActive: true
+          }
+        });
+
+        // Utiliser le mode de la config BDD (priorité) ou fallback sur les variables d'environnement
+        const mode = paymentConfig?.activeMode || this.configService.get('PAYDUNYA_MODE', 'test');
+        const baseUrl = mode === 'live'
+          ? 'https://paydunya.com/checkout/invoice'
+          : 'https://app.paydunya.com/sandbox-checkout/invoice';
+        redirectUrl = paymentResponse.response_url || `${baseUrl}/${token}`;
+
+        this.logger.log(`🔄 PayDunya retry token created: ${token} (mode: ${mode})`);
+      } else {
+        // PayTech retry (code existant)
+        paymentResponse = await this.paytechService.requestPayment({
+          item_name: `Order ${order.orderNumber} (Retry)`,
+          item_price: order.totalAmount,
+          ref_command: order.orderNumber,
+          command_name: `Printalma Order - ${order.orderNumber} (Retry Payment)`,
+          currency: PayTechCurrency.XOF,
+          env: (this.configService.get('PAYTECH_ENVIRONMENT') === 'test'
+            ? PayTechEnvironment.TEST
+            : PayTechEnvironment.PROD),
+          ipn_url: this.configService.get('PAYTECH_IPN_URL'),
+          success_url: this.configService.get('PAYTECH_SUCCESS_URL'),
+          cancel_url: this.configService.get('PAYTECH_CANCEL_URL'),
+          custom_field: JSON.stringify({
+            orderId: order.id,
+            userId: order.userId,
+            retryAttempt: true,
+            previousFailure: order.notes?.includes('INSUFFICIENT FUNDS') ? 'insufficient_funds' : 'unknown'
+          }),
+          ...(paymentMethod && { target_payment: paymentMethod })
+        });
+
+        token = paymentResponse.token;
+        redirectUrl = paymentResponse.redirect_url || paymentResponse.redirectUrl;
+      }
+
+      // Mettre à jour la commande avec le nouveau token et incrémenter les tentatives
+      const retryNote = `\n\n🔄 Payment retry initiated at ${new Date().toISOString()}\nNew token: ${token}\nAttempt: ${order.paymentAttempts + 1}`;
       await this.prisma.order.update({
         where: { id: order.id },
         data: {
+          transactionId: token, // Mettre à jour avec le nouveau token
+          paymentAttempts: { increment: 1 }, // Incrémenter les tentatives
           notes: order.notes ? order.notes + retryNote : retryNote
         }
       });
 
-      this.logger.log(`✅ Retry payment initialized successfully: ${paymentResponse.token}`);
+      this.logger.log(`✅ Retry payment initialized successfully: ${token}`);
 
       return {
         success: true,
@@ -2081,10 +2125,12 @@ export class OrderService {
           order_number: order.orderNumber,
           amount: order.totalAmount,
           currency: 'XOF',
+          payment_method: isPayDunya ? 'PAYDUNYA' : 'PAYTECH',
           payment: {
-            token: paymentResponse.token,
-            redirect_url: paymentResponse.redirect_url || paymentResponse.redirectUrl,
-            is_retry: true
+            token: token,
+            redirect_url: redirectUrl,
+            is_retry: true,
+            attempt_number: order.paymentAttempts + 1
           }
         }
       };
@@ -2575,20 +2621,45 @@ export class OrderService {
     // Décrémenter le stock pour chaque combinaison
     for (const [key, decrement] of stockDecrements) {
       try {
-        await this.prisma.productStock.update({
+        // Utiliser upsert pour créer le stock s'il n'existe pas
+        const existingStock = await this.prisma.productStock.findUnique({
           where: {
             productId_colorId_sizeName: {
               productId: decrement.productId,
               colorId: decrement.colorId,
               sizeName: decrement.sizeName
             }
-          },
-          data: {
-            stock: {
-              decrement: decrement.totalQuantity
-            }
           }
         });
+
+        if (existingStock) {
+          // Stock existe, le décrémenter
+          await this.prisma.productStock.update({
+            where: {
+              productId_colorId_sizeName: {
+                productId: decrement.productId,
+                colorId: decrement.colorId,
+                sizeName: decrement.sizeName
+              }
+            },
+            data: {
+              stock: {
+                decrement: decrement.totalQuantity
+              }
+            }
+          });
+        } else {
+          // Stock n'existe pas, créer avec stock à 0 (commande possible car le produit ne nécessite pas de stock)
+          this.logger.warn(`📦 Stock non trouvé pour ${key}, création automatique avec stock initial à 0`);
+          await this.prisma.productStock.create({
+            data: {
+              productId: decrement.productId,
+              colorId: decrement.colorId,
+              sizeName: decrement.sizeName,
+              stock: 0 - decrement.totalQuantity // Stock négatif pour indiquer la dette
+            }
+          });
+        }
 
         // Créer un mouvement de stock pour traçabilité
         await this.prisma.stockMovement.create({

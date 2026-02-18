@@ -216,6 +216,7 @@ export interface VendorEarningsData {
   totalEarnings: number;
   pendingAmount: number;
   availableAmount: number;
+  fundsRequestAvailableAmount: number; // 💰 Montant disponible pour appel de fonds
   thisMonthEarnings: number;
   lastMonthEarnings: number;
   commissionPaid: number;

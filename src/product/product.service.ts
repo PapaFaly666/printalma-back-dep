@@ -23,14 +23,163 @@ export class ProductService {
 
   async create(dto: CreateProductDto, files: Express.Multer.File[]) {
     // ✅ LOGS DE DÉBOGAGE POUR LE GENRE ET SUGGESTED PRICE
-    console.log('🔍 [BACKEND] create method - DTO reçu:', JSON.stringify(dto, null, 2));
-    console.log('🔍 [BACKEND] create method - Genre reçu:', dto.genre);
-    console.log('🔍 [BACKEND] create method - Genre type:', typeof dto.genre);
-    console.log('🔍 [BACKEND] create method - suggestedPrice reçu:', dto.suggestedPrice);
-    console.log('🔍 [BACKEND] create method - suggestedPrice type:', typeof dto.suggestedPrice);
-    console.log('🔍 [BACKEND] create method - suggestedPrice value:', dto.suggestedPrice);
-    console.log('🔍 [BACKEND] create method - isReadyProduct reçu:', dto.isReadyProduct);
-    console.log('🔍 [BACKEND] create method - isReadyProduct type:', typeof dto.isReadyProduct);
+    console.log('🎨 [BACKEND] === CRÉATION PRODUIT AUTOCOLLANT ===');
+    console.log('📋 [BACKEND] create method - DTO reçu:', JSON.stringify(dto, null, 2));
+    console.log('📋 [BACKEND] create method - Genre reçu:', dto.genre);
+    console.log('📋 [BACKEND] create method - Genre type:', typeof dto.genre);
+    console.log('📋 [BACKEND] create method - suggestedPrice reçu:', dto.suggestedPrice);
+    console.log('📋 [BACKEND] create method - suggestedPrice type:', typeof dto.suggestedPrice);
+    console.log('📋 [BACKEND] create method - suggestedPrice value:', dto.suggestedPrice);
+    console.log('📋 [BACKEND] create method - isReadyProduct reçu:', dto.isReadyProduct);
+    console.log('📋 [BACKEND] create method - isReadyProduct type:', typeof dto.isReadyProduct);
+
+    // ✅ VALIDATIONS POUR LES AUTOCOLLANTS
+    const genreValue = dto.genre || 'UNISEXE';
+    let requiresStock = dto.requiresStock ?? true;
+    const isAutocollant = genreValue === 'AUTOCOLLANT';
+    const isTableau = genreValue === 'TABLEAU';
+    const isProductWithoutStock = isAutocollant || isTableau;
+
+    console.log('🎨 [BACKEND] Type de produit:', isAutocollant ? 'AUTOCOLLANT' : (isTableau ? 'TABLEAU' : 'Standard'));
+    console.log('📊 [BACKEND] requiresStock (avant correction):', requiresStock);
+    console.log('💰 [BACKEND] Prix de base:', dto.price);
+    console.log('🎯 [BACKEND] Variations:', dto.colorVariations?.length);
+    console.log('📦 [BACKEND] Fichiers reçus:', files.length);
+
+    // Afficher les fichiers pour debug
+    files.forEach(file => {
+      console.log(`   - ${file.fieldname}: ${file.originalname} (${file.size} bytes)`);
+    });
+
+    // ✅ CORRECTION AUTOMATIQUE : Si produit sans stock (AUTOCOLLANT/TABLEAU), forcer requiresStock à false
+    if (isProductWithoutStock && requiresStock !== false) {
+      const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+      console.warn(`⚠️ [BACKEND] ${productType} avec requiresStock=true, correction automatique → false`);
+      requiresStock = false;
+      dto.requiresStock = false;
+    }
+
+    // ✅ Pour produits sans stock (AUTOCOLLANT/TABLEAU), forcer stock à 0 (la colonne n'est pas nullable en BDD)
+    if (isProductWithoutStock) {
+      dto.stock = 0;
+      const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+      console.log(`✅ [BACKEND] ${productType}: stock forcé à 0, requiresStock forcé à false`);
+    }
+
+    // Validation : Prix de vente suggéré obligatoire
+    if (!dto.suggestedPrice || dto.suggestedPrice <= 0) {
+      throw new BadRequestException('Le prix de vente suggéré est obligatoire');
+    }
+
+    // Validation : Stock requis uniquement si requiresStock === true
+    if (requiresStock === true && dto.stock === undefined) {
+      throw new BadRequestException(
+        'Le stock initial est requis pour les produits avec gestion de stock'
+      );
+    }
+
+    // ✅ Pour les produits sans stock (AUTOCOLLANT/TABLEAU), valider que chaque variation de couleur a un prix
+    if (isProductWithoutStock && dto.colorVariations) {
+      for (const variation of dto.colorVariations) {
+        if (!variation.price || variation.price <= 0) {
+          const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+          throw new BadRequestException(
+            `Les variations ${productType} doivent avoir un prix. Variation "${variation.name}" sans prix.`
+          );
+        }
+      }
+    }
+
+    // ✅ Valider le format des tailles pour produits sans stock (AUTOCOLLANT/TABLEAU)
+    if (isProductWithoutStock && dto.sizes && dto.sizes.length > 0) {
+      const validateSizeFormat = (size: string): boolean => {
+        // Format attendu: "5cm*5cm", "10cm*10cm", "5cm x 10cm" ou "20x30cm"
+        const regex = /^\d+(cm|mm)\s*[\*xX]\s*\d+(cm|mm)$/i;
+        return regex.test(size.trim());
+      };
+
+      for (const size of dto.sizes) {
+        if (!validateSizeFormat(size)) {
+          const productType = isTableau ? 'tableau' : 'autocollant';
+          throw new BadRequestException(
+            `Taille de ${productType} invalide: "${size}". Format attendu: "5cm*5cm" ou "20x30cm"`
+          );
+        }
+      }
+    }
+
+    // ✅ Validation des délimitations pour les produits mockup admin
+    const isMockup = !dto.isReadyProduct;
+    if (isMockup) {
+      let hasDelimitations = false;
+
+      for (const colorVar of dto.colorVariations) {
+        for (const image of colorVar.images) {
+          if (image.delimitations && image.delimitations.length > 0) {
+            hasDelimitations = true;
+            break;
+          }
+        }
+        if (hasDelimitations) break;
+      }
+
+      if (!hasDelimitations) {
+        throw new BadRequestException(
+          'Au moins une zone de personnalisation (délimitation) est requise pour ce produit.'
+        );
+      }
+      console.log('✅ [BACKEND] Délimitations présentes:', hasDelimitations);
+    }
+
+    // 🆕 VALIDATION DES PRIX PAR TAILLE
+    if (dto.sizes && dto.sizes.length > 0) {
+      // ✅ NOUVELLE VALIDATION PLUS SOUPLE
+      // Si sizePricing n'est pas fourni, initialiser avec des valeurs par défaut
+      if (!dto.sizePricing || dto.sizePricing.length === 0) {
+        console.log('⚠️ [BACKEND] sizePricing vide, initialisation avec valeurs par défaut');
+        // Initialiser avec des prix par défaut basés sur suggestedPrice du produit
+        dto.sizePricing = dto.sizes.map(size => ({
+          size,
+          suggestedPrice: dto.suggestedPrice || 0,
+          costPrice: dto.globalCostPrice || 0
+        }));
+      }
+
+      // Vérifier que chaque taille a un prix de vente suggéré > 0
+      const sizesWithoutPrice = dto.sizes.filter(size =>
+        !dto.sizePricing!.find(p => p.size === size && p.suggestedPrice > 0)
+      );
+
+      if (sizesWithoutPrice.length > 0) {
+        throw new BadRequestException(
+          `Prix de vente suggéré manquant pour les tailles: ${sizesWithoutPrice.join(', ')}`
+        );
+      }
+
+      // Si useGlobalPricing est true, vérifier la cohérence
+      if (dto.useGlobalPricing) {
+        if (!dto.globalCostPrice || dto.globalCostPrice < 0) {
+          throw new BadRequestException('Prix de revient global requis');
+        }
+        if (!dto.globalSuggestedPrice || dto.globalSuggestedPrice <= 0) {
+          throw new BadRequestException('Prix de vente suggéré global requis et doit être > 0');
+        }
+
+        // Vérifier que tous les prix correspondent aux prix globaux
+        const invalidPrices = dto.sizePricing.filter(p =>
+          p.costPrice !== dto.globalCostPrice ||
+          p.suggestedPrice !== dto.globalSuggestedPrice
+        );
+
+        if (invalidPrices.length > 0) {
+          throw new BadRequestException(
+            'Les prix par taille doivent correspondre aux prix globaux quand useGlobalPricing est true'
+          );
+        }
+      }
+
+      console.log('✅ [BACKEND] Prix par taille validés:', dto.sizePricing.length);
+    }
 
     // ✅ Valider la cohérence de la hiérarchie Category → SubCategory → Variation
     await this.validateCategoryHierarchy(dto.categoryId, dto.subCategoryId, dto.variationId);
@@ -72,12 +221,14 @@ export class ProductService {
       });
       const categories = await Promise.all(categoryPromises);
 
-      // ✅ TRAITER LES CHAMPS GENRE ET isReadyProduct
+      // ✅ TRAITER LES CHAMPS GENRE, isReadyProduct ET requiresStock
       const isReadyProduct = dto.isReadyProduct ?? false; // Par défaut false (mockup)
       const genreValue = dto.genre || 'UNISEXE';
-      
+      const requiresStockValue = dto.requiresStock ?? true;
+
       console.log('🔍 [BACKEND] create method - Valeur finale isReadyProduct:', isReadyProduct);
       console.log('🔍 [BACKEND] create method - Valeur finale genre:', genreValue);
+      console.log('🔍 [BACKEND] create method - Valeur finale requiresStock:', requiresStockValue);
       console.log('🔍 [BACKEND] create method - Valeur finale suggestedPrice:', dto.suggestedPrice);
 
       // 3.2. Create the Product first (without categories and sizes)
@@ -86,15 +237,20 @@ export class ProductService {
         description: dto.description,
         price: dto.price,
         suggestedPrice: dto.suggestedPrice, // ✅ AJOUTER LE CHAMP suggestedPrice
-        stock: dto.stock,
+        stock: isProductWithoutStock ? 0 : (dto.stock ?? 0), // 0 pour AUTOCOLLANT/TABLEAU, sinon la valeur du DTO
         status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
         isReadyProduct: isReadyProduct, // ✅ AJOUTER LE CHAMP isReadyProduct
         genre: genreValue as ProductGenre, // ✅ AJOUTER LE CHAMP GENRE
+        requiresStock: requiresStockValue, // ✅ AJOUTER LE CHAMP requiresStock
         isValidated: true, // ✅ MOCKUPS CRÉÉS PAR ADMIN SONT VALIDÉS PAR DÉFAUT
         // ✅ Hiérarchie de catégories à 3 niveaux
         categoryId: dto.categoryId,
         subCategoryId: dto.subCategoryId,
         variationId: dto.variationId,
+        // 🆕 Champs pour la tarification par taille
+        useGlobalPricing: dto.useGlobalPricing || false,
+        globalCostPrice: dto.globalCostPrice || 0,
+        globalSuggestedPrice: dto.globalSuggestedPrice || 0,
       };
       
       console.log('🔍 [BACKEND] create method - productData avant création:', JSON.stringify(productData, null, 2));
@@ -127,7 +283,20 @@ export class ProductService {
           })),
         });
       }
-      
+
+      // 🆕 3.4.1. Create size pricing if provided
+      if (dto.sizePricing && dto.sizePricing.length > 0) {
+        await tx.productSizePrice.createMany({
+          data: dto.sizePricing.map((pricing) => ({
+            productId: product.id,
+            size: pricing.size,
+            costPrice: pricing.costPrice,
+            suggestedPrice: pricing.suggestedPrice,
+          })),
+        });
+        console.log('✅ [BACKEND] Prix par taille créés:', dto.sizePricing.length);
+      }
+
       // 3.5. Create ColorVariations, ProductImages, and Delimitations using pre-uploaded images
       for (const colorVar of dto.colorVariations) {
         const createdColorVariation = await tx.colorVariation.create({
@@ -135,6 +304,7 @@ export class ProductService {
             name: colorVar.name,
             colorCode: colorVar.colorCode,
             productId: product.id,
+            price: colorVar.price, // ✅ AJOUTER LE CHAMP price pour les autocollants
           },
         });
 
@@ -246,6 +416,7 @@ export class ProductService {
     status?: string;
     category?: string;
     genre?: string;
+    requiresStock?: boolean;
     search?: string;
     limit?: number;
     offset?: number;
@@ -277,6 +448,12 @@ export class ProductService {
     if (filters.genre) {
       where.genre = filters.genre;
       console.log('🔍 Filtrage backend - genre:', filters.genre);
+    }
+
+    // 4.5. ✅ NOUVEAU: Filtre requiresStock
+    if (filters.requiresStock !== undefined) {
+      where.requiresStock = filters.requiresStock;
+      console.log('🔍 Filtrage backend - requiresStock:', filters.requiresStock);
     }
 
     // 5. Filtre search
@@ -346,6 +523,7 @@ export class ProductService {
         },
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
+        sizePrices: true, // 🆕 Inclure les prix par taille
         subCategory: true, // ✅ Inclure la sous-catégorie
         variation: true, // ✅ Inclure la variation
         colorVariations: {
@@ -544,6 +722,7 @@ export class ProductService {
         },
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
+        sizePrices: true, // 🆕 Inclure les prix par taille
         colorVariations: {
           include: {
             images: {
@@ -623,6 +802,7 @@ export class ProductService {
       include: {
         sizes: true,
         stocks: true, // 📦 Inclure les stocks
+        sizePrices: true, // 🆕 Inclure les prix par taille
         subCategory: true, // ✅ Inclure la sous-catégorie
         variation: true, // ✅ Inclure la variation
         colorVariations: {
@@ -1491,10 +1671,96 @@ export class ProductService {
     const product = await this.prisma.product.findUnique({ where: { id, isDelete: false } });
     if (!product) throw new NotFoundException('Produit admin introuvable');
 
-    // ✅ LOGS DE DÉBOGAGE POUR SUGGESTED PRICE
+    // ✅ LOGS DE DÉBOGAGE POUR SUGGESTED PRICE ET AUTOCOLLANT
+    console.log('🎨 [BACKEND] === MISE À JOUR PRODUIT AUTOCOLLANT ===');
     console.log('🔍 [BACKEND] updateProduct - updateDto reçu:', JSON.stringify(updateDto, null, 2));
     console.log('🔍 [BACKEND] updateProduct - suggestedPrice reçu:', updateDto.suggestedPrice);
     console.log('🔍 [BACKEND] updateProduct - suggestedPrice type:', typeof updateDto.suggestedPrice);
+    console.log('🔍 [BACKEND] updateProduct - genre reçu:', updateDto.genre);
+
+    const isAutocollant = updateDto.genre === 'AUTOCOLLANT' || product.genre === 'AUTOCOLLANT';
+    const isTableau = updateDto.genre === 'TABLEAU' || product.genre === 'TABLEAU';
+    const isProductWithoutStock = isAutocollant || isTableau;
+    console.log('🎨 [BACKEND] Type de produit:', isAutocollant ? 'AUTOCOLLANT' : (isTableau ? 'TABLEAU' : 'Standard'));
+
+    // ✅ CORRECTION AUTOMATIQUE : Si produit sans stock (AUTOCOLLANT/TABLEAU), forcer requiresStock à false
+    if (isProductWithoutStock && updateDto.requiresStock !== false) {
+      const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+      console.warn(`⚠️ [BACKEND] ${productType} avec requiresStock=true, correction automatique → false`);
+      updateDto.requiresStock = false;
+    }
+
+    // ✅ Valider le prix des variations pour produits sans stock (AUTOCOLLANT/TABLEAU)
+    if (isProductWithoutStock && updateDto.colorVariations) {
+      for (const variation of updateDto.colorVariations) {
+        if (!variation.price || variation.price <= 0) {
+          const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+          throw new BadRequestException(
+            `Les variations ${productType} doivent avoir un prix. Variation "${variation.name}" sans prix.`
+          );
+        }
+      }
+    }
+
+    // ✅ Valider le format des tailles pour produits sans stock (AUTOCOLLANT/TABLEAU)
+    if (isProductWithoutStock && updateDto.sizes && updateDto.sizes.length > 0) {
+      const validateSizeFormat = (size: string): boolean => {
+        // Format attendu: "5cm*5cm", "10cm*10cm", "5cm x 10cm" ou "20x30cm"
+        const regex = /^\d+(cm|mm)\s*[\*xX]\s*\d+(cm|mm)$/i;
+        return regex.test(size.trim());
+      };
+
+      for (const size of updateDto.sizes) {
+        if (typeof size === 'string' && !validateSizeFormat(size)) {
+          const productType = isTableau ? 'tableau' : 'autocollant';
+          throw new BadRequestException(
+            `Taille de ${productType} invalide: "${size}". Format attendu: "5cm*5cm" ou "20x30cm"`
+          );
+        }
+      }
+    }
+
+    // 🆕 VALIDATION DES PRIX PAR TAILLE
+    if (updateDto.sizes && updateDto.sizes.length > 0) {
+      if (!updateDto.sizePricing || updateDto.sizePricing.length === 0) {
+        throw new BadRequestException('Les prix par taille sont requis quand des tailles sont définies');
+      }
+
+      // Vérifier que chaque taille a un prix de vente suggéré > 0
+      const sizesWithoutPrice = updateDto.sizes.filter(size =>
+        !updateDto.sizePricing!.find(p => p.size === size && p.suggestedPrice > 0)
+      );
+
+      if (sizesWithoutPrice.length > 0) {
+        throw new BadRequestException(
+          `Prix de vente suggéré manquant pour les tailles: ${sizesWithoutPrice.join(', ')}`
+        );
+      }
+
+      // Si useGlobalPricing est true, vérifier la cohérence
+      if (updateDto.useGlobalPricing) {
+        if (!updateDto.globalCostPrice || updateDto.globalCostPrice < 0) {
+          throw new BadRequestException('Prix de revient global requis');
+        }
+        if (!updateDto.globalSuggestedPrice || updateDto.globalSuggestedPrice <= 0) {
+          throw new BadRequestException('Prix de vente suggéré global requis et doit être > 0');
+        }
+
+        // Vérifier que tous les prix correspondent aux prix globaux
+        const invalidPrices = updateDto.sizePricing.filter(p =>
+          p.costPrice !== updateDto.globalCostPrice ||
+          p.suggestedPrice !== updateDto.globalSuggestedPrice
+        );
+
+        if (invalidPrices.length > 0) {
+          throw new BadRequestException(
+            'Les prix par taille doivent correspondre aux prix globaux quand useGlobalPricing est true'
+          );
+        }
+      }
+
+      console.log('✅ [BACKEND] Prix par taille validés:', updateDto.sizePricing.length);
+    }
 
     // 2. Préparer les données à mettre à jour
     const data: any = {};
@@ -1502,9 +1768,20 @@ export class ProductService {
     if (updateDto.description !== undefined) data.description = updateDto.description;
     if (updateDto.price !== undefined) data.price = updateDto.price;
     if (updateDto.suggestedPrice !== undefined) data.suggestedPrice = updateDto.suggestedPrice;
-    if (updateDto.stock !== undefined) data.stock = updateDto.stock;
+    if (updateDto.requiresStock !== undefined) {
+      data.requiresStock = updateDto.requiresStock;
+      // Si on désactive la gestion de stock (AUTOCOLLANT), mettre le stock à 0 (pas null car la colonne n'est pas nullable)
+      if (updateDto.requiresStock === false) {
+        data.stock = 0;
+      }
+    }
+    if (updateDto.stock !== undefined && data.requiresStock !== false) data.stock = updateDto.stock;
     if (updateDto.status !== undefined) data.status = updateDto.status;
     if (updateDto.genre !== undefined) data.genre = updateDto.genre;
+    // 🆕 Champs pour la tarification par taille
+    if (updateDto.useGlobalPricing !== undefined) data.useGlobalPricing = updateDto.useGlobalPricing;
+    if (updateDto.globalCostPrice !== undefined) data.globalCostPrice = updateDto.globalCostPrice;
+    if (updateDto.globalSuggestedPrice !== undefined) data.globalSuggestedPrice = updateDto.globalSuggestedPrice;
     
     console.log('🔍 [BACKEND] updateProduct - data avant mise à jour:', JSON.stringify(data, null, 2));
 
@@ -1517,6 +1794,7 @@ export class ProductService {
         include: {
           CategoryToProduct: { include: { categories: true } },
           sizes: true,
+          sizePrices: true, // 🆕 Inclure les prix par taille
           colorVariations: {
             include: {
               images: {
@@ -1606,6 +1884,27 @@ export class ProductService {
             sizeName: String(sizeName), // Sécurité : cast en string
           })),
         });
+      }
+    }
+
+    // 🆕 5.1. Mettre à jour les prix par taille si fourni
+    if (updateDto.sizePricing) {
+      // Supprimer les anciens prix par taille
+      await this.prisma.productSizePrice.deleteMany({
+        where: { productId: id },
+      });
+
+      // Créer les nouveaux prix par taille
+      if (updateDto.sizePricing.length > 0) {
+        await this.prisma.productSizePrice.createMany({
+          data: updateDto.sizePricing.map((pricing: any) => ({
+            productId: id,
+            size: pricing.size,
+            costPrice: pricing.costPrice,
+            suggestedPrice: pricing.suggestedPrice,
+          })),
+        });
+        console.log('✅ [BACKEND] Prix par taille mis à jour:', updateDto.sizePricing.length);
       }
     }
 
@@ -1779,6 +2078,7 @@ export class ProductService {
       include: {
         CategoryToProduct: { include: { categories: true } },
         sizes: true,
+        sizePrices: true, // 🆕 Inclure les prix par taille
         colorVariations: {
           include: {
             images: {
@@ -1845,6 +2145,7 @@ export class ProductService {
   // Méthodes pour les produits prêts (sans délimitations)
   async createReadyProduct(dto: CreateReadyProductDto, files: Express.Multer.File[]) {
     // ✅ LOGS DE DÉBOGAGE DÉTAILLÉS
+    console.log('🎨 [BACKEND] === CRÉATION PRODUIT PRÊT/AUTOCOLLANT ===');
     console.log('🔍 [BACKEND] createReadyProduct - DTO reçu:', JSON.stringify(dto, null, 2));
     console.log('🔍 [BACKEND] createReadyProduct - isReadyProduct:', dto.isReadyProduct);
     console.log('🔍 [BACKEND] createReadyProduct - Type isReadyProduct:', typeof dto.isReadyProduct);
@@ -1852,6 +2153,124 @@ export class ProductService {
     console.log('🔍 [BACKEND] createReadyProduct - Genre est-il défini?', !!dto.genre);
     console.log('🔍 [BACKEND] createReadyProduct - Genre est-il différent de UNISEXE?', dto.genre !== 'UNISEXE');
     console.log('🔍 [BACKEND] createReadyProduct - Type de genre:', typeof dto.genre);
+
+    // ✅ VALIDATIONS POUR LES AUTOCOLLANTS
+    const genreValue = dto.genre || 'UNISEXE';
+    let requiresStock = dto.requiresStock ?? true;
+    const isAutocollant = genreValue === 'AUTOCOLLANT';
+    const isTableau = genreValue === 'TABLEAU';
+    const isProductWithoutStock = isAutocollant || isTableau;
+
+    console.log('🎨 [BACKEND] Type de produit:', isAutocollant ? 'AUTOCOLLANT' : (isTableau ? 'TABLEAU' : 'Standard'));
+    console.log('📊 [BACKEND] requiresStock (avant correction):', requiresStock);
+    console.log('💰 [BACKEND] Prix de base:', dto.price);
+    console.log('🎯 [BACKEND] Variations:', dto.colorVariations?.length);
+    console.log('📦 [BACKEND] Fichiers reçus:', files.length);
+
+    // 🆕 VALIDATION DES PRIX PAR TAILLE
+    if (dto.sizes && dto.sizes.length > 0) {
+      // ✅ NOUVELLE VALIDATION PLUS SOUPLE
+      // Si sizePricing n'est pas fourni, initialiser avec des valeurs par défaut
+      if (!dto.sizePricing || dto.sizePricing.length === 0) {
+        console.log('⚠️ [BACKEND] sizePricing vide, initialisation avec valeurs par défaut');
+        // Initialiser avec des prix par défaut basés sur suggestedPrice du produit
+        dto.sizePricing = dto.sizes.map(size => ({
+          size,
+          suggestedPrice: dto.suggestedPrice || 0,
+          costPrice: dto.globalCostPrice || 0
+        }));
+      }
+
+      // Vérifier que chaque taille a un prix de vente suggéré > 0
+      const sizesWithoutPrice = dto.sizes.filter(size =>
+        !dto.sizePricing!.find(p => p.size === size && p.suggestedPrice > 0)
+      );
+
+      if (sizesWithoutPrice.length > 0) {
+        throw new BadRequestException(
+          `Prix de vente suggéré manquant pour les tailles: ${sizesWithoutPrice.join(', ')}`
+        );
+      }
+
+      // Si useGlobalPricing est true, vérifier la cohérence
+      if (dto.useGlobalPricing) {
+        if (!dto.globalCostPrice || dto.globalCostPrice < 0) {
+          throw new BadRequestException('Prix de revient global requis');
+        }
+        if (!dto.globalSuggestedPrice || dto.globalSuggestedPrice <= 0) {
+          throw new BadRequestException('Prix de vente suggéré global requis et doit être > 0');
+        }
+
+        // Vérifier que tous les prix correspondent aux prix globaux
+        const invalidPrices = dto.sizePricing.filter(p =>
+          p.costPrice !== dto.globalCostPrice ||
+          p.suggestedPrice !== dto.globalSuggestedPrice
+        );
+
+        if (invalidPrices.length > 0) {
+          throw new BadRequestException(
+            'Les prix par taille doivent correspondre aux prix globaux quand useGlobalPricing est true'
+          );
+        }
+      }
+
+      console.log('✅ [BACKEND] Prix par taille validés:', dto.sizePricing.length);
+    }
+
+    // Afficher les fichiers pour debug
+    files.forEach(file => {
+      console.log(`   - ${file.fieldname}: ${file.originalname} (${file.size} bytes)`);
+    });
+
+    // ✅ CORRECTION AUTOMATIQUE : Si produit sans stock (AUTOCOLLANT/TABLEAU), forcer requiresStock à false
+    if (isProductWithoutStock && requiresStock !== false) {
+      const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+      console.warn(`⚠️ [BACKEND] ${productType} avec requiresStock=true, correction automatique → false`);
+      requiresStock = false;
+      dto.requiresStock = false;
+    }
+
+    // ✅ Pour produits sans stock (AUTOCOLLANT/TABLEAU), forcer stock à 0 (la colonne n'est pas nullable en BDD)
+    if (isProductWithoutStock) {
+      dto.stock = 0;
+      const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+      console.log(`✅ [BACKEND] ${productType}: stock forcé à 0, requiresStock forcé à false`);
+    }
+
+    // Validation : Prix de vente suggéré obligatoire
+    if (!dto.suggestedPrice || dto.suggestedPrice <= 0) {
+      throw new BadRequestException('Le prix de vente suggéré est obligatoire');
+    }
+
+    // ✅ Pour les produits sans stock (AUTOCOLLANT/TABLEAU), valider que chaque variation de couleur a un prix
+    if (isProductWithoutStock && dto.colorVariations) {
+      for (const variation of dto.colorVariations) {
+        if (!variation.price || variation.price <= 0) {
+          const productType = isTableau ? 'TABLEAU' : 'AUTOCOLLANT';
+          throw new BadRequestException(
+            `Les variations ${productType} doivent avoir un prix. Variation "${variation.name}" sans prix.`
+          );
+        }
+      }
+    }
+
+    // ✅ Valider le format des tailles pour produits sans stock (AUTOCOLLANT/TABLEAU)
+    if (isProductWithoutStock && dto.sizes && dto.sizes.length > 0) {
+      const validateSizeFormat = (size: string): boolean => {
+        // Format attendu: "5cm*5cm", "10cm*10cm", "5cm x 10cm" ou "20x30cm"
+        const regex = /^\d+(cm|mm)\s*[\*xX]\s*\d+(cm|mm)$/i;
+        return regex.test(size.trim());
+      };
+
+      for (const size of dto.sizes) {
+        if (!validateSizeFormat(size)) {
+          const productType = isTableau ? 'tableau' : 'autocollant';
+          throw new BadRequestException(
+            `Taille de ${productType} invalide: "${size}". Format attendu: "5cm*5cm" ou "20x30cm"`
+          );
+        }
+      }
+    }
 
     // 1. Create file mapping
     const fileMap = new Map<string, Express.Multer.File>();
@@ -1896,15 +2315,19 @@ export class ProductService {
       // 3.2. Create the Product first (without categories and sizes)
       // ✅ UTILISER LA VALEUR ENVOYÉE PAR LE FRONTEND
       const isReadyProduct = dto.isReadyProduct === true;
+      const genreValue = dto.genre || 'UNISEXE';
+      const requiresStockValue = dto.requiresStock ?? true;
+
       console.log('🔍 [BACKEND] createReadyProduct - Valeur finale isReadyProduct:', isReadyProduct);
+      console.log('🔍 [BACKEND] createReadyProduct - Valeur finale requiresStock:', requiresStockValue);
 
       // ✅ LOGS POUR LE GENRE
-      const genreValue = dto.genre || 'UNISEXE';
       console.log('🔍 [BACKEND] createReadyProduct - Genre avant création:', genreValue);
       console.log('🔍 [BACKEND] createReadyProduct - Genre est-il HOMME?', genreValue === 'HOMME');
       console.log('🔍 [BACKEND] createReadyProduct - Genre est-il FEMME?', genreValue === 'FEMME');
       console.log('🔍 [BACKEND] createReadyProduct - Genre est-il BEBE?', genreValue === 'BEBE');
       console.log('🔍 [BACKEND] createReadyProduct - Genre est-il UNISEXE?', genreValue === 'UNISEXE');
+      console.log('🔍 [BACKEND] createReadyProduct - Genre est-il AUTOCOLLANT?', genreValue === 'AUTOCOLLANT');
 
       const product = await tx.product.create({
         data: {
@@ -1912,11 +2335,16 @@ export class ProductService {
           description: dto.description,
           price: dto.price,
           suggestedPrice: dto.suggestedPrice, // ✅ AJOUTER LE CHAMP suggestedPrice
-          stock: dto.stock,
+          stock: isProductWithoutStock ? 0 : (dto.stock ?? 0), // 0 pour AUTOCOLLANT/TABLEAU, sinon la valeur du DTO
           status: dto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT,
           isReadyProduct: isReadyProduct, // ✅ UTILISER LA VALEUR DU DTO
           genre: genreValue as ProductGenre, // ✅ AJOUTER LE CHAMP GENRE
+          requiresStock: requiresStockValue, // ✅ AJOUTER LE CHAMP requiresStock
           isValidated: true, // ✅ PRODUITS PRÊTS CRÉÉS PAR ADMIN SONT VALIDÉS PAR DÉFAUT
+          // 🆕 Champs pour la tarification par taille
+          useGlobalPricing: dto.useGlobalPricing || false,
+          globalCostPrice: dto.globalCostPrice || 0,
+          globalSuggestedPrice: dto.globalSuggestedPrice || 0,
         },
       });
 
@@ -1933,7 +2361,7 @@ export class ProductService {
           skipDuplicates: true,
         });
       }
-      
+
       // 3.4. Create product sizes if provided
       if (dto.sizes && dto.sizes.length > 0) {
         await tx.productSize.createMany({
@@ -1943,6 +2371,19 @@ export class ProductService {
           })),
         });
       }
+
+      // 🆕 3.4.1. Create size pricing if provided
+      if (dto.sizePricing && dto.sizePricing.length > 0) {
+        await tx.productSizePrice.createMany({
+          data: dto.sizePricing.map((pricing) => ({
+            productId: product.id,
+            size: pricing.size,
+            costPrice: pricing.costPrice,
+            suggestedPrice: pricing.suggestedPrice,
+          })),
+        });
+        console.log('✅ [BACKEND] Prix par taille créés:', dto.sizePricing.length);
+      }
       
       // 3.5. Create ColorVariations and ProductImages (sans délimitations)
       for (const colorVar of dto.colorVariations) {
@@ -1951,6 +2392,7 @@ export class ProductService {
             name: colorVar.name,
             colorCode: colorVar.colorCode,
             productId: product.id,
+            price: colorVar.price, // ✅ AJOUTER LE CHAMP price pour les autocollants
           },
         });
 
@@ -2006,6 +2448,7 @@ export class ProductService {
         include: {
           CategoryToProduct: { include: { categories: true } },
           sizes: true,
+          sizePrices: true, // 🆕 Inclure les prix par taille
           colorVariations: {
             include: {
               images: {
@@ -2046,6 +2489,7 @@ export class ProductService {
       include: {
         CategoryToProduct: { include: { categories: true } },
         sizes: true,
+        sizePrices: true, // 🆕 Inclure les prix par taille
         colorVariations: {
           include: {
             images: {
@@ -2071,8 +2515,10 @@ export class ProductService {
 
   async updateReadyProduct(id: number, updateDto: any, files: Express.Multer.File[] = []) {
     // ✅ LOGS DE DÉBOGAGE
+    console.log('🎨 [BACKEND] === MISE À JOUR PRODUIT PRÊT/AUTOCOLLANT ===');
     console.log('🔍 updateReadyProduct - DTO reçu:', JSON.stringify(updateDto, null, 2));
     console.log('🔍 updateReadyProduct - isReadyProduct:', updateDto.isReadyProduct);
+    console.log('🔍 updateReadyProduct - genre:', updateDto.genre);
     console.log('🔍 updateReadyProduct - Files count:', files?.length || 0);
 
     // Vérifier que le produit existe et est un produit prêt
@@ -2095,6 +2541,87 @@ export class ProductService {
 
     if (!existingProduct) {
       throw new NotFoundException('Produit prêt introuvable');
+    }
+
+    const isAutocollant = updateDto.genre === 'AUTOCOLLANT' || existingProduct.genre === 'AUTOCOLLANT';
+    const isTableau = updateDto.genre === 'TABLEAU' || existingProduct.genre === 'TABLEAU';
+    console.log('🎨 [BACKEND] Type de produit:', isAutocollant ? 'AUTOCOLLANT' : (isTableau ? 'TABLEAU' : 'Standard'));
+
+    // ✅ CORRECTION AUTOMATIQUE : Si AUTOCOLLANT/TABLEAU, forcer requiresStock à false
+    const isProductWithoutStock = isAutocollant || isTableau;
+    if (isProductWithoutStock && updateDto.requiresStock !== false) {
+      console.warn('⚠️ [BACKEND] Produit sans stock avec requiresStock=true, correction automatique → false');
+      updateDto.requiresStock = false;
+    }
+
+    // 🆕 VALIDATION DES PRIX PAR TAILLE
+    if (updateDto.sizes && updateDto.sizes.length > 0) {
+      if (!updateDto.sizePricing || updateDto.sizePricing.length === 0) {
+        throw new BadRequestException('Les prix par taille sont requis quand des tailles sont définies');
+      }
+
+      // Vérifier que chaque taille a un prix de vente suggéré > 0
+      const sizesWithoutPrice = updateDto.sizes.filter(size =>
+        !updateDto.sizePricing!.find(p => p.size === size && p.suggestedPrice > 0)
+      );
+
+      if (sizesWithoutPrice.length > 0) {
+        throw new BadRequestException(
+          `Prix de vente suggéré manquant pour les tailles: ${sizesWithoutPrice.join(', ')}`
+        );
+      }
+
+      // Si useGlobalPricing est true, vérifier la cohérence
+      if (updateDto.useGlobalPricing) {
+        if (!updateDto.globalCostPrice || updateDto.globalCostPrice < 0) {
+          throw new BadRequestException('Prix de revient global requis');
+        }
+        if (!updateDto.globalSuggestedPrice || updateDto.globalSuggestedPrice <= 0) {
+          throw new BadRequestException('Prix de vente suggéré global requis et doit être > 0');
+        }
+
+        // Vérifier que tous les prix correspondent aux prix globaux
+        const invalidPrices = updateDto.sizePricing.filter(p =>
+          p.costPrice !== updateDto.globalCostPrice ||
+          p.suggestedPrice !== updateDto.globalSuggestedPrice
+        );
+
+        if (invalidPrices.length > 0) {
+          throw new BadRequestException(
+            'Les prix par taille doivent correspondre aux prix globaux quand useGlobalPricing est true'
+          );
+        }
+      }
+
+      console.log('✅ [BACKEND] Prix par taille validés:', updateDto.sizePricing.length);
+    }
+
+    // ✅ Valider le prix des variations pour AUTOCOLLANT/TABLEAU
+    if (isProductWithoutStock && updateDto.colorVariations) {
+      for (const variation of updateDto.colorVariations) {
+        if (!variation.price || variation.price <= 0) {
+          throw new BadRequestException(
+            `Les variations AUTOCOLLANT doivent avoir un prix. Variation "${variation.name}" sans prix.`
+          );
+        }
+      }
+    }
+
+    // ✅ Valider le format des tailles d'autocollant
+    if (isAutocollant && updateDto.sizes && updateDto.sizes.length > 0) {
+      const validateAutocollantSize = (size: string): boolean => {
+        // Format attendu: "5cm*5cm", "10cm*10cm", "5cm x 10cm"
+        const regex = /^\d+(cm|mm)\s*[\*x]\s*\d+(cm|mm)$/i;
+        return regex.test(size.trim());
+      };
+
+      for (const size of updateDto.sizes) {
+        if (typeof size === 'string' && !validateAutocollantSize(size)) {
+          throw new BadRequestException(
+            `Taille d'autocollant invalide: "${size}". Format attendu: "5cm*5cm" ou "10cm*10cm"`
+          );
+        }
+      }
     }
 
     // 1. Create file mapping if files are provided
@@ -2146,15 +2673,26 @@ export class ProductService {
       if (updateDto.name) updateData.name = updateDto.name;
       if (updateDto.description) updateData.description = updateDto.description;
       if (updateDto.price) updateData.price = updateDto.price;
-      if (updateDto.suggestedPrice !== undefined) updateData.suggestedPrice = updateDto.suggestedPrice; // ✅ AJOUTER LE CHAMP suggestedPrice
-      if (updateDto.stock !== undefined) updateData.stock = updateDto.stock;
+      if (updateDto.suggestedPrice !== undefined) updateData.suggestedPrice = updateDto.suggestedPrice;
+      if (updateDto.requiresStock !== undefined) {
+        updateData.requiresStock = updateDto.requiresStock;
+        // Si on désactive la gestion de stock (AUTOCOLLANT), mettre le stock à 0 (pas null car la colonne n'est pas nullable)
+        if (updateDto.requiresStock === false) {
+          updateData.stock = 0;
+        }
+      }
+      if (updateDto.stock !== undefined && updateData.requiresStock !== false) updateData.stock = updateDto.stock;
       if (updateDto.status) {
         updateData.status = updateDto.status === 'published' ? PublicationStatus.PUBLISHED : PublicationStatus.DRAFT;
       }
       if (updateDto.isReadyProduct !== undefined) {
         updateData.isReadyProduct = updateDto.isReadyProduct === true;
       }
-      if (updateDto.genre) updateData.genre = updateDto.genre; // ← NOUVEAU: Ajouter le champ genre
+      if (updateDto.genre) updateData.genre = updateDto.genre;
+      // 🆕 Champs pour la tarification par taille
+      if (updateDto.useGlobalPricing !== undefined) updateData.useGlobalPricing = updateDto.useGlobalPricing;
+      if (updateDto.globalCostPrice !== undefined) updateData.globalCostPrice = updateDto.globalCostPrice;
+      if (updateDto.globalSuggestedPrice !== undefined) updateData.globalSuggestedPrice = updateDto.globalSuggestedPrice;
 
       if (Object.keys(updateData).length > 0) {
         await tx.product.update({
@@ -2206,6 +2744,27 @@ export class ProductService {
         }
       }
 
+      // 🆕 3.3.1. Update size pricing if provided
+      if (updateDto.sizePricing) {
+        // Remove existing size prices
+        await tx.productSizePrice.deleteMany({
+          where: { productId: id },
+        });
+
+        // Add new size prices
+        if (updateDto.sizePricing.length > 0) {
+          await tx.productSizePrice.createMany({
+            data: updateDto.sizePricing.map((pricing: any) => ({
+              productId: id,
+              size: pricing.size,
+              costPrice: pricing.costPrice,
+              suggestedPrice: pricing.suggestedPrice,
+            })),
+          });
+          console.log('✅ [BACKEND] Prix par taille mis à jour:', updateDto.sizePricing.length);
+        }
+      }
+
       // 3.4. Update color variations and images if provided
       if (updateDto.colorVariations) {
         // Remove existing color variations and their images
@@ -2225,6 +2784,7 @@ export class ProductService {
               name: colorVar.name,
               colorCode: colorVar.colorCode,
               productId: id,
+              price: colorVar.price, // ✅ AJOUTER LE CHAMP price pour les autocollants
             },
           });
 
@@ -2290,6 +2850,7 @@ export class ProductService {
         include: {
           CategoryToProduct: { include: { categories: true } },
           sizes: true,
+          sizePrices: true, // 🆕 Inclure les prix par taille
           colorVariations: {
             include: {
               images: {

@@ -289,15 +289,36 @@ export class CustomizationValidator {
   /**
    * Valide et lance une exception si les données sont invalides
    * Utilise validateCustomizationData et lance BadRequestException si erreurs
+   *
+   * 🔧 MODIFICATION: Rendre la validation plus tolérante pour éviter les blocages
+   * - Les erreurs de format de clé sont des warnings (ne bloquent pas)
+   * - Les erreurs de coordonnées hors limites sont des warnings
+   * - Seules les erreurs critiques bloquent (null, types incorrects, arrays vides)
    */
   static validateOrThrow(itemData: any): void {
     const result = this.validateCustomizationData(itemData);
 
     if (!result.isValid) {
-      throw new BadRequestException({
-        message: 'Données de customisation invalides',
-        errors: result.errors
-      });
+      // 🔍 Séparer les erreurs critiques des warnings
+      const criticalErrors = result.errors.filter(err =>
+        !err.includes('Format invalide pour') &&
+        !err.includes('hors limites') &&
+        !err.includes('dimensions de référence suspectes')
+      );
+
+      // Si il y a des erreurs critiques, lancer l'exception
+      if (criticalErrors.length > 0) {
+        console.error(`❌ [CUSTOMIZATION] Erreurs critiques de validation:`, criticalErrors);
+        throw new BadRequestException({
+          message: 'Données de customisation invalides',
+          errors: criticalErrors
+        });
+      }
+
+      // Sinon, log les warnings mais continuer
+      if (result.errors.length > 0) {
+        console.warn(`⚠️ [CUSTOMIZATION] Warnings de validation (non bloquants):`, result.errors);
+      }
     }
   }
 }

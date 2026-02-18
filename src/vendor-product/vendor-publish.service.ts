@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { SaveDesignPositionDto } from './dto/save-design-position.dto';
 import { DesignPositionService } from './services/design-position.service';
 import { ProductPreviewGeneratorService } from './services/product-preview-generator.service';
+import { ImageGenerationQueueService } from './services/image-generation-queue.service';
 import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
 import {
   formatDesignPositions,
@@ -25,6 +26,7 @@ export class VendorPublishService {
     private readonly cloudinaryService: CloudinaryService,
     private readonly designPositionService: DesignPositionService,
     private readonly previewGenerator: ProductPreviewGeneratorService,
+    private readonly imageGenerationQueue: ImageGenerationQueueService,
     private readonly vendorFundsService: VendorFundsService,
   ) {}
 
@@ -144,22 +146,27 @@ export class VendorPublishService {
       this.logger.log(`✅ Création produit réel avec design: ${design.id} - ${design.name}`);
 
       // ✅ CRÉATION PRODUIT VENDEUR RÉEL
+      // Si le vendeur ne fournit pas de description, on utilise celle du produit admin
+      const finalDescription = publishDto.vendorDescription && publishDto.vendorDescription.trim().length > 0
+        ? publishDto.vendorDescription
+        : publishDto.productStructure.adminProduct.description;
+
       const vendorProduct = await this.prisma.vendorProduct.create({
         data: {
           baseProductId: publishDto.baseProductId,
           vendorId: vendorId,
-          
+
           // ✅ INFORMATIONS VENDEUR
           name: publishDto.vendorName,
-          description: publishDto.vendorDescription,
+          description: finalDescription,
           price: publishDto.vendorPrice,
           stock: publishDto.vendorStock,
-          
+
           // ✅ CONSERVATION STRUCTURE ADMIN
           adminProductName: publishDto.productStructure.adminProduct.name,
           adminProductDescription: publishDto.productStructure.adminProduct.description,
           adminProductPrice: publishDto.productStructure.adminProduct.price,
-          
+
           // ✅ LIAISON DESIGN EXISTANT
           designId: design.id,
           designCloudinaryUrl: design.imageUrl,
@@ -167,15 +174,20 @@ export class VendorPublishService {
           designPositioning: 'CENTER',
           designScale: publishDto.productStructure.designApplication.scale || 0.6,
           designApplicationMode: 'PRESERVED',
-          
+
           // 🆕 INFORMATIONS DE POSITION ET DIMENSIONS DU DESIGN
           designWidth: designWidth,
           designHeight: designHeight,
-          
+
           // ✅ SÉLECTIONS VENDEUR
           sizes: JSON.stringify(publishDto.selectedSizes),
           colors: JSON.stringify(publishDto.selectedColors),
           defaultColorId: publishDto.defaultColorId,
+
+          // 🆕 PRIX PAR TAILLE
+          useGlobalPricing: (publishDto as any).useGlobalPricing ?? false,
+          globalCostPrice: (publishDto as any).globalCostPrice,
+          globalSuggestedPrice: (publishDto as any).globalSuggestedPrice,
 
           // ✅ STATUT ET VALIDATION
           status: publishDto.forcedStatus || (
@@ -185,10 +197,10 @@ export class VendorPublishService {
           ),
           isValidated: design.isValidated,
           postValidationAction: publishDto.postValidationAction || 'AUTO_PUBLISH',
-          
+
           // ✅ MÉTADONNÉES COMPATIBILITÉ
           vendorName: publishDto.vendorName,
-          vendorDescription: publishDto.vendorDescription,
+          vendorDescription: finalDescription,
           vendorStock: publishDto.vendorStock,
           basePriceAdmin: publishDto.productStructure.adminProduct.price,
         },
@@ -206,6 +218,55 @@ export class VendorPublishService {
       } catch (linkError) {
         if (linkError.code !== 'P2002') {
           this.logger.error('❌ Erreur création lien design-produit:', linkError);
+        }
+      }
+
+      // 💰 CRÉATION DES PRIX PAR TAILLE (si fournis)
+      const sizePricing = (publishDto as any).sizePricing;
+      if (sizePricing && Array.isArray(sizePricing) && sizePricing.length > 0) {
+        this.logger.log(`💰 Création de ${sizePricing.length} prix par taille pour le vendeur...`);
+
+        const sizePricesData = sizePricing.map((sp: any) => ({
+          vendorProductId: vendorProduct.id,
+          size: sp.size,
+          costPrice: sp.costPrice,
+          suggestedPrice: sp.suggestedPrice,
+          salePrice: sp.salePrice ?? sp.suggestedPrice, // Utiliser le prix personnalisé ou le prix suggéré
+        }));
+
+        try {
+          await this.prisma.vendorProductSizePrice.createMany({
+            data: sizePricesData
+          });
+          this.logger.log(`✅ ${sizePricesData.length} prix par taille créés`);
+        } catch (sizePriceError) {
+          this.logger.error(`❌ Erreur création prix par taille:`, sizePriceError);
+        }
+      } else {
+        // 🆕 Fallback: Récupérer les prix par taille du produit admin
+        this.logger.log(`💰 Récupération des prix par taille depuis le produit admin...`);
+        try {
+          const baseProductWithPrices = await this.prisma.product.findUnique({
+            where: { id: publishDto.baseProductId },
+            include: { sizePrices: true }
+          });
+
+          if (baseProductWithPrices?.sizePrices && baseProductWithPrices.sizePrices.length > 0) {
+            const sizePricesData = baseProductWithPrices.sizePrices.map(sp => ({
+              vendorProductId: vendorProduct.id,
+              size: sp.size,
+              costPrice: sp.costPrice,
+              suggestedPrice: sp.suggestedPrice,
+              salePrice: sp.suggestedPrice, // Prix de vente par défaut = prix suggéré
+            }));
+
+            await this.prisma.vendorProductSizePrice.createMany({
+              data: sizePricesData
+            });
+            this.logger.log(`✅ ${sizePricesData.length} prix par taille copiés depuis le produit admin`);
+          }
+        } catch (fallbackError) {
+          this.logger.warn(`⚠️ Impossible de copier les prix par taille depuis le produit admin:`, fallbackError);
         }
       }
 
@@ -235,154 +296,42 @@ export class VendorPublishService {
         }
       }
 
-      // 🎨 GÉNÉRATION AUTOMATIQUE DES IMAGES FINALES POUR CHAQUE COULEUR
-      try {
-        this.logger.log(`🎨 Génération images finales pour produit ${vendorProduct.id}...`);
-        this.logger.log(`📊 Nombre de couleurs sélectionnées: ${publishDto.selectedColors.length}`);
-        this.logger.log(`📊 positionData normalisée: ${JSON.stringify(positionData)}`);
+      // 🎨 GÉNÉRATION ASYNCHRONE DES IMAGES FINALES (NON-BLOQUANTE)
+      // 🔥 RÉPONSE IMMÉDIATE - Les images sont générées en arrière-plan
 
-        if (!positionData) {
-          this.logger.warn(`⚠️ Aucune position de design fournie`);
-        } else {
-          let firstImageUrl: string | null = null;
-          let firstImagePublicId: string | null = null;
+      // 🔍 Récupérer le baseProduct pour vérifier son genre (AUTOCOLLANT)
+      const baseProduct = await this.prisma.product.findUnique({
+        where: { id: publishDto.baseProductId },
+        select: { genre: true, name: true }
+      });
 
-          // Générer une image pour chaque couleur sélectionnée
-          for (const selectedColor of publishDto.selectedColors) {
-            try {
-              this.logger.log(`🎨 Génération image pour couleur ${selectedColor.name} (ID: ${selectedColor.id})...`);
+      const isSticker = baseProduct?.genre === 'AUTOCOLLANT';
+      const totalColors = publishDto.selectedColors.length;
 
-              // Récupérer la variation de couleur avec ses images et délimitations
-              const colorVariation = await this.prisma.colorVariation.findUnique({
-                where: { id: selectedColor.id },
-                include: {
-                  images: {
-                    include: {
-                      delimitations: true,
-                    },
-                    take: 1,
-                  },
-                },
-              });
+      // 🚀 LANCER LA GÉNÉRATION EN ARRIÈRE-PLAN (NON-BLOQUANT)
+      if (positionData) {
+        // Lancer la génération sans attendre - ne bloque pas la réponse
+        setImmediate(async () => {
+          try {
+            this.logger.log(`🚀 [ASYNC] Début génération asynchrone pour produit ${vendorProduct.id}`);
 
-              if (!colorVariation) {
-                this.logger.warn(`⚠️ ColorVariation ${selectedColor.id} introuvable`);
-                continue;
-              }
+            await this.imageGenerationQueue.generateImagesInBackground(
+              vendorProduct.id,
+              publishDto.selectedColors,
+              design,
+              positionData,
+              isSticker,
+            );
 
-              const productImage = colorVariation.images[0];
-              if (!productImage) {
-                this.logger.warn(`⚠️ Aucune image trouvée pour la couleur ${selectedColor.name}`);
-                continue;
-              }
-
-              // Récupérer la délimitation
-              const delimitation = productImage.delimitations?.[0];
-
-              this.logger.log(`🔍 DÉLIMITATION:`, {
-                found: !!delimitation,
-                delimitationsCount: productImage.delimitations?.length || 0,
-                data: delimitation ? {
-                  x: delimitation.x,
-                  y: delimitation.y,
-                  width: delimitation.width,
-                  height: delimitation.height,
-                  coordinateType: delimitation.coordinateType,
-                } : null
-              });
-
-              this.logger.log(`🔍 DESIGN URL: ${design.imageUrl}`);
-              this.logger.log(`🔍 PRODUCT IMAGE URL: ${productImage.url}`);
-              this.logger.log(`🔍 POSITION DATA:`, JSON.stringify(positionData));
-
-              const delimitationData = delimitation ? {
-                x: delimitation.x,
-                y: delimitation.y,
-                width: delimitation.width,
-                height: delimitation.height,
-                coordinateType: delimitation.coordinateType as 'PERCENTAGE' | 'PIXEL',
-                originalImageWidth: delimitation.originalImageWidth,
-                originalImageHeight: delimitation.originalImageHeight,
-                referenceWidth: delimitation.referenceWidth,
-                referenceHeight: delimitation.referenceHeight,
-              } : {
-                x: 0,
-                y: 0,
-                width: 100,
-                height: 100,
-                coordinateType: 'PERCENTAGE' as const,
-              };
-
-              // Générer l'image finale
-              // 🔴 DEBUG: showDelimitation=true pour tracer la délimitation en rouge
-              this.logger.log(`🎨 Génération image finale avec showDelimitation=true...`);
-              const finalImageBuffer = await this.previewGenerator.generatePreviewFromJson(
-                productImage.url,
-                design.imageUrl,
-                delimitationData,
-                positionData,
-                true  // ⚠️ DEBUG: Afficher la délimitation en rouge
-              );
-
-              this.logger.log(`✅ Image finale générée pour ${selectedColor.name} (${finalImageBuffer.length} bytes)`);
-
-              // Upload sur Cloudinary
-              const uploadResult = await this.cloudinaryService.uploadBuffer(finalImageBuffer, {
-                folder: 'vendor-product-finals',
-                public_id: `final_${vendorProduct.id}_color_${selectedColor.id}_${Date.now()}`,
-                resource_type: 'image',
-              });
-
-              this.logger.log(`☁️ Image uploadée pour ${selectedColor.name}: ${uploadResult.secure_url}`);
-
-              // Sauvegarder la première image dans VendorProduct
-              if (!firstImageUrl) {
-                firstImageUrl = uploadResult.secure_url;
-                firstImagePublicId = uploadResult.public_id;
-              }
-
-              // Créer l'entrée VendorProductImage avec l'image finale dans un champ séparé
-              await this.prisma.vendorProductImage.create({
-                data: {
-                  vendorProductId: vendorProduct.id,
-                  colorId: selectedColor.id,
-                  colorName: selectedColor.name,
-                  colorCode: selectedColor.colorCode,
-                  imageType: 'final',
-                  // Image mockup de référence (sans design)
-                  cloudinaryUrl: productImage.url,
-                  cloudinaryPublicId: this.extractPublicIdFromUrl(productImage.url),
-                  // Image finale avec design positionné
-                  finalImageUrl: uploadResult.secure_url,
-                  finalImagePublicId: uploadResult.public_id,
-                  width: uploadResult.width || null,
-                  height: uploadResult.height || null,
-                },
-              });
-
-              this.logger.log(`💾 Image finale sauvegardée dans VendorProductImage.finalImageUrl pour couleur ${selectedColor.name}`);
-            } catch (colorError) {
-              this.logger.error(`❌ Erreur génération image pour couleur ${selectedColor.name}: ${colorError.message}`);
-            }
+            this.logger.log(`✅ [ASYNC] Génération terminée pour produit ${vendorProduct.id}`);
+          } catch (error) {
+            this.logger.error(`❌ [ASYNC] Erreur génération pour produit ${vendorProduct.id}:`, error);
           }
+        });
 
-          // Mettre à jour VendorProduct avec la première image générée
-          if (firstImageUrl) {
-            await this.prisma.vendorProduct.update({
-              where: { id: vendorProduct.id },
-              data: {
-                finalImageUrl: firstImageUrl,
-                finalImagePublicId: firstImagePublicId,
-              },
-            });
-            this.logger.log(`💾 Première image sauvegardée dans VendorProduct.finalImageUrl`);
-          }
-        }
-      } catch (imageError) {
-        // Ne pas bloquer la création du produit si la génération d'image échoue
-        this.logger.error(`❌ Erreur génération images finales: ${imageError.message}`);
-        this.logger.error(`❌ Stack: ${imageError.stack}`);
-        this.logger.warn(`⚠️ Produit créé sans images finales, peuvent être régénérées plus tard`);
+        this.logger.log(`⏱️ [ASYNC] Génération lancée en arrière-plan pour ${totalColors} couleurs`);
+      } else {
+        this.logger.warn(`⚠️ Aucune position de design fournie - génération d'images skipée`);
       }
 
       // ✅ Images admin de référence déjà incluses dans VendorProductImage.cloudinaryUrl
@@ -390,16 +339,14 @@ export class VendorPublishService {
 
       this.logger.log(`✅ Produit vendeur réel ${vendorProduct.id} créé avec design ${design.id}`);
 
-      // Récupérer le produit mis à jour avec l'image finale
-      const updatedProduct = await this.prisma.vendorProduct.findUnique({
-        where: { id: vendorProduct.id },
-        select: { finalImageUrl: true, finalImagePublicId: true },
-      });
+      // ⏱️ ESTIMATION POUR LE FRONTEND (basé sur les temps observés)
+      const ESTIMATED_TIME_PER_COLOR = 3000; // 3 secondes par couleur
+      const totalEstimatedTime = totalColors * ESTIMATED_TIME_PER_COLOR;
 
       return {
         success: true,
         productId: vendorProduct.id,
-        message: `Produit créé avec design "${design.name}"`,
+        message: `Produit créé avec design "${design.name}". Génération d'images en cours...`,
         status: vendorProduct.status,
         needsValidation: !design.isValidated,
         imagesProcessed: 0,
@@ -407,7 +354,22 @@ export class VendorPublishService {
         designUrl: design.imageUrl,
         designId: design.id,
         isDesignReused: true,
-        finalImageUrl: updatedProduct?.finalImageUrl || null,
+        finalImageUrl: null, // Sera mis à jour quand la génération terminera
+        // ⏱️ TIMING: Informations pour le frontend
+        timing: {
+          isAsync: true, // Flag indiquant que la génération est asynchrone
+          totalColors,
+          colorsProcessed: 0,
+          colorsRemaining: totalColors,
+          // Estimations basées sur les temps observés
+          estimatedTimePerImage: ESTIMATED_TIME_PER_COLOR,
+          estimatedTotalTime: totalEstimatedTime,
+          // Pour polling
+          canCheckStatus: true,
+          statusEndpoint: `/vendor/products-queue/status/${vendorProduct.id}`,
+          // Message pour l'utilisateur
+          userMessage: `Génération des images en cours... environ ${Math.round(totalEstimatedTime / 1000)} secondes`,
+        },
       };
 
     } catch (error) {
@@ -428,12 +390,8 @@ export class VendorPublishService {
       );
     }
 
-    // ✅ VALIDATION DESCRIPTION - Vérifier qu'elle n'est pas vide
-    if (!publishDto.vendorDescription || publishDto.vendorDescription.trim().length === 0) {
-      throw new BadRequestException(
-        'La description du produit est requise.'
-      );
-    }
+    // ✅ VALIDATION DESCRIPTION - Si pas de description vendeur, on utilisera celle du produit admin
+    // Pas d'erreur ici, la logique est gérée dans publishProduct
 
     this.logger.log(`✅ Validation produit vendeur: "${publishDto.vendorName}" - OK`);
   }
@@ -639,8 +597,15 @@ export class VendorPublishService {
                 colorCode: true,
                 cloudinaryUrl: true,
                 imageType: true,
+                finalImageUrl: true,
+                finalImagePublicId: true,
+                colorId: true,
                 createdAt: true
               }
+            },
+            // 💰 Prix par taille
+            sizePrices: {
+              orderBy: { size: 'asc' }
             },
             // ✅ CORRECTION: Inclure le design sans les relations multiples
             design: {
@@ -730,7 +695,7 @@ export class VendorPublishService {
           salesCount: 0, // Valeur par défaut
           totalRevenue: 0 // Valeur par défaut
         },
-          
+
         // ✅ STRUCTURE ADMIN CONSERVÉE COMPLÈTE avec délimitations
         adminProduct: {
           id: product.baseProduct.id,
@@ -743,23 +708,31 @@ export class VendorPublishService {
             name: tp.theme.name,
             category: tp.theme.category
           })) || [],
-          colorVariations: product.baseProduct.colorVariations.map(cv => ({
-            id: cv.id,
-            name: cv.name,
-            colorCode: cv.colorCode,
-            images: cv.images.map(img => ({
-              id: img.id,
-              url: img.url,
-              viewType: img.view,
-              delimitations: img.delimitations.map(d => ({
-                x: d.x,
-                y: d.y,
-                width: d.width,
-                height: d.height,
-                coordinateType: d.coordinateType
+          colorVariations: product.baseProduct.colorVariations.map(cv => {
+            // Trouver l'image finale pour cette couleur dans les images du vendorProduct
+            const finalImageForColor = product.images.find((img: any) =>
+              img.colorId === cv.id && img.imageType === 'final'
+            );
+
+            return {
+              id: cv.id,
+              name: cv.name,
+              colorCode: cv.colorCode,
+              finalUrlImage: finalImageForColor?.finalImageUrl || null,
+              images: cv.images.map(img => ({
+                id: img.id,
+                url: img.url,
+                viewType: img.view,
+                delimitations: img.delimitations.map(d => ({
+                  x: d.x,
+                  y: d.y,
+                  width: d.width,
+                  height: d.height,
+                  coordinateType: d.coordinateType
+                }))
               }))
-            }))
-          }))
+            };
+          })
         },
 
         // ✅ APPLICATION DESIGN COMPLÈTE avec Cloudinary URL
@@ -827,7 +800,19 @@ export class VendorPublishService {
         selectedSizes: this.parseJsonSafely(product.sizes),
         selectedColors: this.parseJsonSafely(product.colors),
         defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
-        designId: product.designId // Expose le designId
+        designId: product.designId, // Expose le designId
+
+        // 💰 PRIX PAR TAILLE
+        priceRange: this.calculatePriceRange(product),
+        useGlobalPricing: product.useGlobalPricing,
+        globalCostPrice: product.globalCostPrice,
+        globalSuggestedPrice: product.globalSuggestedPrice,
+        sizePrices: (product.sizePrices || []).map((sp: any) => ({
+          size: sp.size,
+          costPrice: sp.costPrice,
+          suggestedPrice: sp.suggestedPrice,
+          salePrice: sp.salePrice,
+        }))
       }));
 
       // ✅ MÉTRIQUE SANTÉ (toujours 100% en nouvelle architecture)
@@ -933,7 +918,23 @@ export class VendorPublishService {
               updatedAt: true
             }
           },
-          images: true
+          images: {
+            select: {
+              id: true,
+              colorName: true,
+              colorCode: true,
+              cloudinaryUrl: true,
+              imageType: true,
+              finalImageUrl: true,
+              finalImagePublicId: true,
+              colorId: true,
+              createdAt: true
+            }
+          },
+          // 💰 Prix par taille
+          sizePrices: {
+            orderBy: { size: 'asc' }
+          }
         }
       });
 
@@ -969,23 +970,31 @@ export class VendorPublishService {
             name: tp.theme.name,
             category: tp.theme.category
           })) || [],
-          colorVariations: product.baseProduct.colorVariations.map(cv => ({
-            id: cv.id,
-            name: cv.name,
-            colorCode: cv.colorCode,
-            images: cv.images.map(img => ({
-              id: img.id,
-              url: img.url,
-              viewType: img.view,
-              delimitations: img.delimitations.map(d => ({
-                x: d.x,
-                y: d.y,
-                width: d.width,
-                height: d.height,
-                coordinateType: d.coordinateType
+          colorVariations: product.baseProduct.colorVariations.map(cv => {
+            // Trouver l'image finale pour cette couleur dans les images du vendorProduct
+            const finalImageForColor = product.images.find((img: any) =>
+              img.colorId === cv.id && img.imageType === 'final'
+            );
+
+            return {
+              id: cv.id,
+              name: cv.name,
+              colorCode: cv.colorCode,
+              finalUrlImage: finalImageForColor?.finalImageUrl || null,
+              images: cv.images.map(img => ({
+                id: img.id,
+                url: img.url,
+                viewType: img.view,
+                delimitations: img.delimitations.map(d => ({
+                  x: d.x,
+                  y: d.y,
+                  width: d.width,
+                  height: d.height,
+                  coordinateType: d.coordinateType
+                }))
               }))
-            }))
-          }))
+            };
+          })
         },
 
         // ✅ APPLICATION DESIGN COMPLÈTE avec Cloudinary URL
@@ -1043,6 +1052,18 @@ export class VendorPublishService {
 
         // ✅ NOUVEAU: Ajout du designId pour compatibilité
         designId: product.designId,
+
+        // 💰 PRIX PAR TAILLE
+        priceRange: this.calculatePriceRange(product),
+        useGlobalPricing: product.useGlobalPricing,
+        globalCostPrice: product.globalCostPrice,
+        globalSuggestedPrice: product.globalSuggestedPrice,
+        sizePrices: (product.sizePrices || []).map((sp: any) => ({
+          size: sp.size,
+          costPrice: sp.costPrice,
+          suggestedPrice: sp.suggestedPrice,
+          salePrice: sp.salePrice,
+        })),
 
         createdAt: product.createdAt,
         updatedAt: product.updatedAt
@@ -1354,6 +1375,37 @@ export class VendorPublishService {
       }
     }
     return jsonString || [];
+  }
+
+  /**
+   * 💰 Calcule la plage de prix (min/max) à partir des prix par taille
+   */
+  private calculatePriceRange(product: any): { min: number; max: number; display: string; hasMultiplePrices: boolean } {
+    const sizePrices = product.sizePrices || [];
+
+    if (sizePrices.length === 0) {
+      // Fallback: utiliser le prix standard du produit
+      return {
+        min: product.price,
+        max: product.price,
+        display: `${product.price} FCFA`,
+        hasMultiplePrices: false
+      };
+    }
+
+    // Calculer les prix min/max en utilisant salePrice ou suggestedPrice
+    const prices = sizePrices.map((sp: any) => sp.salePrice || sp.suggestedPrice);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+
+    return {
+      min,
+      max,
+      display: min === max
+        ? `${min} FCFA`
+        : `De ${min} à ${max} FCFA`,
+      hasMultiplePrices: min !== max
+    };
   }
 
   private extractPublicIdFromUrl(url: string): string {
@@ -2662,10 +2714,27 @@ export class VendorPublishService {
                     }
                   }
                 }
-              }
+              },
+              sizes: true,
+              sizePrices: true
             }
           },
-          design: true
+          design: true,
+          // ✅ AJOUT: Récupérer les images finales avec finalImageUrl pour chaque couleur
+          images: {
+            select: {
+              id: true,
+              colorId: true,
+              colorName: true,
+              colorCode: true,
+              imageType: true,
+              finalImageUrl: true,
+              finalImagePublicId: true,
+              cloudinaryUrl: true
+            }
+          },
+          // ✅ AJOUT: Récupérer les prix par taille du produit vendeur
+          sizePrices: true
         },
         orderBy: [
           { createdAt: 'desc' }
@@ -2765,7 +2834,9 @@ export class VendorPublishService {
                     }
                   }
                 }
-              }
+              },
+              sizes: true,
+              sizePrices: true
             }
           },
           design: true,
@@ -2785,7 +2856,9 @@ export class VendorPublishService {
               finalImagePublicId: true,
               cloudinaryUrl: true
             }
-          }
+          },
+          // ✅ AJOUT: Récupérer les prix par taille du produit vendeur
+          sizePrices: true
         }
       });
 
@@ -2816,6 +2889,154 @@ export class VendorPublishService {
       return enrichedProduct;
     } catch (error) {
       this.logger.error(`❌ Erreur récupération détails produit public: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ PRODUITS AVEC MÊME DESIGN - Récupère tous les autres produits avec le même design
+   */
+  async getPublicProductsWithSameDesign(productId: number, options: { limit?: number } = {}) {
+    this.logger.log(`🎨 Récupération produits avec même design que le produit ${productId}`);
+
+    try {
+      // 1. Récupérer le produit original pour obtenir son designId
+      const originalProduct = await this.prisma.vendorProduct.findFirst({
+        where: {
+          id: productId,
+          isDelete: false
+        },
+        select: {
+          id: true,
+          designId: true,
+          design: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      if (!originalProduct) {
+        throw new NotFoundException(`Produit ${productId} introuvable`);
+      }
+
+      if (!originalProduct.designId) {
+        this.logger.log(`⚠️ Produit ${productId} n'a pas de design`);
+        return {
+          designId: null,
+          designName: null,
+          products: [],
+          total: 0,
+          message: 'Ce produit n\'a pas de design associé'
+        };
+      }
+
+      this.logger.log(`🎨 Design trouvé: ${originalProduct.design.name} (id: ${originalProduct.designId})`);
+
+      // 2. Récupérer tous les autres produits avec le même design (PUBLISHED uniquement)
+      const { limit = 20 } = options;
+
+      const [products, totalCount] = await Promise.all([
+        this.prisma.vendorProduct.findMany({
+          where: {
+            designId: originalProduct.designId,
+            id: { not: productId }, // Exclure le produit original
+            isDelete: false,
+            status: 'PUBLISHED',
+            vendor: { status: true } // Seulement vendeurs actifs
+          },
+          include: {
+            vendor: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                shop_name: true,
+                profile_photo_url: true
+              }
+            },
+            baseProduct: {
+              include: {
+                colorVariations: {
+                  include: {
+                    images: {
+                      include: {
+                        delimitations: true
+                      }
+                    }
+                  }
+                },
+                sizes: true,
+                sizePrices: true
+              }
+            },
+            design: true,
+            designPositions: true,
+            images: {
+              where: { imageType: 'final' },
+              select: {
+                id: true,
+                colorId: true,
+                colorName: true,
+                colorCode: true,
+                finalImageUrl: true,
+                finalImagePublicId: true,
+                cloudinaryUrl: true
+              }
+            },
+            // ✅ AJOUT: Récupérer les prix par taille du produit vendeur
+            sizePrices: true
+          },
+          orderBy: { createdAt: 'desc' },
+          take: limit
+        }),
+        this.prisma.vendorProduct.count({
+          where: {
+            designId: originalProduct.designId,
+            id: { not: productId },
+            isDelete: false,
+            status: 'PUBLISHED',
+            vendor: { status: true }
+          }
+        })
+      ]);
+
+      // 3. Formater les produits avec finalUrlImage pour chaque couleur
+      const formattedProducts = await Promise.all(
+        products.map(async (product) => {
+          const enriched = await this.enrichVendorProductWithCompleteStructure(product);
+
+          // Ajouter finalUrlImage à chaque colorVariation
+          const colorVariationsWithFinal = enriched.adminProduct.colorVariations.map((cv: any) => {
+            const finalImage = product.images.find((img: any) => img.colorId === cv.id);
+            return {
+              ...cv,
+              finalUrlImage: finalImage?.finalImageUrl || null
+            };
+          });
+
+          return {
+            ...enriched,
+            adminProduct: {
+              ...enriched.adminProduct,
+              colorVariations: colorVariationsWithFinal
+            }
+          };
+        })
+      );
+
+      this.logger.log(`✅ ${formattedProducts.length} produits trouvés avec le design ${originalProduct.design.name} (total: ${totalCount})`);
+
+      return {
+        designId: originalProduct.designId,
+        designName: originalProduct.design.name,
+        products: formattedProducts,
+        total: totalCount
+      };
+    } catch (error) {
+      this.logger.error(`❌ Erreur récupération produits même design: ${error.message}`);
       throw error;
     }
   }
@@ -2988,7 +3209,18 @@ export class VendorPublishService {
         description: product.baseProduct.description,
         price: product.baseProduct.price,
         genre: product.baseProduct.genre,
-        colorVariations: product.baseProduct.colorVariations || [],
+        // ✅ AJOUT: Inclure finalUrlImage pour chaque couleur
+        colorVariations: (product.baseProduct.colorVariations || []).map((cv: any) => {
+          // Trouver l'image finale pour cette couleur dans les images du vendorProduct
+          const finalImageForColor = product.images?.find((img: any) =>
+            img.colorId === cv.id && img.imageType === 'final'
+          );
+
+          return {
+            ...cv,
+            finalUrlImage: finalImageForColor?.finalImageUrl || null
+          };
+        }),
         sizes: product.baseProduct.sizes || []
       };
 
@@ -3061,6 +3293,23 @@ export class VendorPublishService {
       const selectedSizes = this.parseJsonSafely(product.sizes) || [];
       const selectedColors = this.parseJsonSafely(product.colors) || [];
 
+      // ✅ TAILLES AVEC PRIX - Combiner les tailles du produit de base avec les prix
+      const sizesWithPrices = (product.baseProduct.sizes || []).map((size: any) => {
+        // Chercher le prix spécifique pour ce produit vendeur
+        const vendorSizePrice = product.sizePrices?.find((sp: any) => sp.size === size.sizeName);
+        // Chercher le prix par défaut du produit de base
+        const baseSizePrice = product.baseProduct.sizePrices?.find((sp: any) => sp.size === size.sizeName);
+
+        return {
+          id: size.id,
+          sizeName: size.sizeName,
+          // Priorité: prix vendeur > prix base > prix global du produit
+          costPrice: vendorSizePrice?.costPrice || baseSizePrice?.costPrice || product.baseProduct.price || 0,
+          suggestedPrice: vendorSizePrice?.suggestedPrice || baseSizePrice?.suggestedPrice || Math.round((product.baseProduct.price || 0) * 1.4),
+          salePrice: vendorSizePrice?.salePrice || null
+        };
+      });
+
       return {
         id: product.id,
         vendorName: product.name,
@@ -3110,7 +3359,25 @@ export class VendorPublishService {
         selectedSizes,
         selectedColors,
         defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
-        designId: product.designId
+        designId: product.designId,
+
+        // 📏 TAILLES AVEC PRIX
+        sizesWithPrices,
+
+        // 🆕 PRIX PAR TAILLE - Format cohérent avec /public/new-arrivals
+        sizes: product.baseProduct?.sizes?.map((size: any) => ({
+          id: size.id,
+          sizeName: size.sizeName
+        })) || [],
+        sizePricing: product.sizePrices?.map((sp: any) => ({
+          size: sp.size,
+          costPrice: sp.costPrice,
+          suggestedPrice: sp.suggestedPrice,
+          salePrice: sp.salePrice ?? sp.suggestedPrice
+        })) || [],
+        useGlobalPricing: product.useGlobalPricing || false,
+        globalCostPrice: product.globalCostPrice,
+        globalSuggestedPrice: product.globalSuggestedPrice
       };
     } catch (error) {
       this.logger.error(`❌ Erreur enrichissement produit ${product.id}:`, error);
@@ -3512,14 +3779,43 @@ export class VendorPublishService {
 
     return null;
   }
+
+  /**
+   * 📊 Récupérer le statut de génération des images pour un produit
+   * Utilisé par l'endpoint GET /vendor/products/:id/images-status
+   */
+  async getProductImagesStatus(productId: number) {
+    return await this.prisma.vendorProduct.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        status: true,
+        designId: true,
+        colors: true,
+        images: {
+          select: {
+            id: true,
+            colorId: true,
+            colorName: true,
+            colorCode: true,
+            imageType: true,
+            finalImageUrl: true,
+            finalImagePublicId: true,
+            cloudinaryUrl: true
+          }
+        }
+      }
+    });
+  }
 }
- 
- 
- 
- 
- 
- 
- 
+
+
+
+
+
+
+
+
  
  
  

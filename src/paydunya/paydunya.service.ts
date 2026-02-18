@@ -1,10 +1,13 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
+import * as https from 'https';
 import { PayDunyaPaymentRequestDto } from './dto/payment-request.dto';
 import { PayDunyaPaymentResponseDto, PayDunyaPaymentStatusDto } from './dto/payment-response.dto';
 import { PayDunyaCallbackDto } from './dto/payment-response.dto';
 import { PayDunyaRefundRequestDto, PayDunyaRefundResponseDto } from './dto/refund-request.dto';
+import { PaymentConfigService } from '../payment-config/payment-config.service';
+import { PaymentProvider } from '../payment-config/dto/create-payment-config.dto';
 
 /**
  * PayDunya Payment Service
@@ -16,45 +19,96 @@ import { PayDunyaRefundRequestDto, PayDunyaRefundResponseDto } from './dto/refun
  * - Use production endpoints for live transactions (live_ prefix for keys)
  * - IPN notifications are sent via POST with application/x-www-form-urlencoded
  * - Response code "00" indicates success
+ *
+ * CONFIGURATION DYNAMIQUE:
+ * - Les clés API sont maintenant stockées en base de données
+ * - L'admin peut les configurer sans toucher au code
+ * - Fallback sur les variables d'environnement si aucune config en BDD
  */
 @Injectable()
 export class PaydunyaService {
   private readonly logger = new Logger(PaydunyaService.name);
-  private readonly axiosInstance: AxiosInstance;
-  private readonly masterKey: string;
-  private readonly privateKey: string;
-  private readonly token: string;
-  private readonly mode: 'test' | 'live';
-  private readonly baseUrl: string;
 
-  constructor(private configService: ConfigService) {
-    this.masterKey = this.configService.get<string>('PAYDUNYA_MASTER_KEY');
-    this.privateKey = this.configService.get<string>('PAYDUNYA_PRIVATE_KEY');
-    this.token = this.configService.get<string>('PAYDUNYA_TOKEN');
-    this.mode = this.configService.get<'test' | 'live'>('PAYDUNYA_MODE', 'test');
+  constructor(
+    private configService: ConfigService,
+    private paymentConfigService: PaymentConfigService,
+  ) {
+    this.logger.log('PayDunya service initialized with dynamic configuration');
+  }
 
-    // Determine base URL based on mode
-    this.baseUrl = this.mode === 'test'
+  /**
+   * Récupère l'instance Axios configurée avec les clés actuelles
+   * Les clés sont chargées depuis la BDD (priorité) ou depuis les variables d'environnement (fallback)
+   */
+  private async getAxiosInstance(): Promise<AxiosInstance> {
+    // Récupérer la configuration depuis la base de données
+    const dbConfig = await this.paymentConfigService.getActiveConfig(PaymentProvider.PAYDUNYA);
+
+    let masterKey: string;
+    let privateKey: string;
+    let token: string;
+    let mode: 'test' | 'live';
+
+    if (dbConfig && dbConfig.isActive) {
+      // Utiliser la configuration depuis la base de données
+      this.logger.debug('Using PayDunya configuration from database');
+      mode = dbConfig.activeMode as 'test' | 'live';
+
+      // Sélectionner les clés appropriées selon le mode actif
+      if (mode === 'test') {
+        masterKey = dbConfig.testMasterKey;
+        privateKey = dbConfig.testPrivateKey;
+        token = dbConfig.testToken;
+      } else {
+        masterKey = dbConfig.liveMasterKey;
+        privateKey = dbConfig.livePrivateKey;
+        token = dbConfig.liveToken;
+      }
+    } else {
+      // Fallback sur les variables d'environnement
+      this.logger.warn('No active PayDunya config in database, falling back to environment variables');
+      masterKey = this.configService.get<string>('PAYDUNYA_MASTER_KEY');
+      privateKey = this.configService.get<string>('PAYDUNYA_PRIVATE_KEY');
+      token = this.configService.get<string>('PAYDUNYA_TOKEN');
+      mode = this.configService.get<'test' | 'live'>('PAYDUNYA_MODE', 'test');
+    }
+
+    // Vérifier que les clés sont présentes
+    if (!privateKey || !token) {
+      this.logger.error('PayDunya credentials are not configured in database or environment variables');
+      throw new BadRequestException(
+        'Configuration PayDunya manquante. Veuillez configurer les clés API dans l\'administration.'
+      );
+    }
+
+    // Déterminer l'URL de base selon le mode
+    const baseUrl = mode === 'test'
       ? 'https://app.paydunya.com/sandbox-api/v1'
       : 'https://app.paydunya.com/api/v1';
 
-    if (!this.masterKey || !this.privateKey || !this.token) {
-      this.logger.error('PayDunya credentials are not configured');
-      throw new Error('PayDunya API credentials missing in environment variables');
+    // Créer et retourner l'instance axios avec les headers requis
+    const headers: any = {
+      'PAYDUNYA-PRIVATE-KEY': privateKey,
+      'PAYDUNYA-TOKEN': token,
+      'Content-Type': 'application/json',
+    };
+
+    // Master key est optionnel (certains endpoints ne le requièrent pas)
+    if (masterKey) {
+      headers['PAYDUNYA-MASTER-KEY'] = masterKey;
     }
 
-    // Initialize axios instance with default headers as per PayDunya documentation
-    this.axiosInstance = axios.create({
-      baseURL: this.baseUrl,
-      headers: {
-        'PAYDUNYA-MASTER-KEY': this.masterKey,
-        'PAYDUNYA-PRIVATE-KEY': this.privateKey,
-        'PAYDUNYA-TOKEN': this.token,
-        'Content-Type': 'application/json',
-      },
+    return axios.create({
+      baseURL: baseUrl,
+      headers,
+      timeout: 30000, // 30 secondes de timeout
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: true, // Valider les certificats SSL
+        keepAlive: true,
+      }),
+      // Retry configuration pour les erreurs réseau
+      validateStatus: (status) => status < 600, // Accepter tous les codes HTTP
     });
-
-    this.logger.log(`PayDunya service initialized successfully in ${this.mode} mode`);
   }
 
   /**
@@ -68,10 +122,20 @@ export class PaydunyaService {
     try {
       this.logger.log(`Creating PayDunya invoice: ${paymentData.invoice.description}`);
 
-      // Log request for debugging
-      this.logger.debug(`PayDunya request payload: ${JSON.stringify(paymentData)}`);
+      const axiosInstance = await this.getAxiosInstance();
 
-      const response = await this.axiosInstance.post<PayDunyaPaymentResponseDto>(
+      // Log request details for debugging
+      this.logger.log(`📤 PayDunya Request Details:`);
+      this.logger.log(`   URL: ${axiosInstance.defaults.baseURL}/checkout-invoice/create`);
+      this.logger.log(`   Headers: ${JSON.stringify({
+        ...axiosInstance.defaults.headers,
+        'PAYDUNYA-MASTER-KEY': axiosInstance.defaults.headers['PAYDUNYA-MASTER-KEY'] ? '***masked***' : 'not set',
+        'PAYDUNYA-PRIVATE-KEY': axiosInstance.defaults.headers['PAYDUNYA-PRIVATE-KEY'] ? '***masked***' : 'not set',
+        'PAYDUNYA-TOKEN': axiosInstance.defaults.headers['PAYDUNYA-TOKEN'] ? '***masked***' : 'not set',
+      }, null, 2)}`);
+      this.logger.log(`   Payload: ${JSON.stringify(paymentData, null, 2)}`);
+
+      const response = await axiosInstance.post<PayDunyaPaymentResponseDto>(
         '/checkout-invoice/create',
         paymentData
       );
@@ -89,12 +153,25 @@ export class PaydunyaService {
         throw new BadRequestException(response.data.response_text || 'Invoice creation failed');
       }
     } catch (error) {
-      this.logger.error(`Error creating invoice: ${error.message}`, error.stack);
+      this.logger.error(`❌ Error creating invoice: ${error.message}`);
 
       // Log detailed error information
       if (error.response) {
-        this.logger.error(`PayDunya API Error Response: ${JSON.stringify(error.response.data)}`);
-        this.logger.error(`PayDunya API Error Status: ${error.response.status}`);
+        this.logger.error(`📥 PayDunya API Error Details:`);
+        this.logger.error(`   Status: ${error.response.status}`);
+        this.logger.error(`   Status Text: ${error.response.statusText}`);
+        this.logger.error(`   Headers: ${JSON.stringify(error.response.headers)}`);
+
+        // Tronquer la réponse si c'est du HTML (erreur 500)
+        const responseData = error.response.data;
+        if (typeof responseData === 'string' && responseData.includes('<!DOCTYPE html>')) {
+          this.logger.error(`   Response: HTML error page (500 Internal Server Error)`);
+          this.logger.error(`   → L'API PayDunya a rencontré une erreur interne`);
+          this.logger.error(`   → Vérifiez que les clés API sont correctes et que le payload est valide`);
+        } else {
+          this.logger.error(`   Response: ${JSON.stringify(responseData, null, 2)}`);
+        }
+
         const errorMessage = error.response.data?.response_text ||
                            error.response.data?.message ||
                            error.response.data?.error ||
@@ -121,18 +198,70 @@ export class PaydunyaService {
    * @returns Payment status information
    */
   async confirmPayment(invoiceToken: string): Promise<PayDunyaPaymentStatusDto> {
-    try {
-      this.logger.log(`Checking payment status for invoice: ${invoiceToken}`);
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2 secondes entre les tentatives
 
-      const response = await this.axiosInstance.get<PayDunyaPaymentStatusDto>(
-        `/checkout-invoice/confirm/${invoiceToken}`
-      );
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`Checking payment status for invoice: ${invoiceToken} (attempt ${attempt}/${maxRetries})`);
 
-      this.logger.log(`Payment status retrieved: ${response.data.status}`);
-      return response.data;
-    } catch (error) {
-      this.logger.error(`Error getting payment status: ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to retrieve payment status');
+        const axiosInstance = await this.getAxiosInstance();
+        const response = await axiosInstance.get<PayDunyaPaymentStatusDto>(
+          `/checkout-invoice/confirm/${invoiceToken}`
+        );
+
+        this.logger.log(`Payment status retrieved: ${response.data.status}`);
+        return response.data;
+      } catch (error) {
+        const isLastAttempt = attempt === maxRetries;
+        const isNetworkError = error.code === 'ENOTFOUND' ||
+                              error.code === 'ETIMEDOUT' ||
+                              error.code === 'ECONNREFUSED' ||
+                              error.code === 'ECONNRESET' ||
+                              error.message?.includes('socket hang up') ||
+                              error.message?.includes('AggregateError');
+
+        this.logger.error(
+          `Error getting payment status (attempt ${attempt}/${maxRetries}): ${error.message}`,
+          error.stack
+        );
+
+        if (error.response) {
+          // Erreur HTTP (serveur a répondu)
+          this.logger.error(`HTTP Error - Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`);
+
+          // Si c'est une erreur 4xx (client), pas la peine de retry
+          if (error.response.status >= 400 && error.response.status < 500) {
+            throw new InternalServerErrorException(
+              `PayDunya API error: ${error.response.data?.message || 'Invalid request'}`
+            );
+          }
+        } else if (error.request) {
+          // La requête a été envoyée mais aucune réponse reçue
+          this.logger.error(`Network Error - No response received from PayDunya API`);
+          this.logger.error(`Error code: ${error.code}`);
+          this.logger.error(`Error message: ${error.message}`);
+        } else {
+          // Erreur lors de la configuration de la requête
+          this.logger.error(`Request Setup Error: ${error.message}`);
+        }
+
+        // Retry si ce n'est pas la dernière tentative et que c'est une erreur réseau
+        if (!isLastAttempt && isNetworkError) {
+          this.logger.warn(`Network error detected, retrying in ${retryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+
+        // Dernière tentative ou erreur non-retry : throw
+        if (isLastAttempt) {
+          throw new InternalServerErrorException(
+            'Failed to retrieve payment status after multiple attempts. Please check your network connection and PayDunya API configuration.'
+          );
+        } else {
+          throw new InternalServerErrorException('Failed to retrieve payment status');
+        }
+      }
     }
   }
 
@@ -147,8 +276,9 @@ export class PaydunyaService {
     try {
       this.logger.log(`Requesting refund for invoice: ${refundData.invoice_token}`);
 
+      const axiosInstance = await this.getAxiosInstance();
       // Note: PayDunya refund endpoint may need to be adjusted based on official API
-      const response = await this.axiosInstance.post<PayDunyaRefundResponseDto>(
+      const response = await axiosInstance.post<PayDunyaRefundResponseDto>(
         '/checkout-invoice/refund',
         refundData
       );
@@ -194,7 +324,6 @@ export class PaydunyaService {
   } {
     const status = callbackData.status?.toLowerCase() || '';
     const reason = callbackData.cancel_reason?.toLowerCase() || '';
-    const errorCode = callbackData.error_code?.toLowerCase() || '';
 
     // Categorize the failure reason based on status
     if (status === 'cancelled') {
@@ -333,9 +462,10 @@ export class PaydunyaService {
    */
   async testConnection(): Promise<boolean> {
     try {
+      const axiosInstance = await this.getAxiosInstance();
       // Make a simple request to test connectivity
       // Using a status check for a dummy token to test the API
-      await this.axiosInstance.get('/checkout-invoice/confirm/test-connection', {
+      await axiosInstance.get('/checkout-invoice/confirm/test-connection', {
         validateStatus: (status) => status < 500 // Accept any client error as valid connection test
       });
 

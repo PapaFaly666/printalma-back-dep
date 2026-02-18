@@ -2464,4 +2464,21 @@ export class AuthService {
             throw error;
         }
     }
+
+    /**
+     * PUBLIC: Récupérer l'ID utilisateur par email
+     * Utilisé pour le formulaire de changement de mot de passe lors de la première connexion
+     */
+    async getUserIdByEmail(email: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { email: email.toLowerCase() },
+            select: { id: true }
+        });
+
+        if (!user) {
+            throw new NotFoundException('Utilisateur non trouvé');
+        }
+
+        return { userId: user.id };
+    }
 }

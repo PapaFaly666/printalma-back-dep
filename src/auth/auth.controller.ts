@@ -661,6 +661,20 @@ export class AuthController {
 	}
 
 	/**
+	 * PUBLIC: Récupérer l'ID utilisateur par email (pour première connexion)
+	 */
+	@Post('user-id-by-email')
+	@ApiOperation({
+		summary: 'Récupérer l\'ID utilisateur par email',
+		description: 'Endpoint public pour permettre aux vendeurs de récupérer leur ID via leur email lors de la première connexion.'
+	})
+	@ApiResponse({ status: 200, description: 'ID utilisateur récupéré avec succès' })
+	@ApiResponse({ status: 404, description: 'Utilisateur non trouvé' })
+	async getUserIdByEmail(@Body() body: { email: string }) {
+		return this.authService.getUserIdByEmail(body.email);
+	}
+
+	/**
 	 * Vérifier si le profil vendeur est complet
 	 */
 	@UseGuards(JwtAuthGuard)

@@ -131,7 +131,17 @@ export class PaydunyaCronService implements OnModuleInit {
           // Vérifier le statut auprès de PayDunya
           this.logger.log(`🔍 Checking payment status for order ${order.orderNumber} (token: ${token})`);
 
-          const paymentStatus = await this.paydunyaService.confirmPayment(token);
+          let paymentStatus;
+          try {
+            paymentStatus = await this.paydunyaService.confirmPayment(token);
+          } catch (networkError) {
+            // En cas d'erreur réseau, on log et on continue avec les autres commandes
+            this.logger.warn(
+              `⚠️  Network error while checking ${order.orderNumber}, will retry on next cron execution: ${networkError.message}`,
+            );
+            errorCount++;
+            continue; // Passer à la commande suivante
+          }
 
           checkedCount++;
 

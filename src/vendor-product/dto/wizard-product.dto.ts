@@ -76,10 +76,10 @@ export class CreateWizardProductDto {
   @IsNotEmpty()
   vendorName: string;
 
-  @ApiProperty({ example: 'Sweat à capuche personnalisé de qualité', description: 'Description du produit' })
+  @ApiProperty({ example: 'Sweat à capuche personnalisé de qualité', description: 'Description du produit. Si non fournie, la description du produit de base sera utilisée.', required: false })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  vendorDescription: string;
+  vendorDescription?: string;
 
   @ApiProperty({ example: 10000, description: 'Prix de vente en FCFA' })
   @IsNumber()

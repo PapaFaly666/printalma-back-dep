@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Patch, Delete, Body, Param, Query, UsePipes, ValidationPipe, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
+import { Controller, Post, Get, Patch, Delete, Body, Param, Query, UsePipes, ValidationPipe, UseGuards, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody, ApiConsumes } from '@nestjs/swagger';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { MockupService } from '../services/mockup.service';
 import { CreateMockupDto, UpdateMockupDto, MockupResponseDto, MockupGenre } from '../dto/create-mockup.dto';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';

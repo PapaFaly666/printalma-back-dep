@@ -67,6 +67,18 @@ export interface BestSellerProduct {
   // 🆕 Couleur par défaut
   defaultColorId?: number;
 
+  // 🆕 Tailles et prix par taille
+  sizes?: Array<{ id: number; sizeName: string }>;
+  sizePricing?: Array<{
+    size: string;
+    costPrice: number;
+    suggestedPrice: number;
+    salePrice: number;
+  }>;
+  useGlobalPricing?: boolean;
+  globalCostPrice?: number;
+  globalSuggestedPrice?: number;
+
   // Métadonnées
   createdAt: Date;
   lastSaleDate?: Date;
@@ -154,7 +166,8 @@ export class BestSellersService {
                       }
                     }
                   }
-                }
+                },
+                sizes: true // 🆕 Inclure les tailles du produit de base
               }
             },
             vendor: {
@@ -172,7 +185,8 @@ export class BestSellersService {
               include: {
                 design: true
               }
-            }
+            },
+            sizePrices: true // 🆕 Inclure les prix par taille du vendeur
           },
           orderBy: [
             { bestSellerRank: 'asc' },
@@ -265,6 +279,21 @@ export class BestSellersService {
           },
 
           defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
+
+          // 🆕 Tailles et prix par taille
+          sizes: product.baseProduct?.sizes?.map((size: any) => ({
+            id: size.id,
+            sizeName: size.sizeName
+          })) || [],
+          sizePricing: (product as any).sizePrices?.map((sp: any) => ({
+            size: sp.size,
+            costPrice: sp.costPrice,
+            suggestedPrice: sp.suggestedPrice,
+            salePrice: sp.salePrice ?? sp.suggestedPrice
+          })) || [],
+          useGlobalPricing: (product as any).useGlobalPricing || false,
+          globalCostPrice: (product as any).globalCostPrice,
+          globalSuggestedPrice: (product as any).globalSuggestedPrice,
 
           createdAt: product.createdAt,
           lastSaleDate: product.lastSaleDate
@@ -369,7 +398,8 @@ export class BestSellersService {
                       }
                     }
                   }
-                }
+                },
+                sizes: true // 🆕 Inclure les tailles du produit de base
               }
             },
             vendor: {
@@ -396,7 +426,8 @@ export class BestSellersService {
                 finalImagePublicId: true,
                 cloudinaryUrl: true
               }
-            }
+            },
+            sizePrices: true // 🆕 Inclure les prix par taille du vendeur
           },
           orderBy: [
             { createdAt: 'desc' }
@@ -467,6 +498,21 @@ export class BestSellersService {
           },
 
           defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
+
+          // 🆕 Tailles et prix par taille
+          sizes: product.baseProduct?.sizes?.map((size: any) => ({
+            id: size.id,
+            sizeName: size.sizeName
+          })) || [],
+          sizePricing: (product as any).sizePrices?.map((sp: any) => ({
+            size: sp.size,
+            costPrice: sp.costPrice,
+            suggestedPrice: sp.suggestedPrice,
+            salePrice: sp.salePrice ?? sp.suggestedPrice
+          })) || [],
+          useGlobalPricing: (product as any).useGlobalPricing || false,
+          globalCostPrice: (product as any).globalCostPrice,
+          globalSuggestedPrice: (product as any).globalSuggestedPrice,
 
           createdAt: product.createdAt,
           lastSaleDate: product.lastSaleDate

@@ -42,6 +42,9 @@ import { VendorDesignRevenueModule } from './vendor-design-revenue/vendor-design
 import { SuperadminDashboardModule } from './superadmin-dashboard/superadmin-dashboard.module';
 import { VendorOnboardingModule } from './vendor-onboarding/vendor-onboarding.module';
 import { StickerModule } from './sticker/sticker.module';
+import { HomeContentModule } from './home-content/home-content.module';
+import { VendorPhoneModule } from './vendor-phone/vendor-phone.module';
+import { PaymentConfigModule } from './payment-config/payment-config.module';
 
 @Module({
   imports: [
@@ -74,6 +77,7 @@ import { StickerModule } from './sticker/sticker.module';
     VendorTypeModule,
     AdminUsersModule,
     RolesModule,
+    PaymentConfigModule, // Module de configuration dynamique des paiements
     PaytechModule,
     PaydunyaModule,
     PaymentModule,
@@ -85,6 +89,8 @@ import { StickerModule } from './sticker/sticker.module';
     SuperadminDashboardModule,
     VendorOnboardingModule,
     StickerModule,
+    HomeContentModule,
+    VendorPhoneModule,
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

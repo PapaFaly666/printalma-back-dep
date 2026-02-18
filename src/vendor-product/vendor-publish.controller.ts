@@ -1182,6 +1182,127 @@ export class VendorPublishController {
     }
   }
 
+  /**
+   * 📊 VÉRIFIER LE STATUT DE GÉNÉRATION DES IMAGES
+   *
+   * Permet au frontend de vérifier si les images finales ont été générées
+   * après une création asynchrone de produit.
+   */
+  @Get('products/:id/images-status')
+  @ApiOperation({
+    summary: '📊 Statut de génération des images',
+    description: `
+    **VÉRIFIER SI LES IMAGES FINALES SONT PRÊTES:**
+
+    - ✅ Retourne immédiatement le statut de génération
+    - ✅ Nombre d'images générées vs attendues
+    - ✅ URLs des images finales générées
+    - ✅ Pour polling régulier (toutes les 2-3 secondes)
+
+    **FLOW RECOMMANDÉ:**
+    1. Créer produit avec POST /vendor/products (réponse immédiate)
+    2. Poller GET /vendor/products/:id/images-status toutes les 2-3s
+    3. Arrêter quand status === 'COMPLETED' ou allImagesGenerated === true
+    `
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Statut de génération des images',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        productId: { type: 'number' },
+        product: {
+          type: 'object',
+          properties: {
+            id: { type: 'number' },
+            status: { type: 'string' },
+            designId: { type: 'number' }
+          }
+        },
+        imagesGeneration: {
+          type: 'object',
+          properties: {
+            totalExpected: { type: 'number', description: 'Nombre total d\'images attendues' },
+            totalGenerated: { type: 'number', description: 'Nombre d\'images générées' },
+            percentage: { type: 'number', description: 'Pourcentage de complétion' },
+            allGenerated: { type: 'boolean', description: 'Toutes les images sont générées' }
+          }
+        },
+        finalImages: {
+          type: 'array',
+          description: 'Liste des images finales générées avec leurs URLs',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'number' },
+              colorId: { type: 'number' },
+              colorName: { type: 'string' },
+              finalImageUrl: { type: 'string' },
+              imageType: { type: 'string' }
+            }
+          }
+        }
+      }
+    }
+  })
+  async getImagesStatus(
+    @Param('id', ParseIntPipe) productId: number
+  ) {
+    const product = await this.vendorPublishService.getProductImagesStatus(productId);
+
+    if (!product) {
+      return {
+        success: false,
+        message: 'Produit non trouvé',
+        productId: null
+      };
+    }
+
+    const finalImages = product.images?.filter((img: any) => img.imageType === 'final') || [];
+    const totalGenerated = finalImages.length;
+
+    // ✅ CORRECTION: Calculer totalExpected soit depuis colors, soit depuis les images elles-mêmes
+    // Si colors est vide ou invalide, on compte les colorId uniques dans les images
+    let totalExpected = 0;
+
+    if (Array.isArray((product as any).colors) && (product as any).colors.length > 0) {
+      totalExpected = (product as any).colors.length;
+    } else {
+      // Fallback: compter les colorId uniques dans toutes les images (pas seulement final)
+      const uniqueColorIds = new Set(
+        product.images?.map((img: any) => img.colorId).filter(id => id != null) || []
+      );
+      totalExpected = uniqueColorIds.size;
+    }
+
+    const percentage = totalExpected > 0 ? Math.round((totalGenerated / totalExpected) * 100) : 0;
+
+    return {
+      success: true,
+      productId: product.id,
+      product: {
+        id: product.id,
+        status: product.status,
+        designId: product.designId
+      },
+      imagesGeneration: {
+        totalExpected,
+        totalGenerated,
+        percentage,
+        allGenerated: totalGenerated >= totalExpected && totalExpected > 0
+      },
+      finalImages: finalImages.map((img: any) => ({
+        id: img.id,
+        colorId: img.colorId,
+        colorName: img.colorName,
+        finalImageUrl: img.finalImageUrl,
+        imageType: img.imageType
+      }))
+    };
+  }
+
 }
 
 

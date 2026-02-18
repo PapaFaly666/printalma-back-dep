@@ -5,6 +5,7 @@ import { AdminFundsController } from './admin-funds.controller';
 import { VendorFundsService } from './vendor-funds.service';
 import { PrismaService } from '../prisma.service';
 import { CommissionModule } from '../commission/commission.module';
+import { VendorPhoneModule } from '../vendor-phone/vendor-phone.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { CommissionModule } from '../commission/commission.module';
       signOptions: { expiresIn: '24h' },
     }),
     CommissionModule,
+    VendorPhoneModule,
   ],
   controllers: [VendorFundsController, AdminFundsController],
   providers: [VendorFundsService, PrismaService],

@@ -7,7 +7,9 @@ export enum MockupGenre {
   HOMME = 'HOMME',
   FEMME = 'FEMME',
   BEBE = 'BEBE',
-  UNISEXE = 'UNISEXE'
+  UNISEXE = 'UNISEXE',
+  AUTOCOLLANT = 'AUTOCOLLANT',
+  TABLEAU = 'TABLEAU'
 }
 
 // Enum pour le type de coordonnées

@@ -1400,22 +1400,27 @@ export class VendorProductValidationService {
       });
 
       // Créer le produit vendeur
+      // Si le vendeur ne fournit pas de description, on utilise celle du produit admin
+      const finalDescription = productData.vendorDescription && productData.vendorDescription.trim().length > 0
+        ? productData.vendorDescription
+        : productData.productStructure.adminProduct.description;
+
       const vendorProduct = await this.prisma.vendorProduct.create({
         data: {
           baseProductId: productData.baseProductId,
           vendorId: productData.vendorId,
-          
+
           // Informations produit
           name: productData.vendorName,
-          description: productData.vendorDescription,
+          description: finalDescription,
           price: productData.vendorPrice,
           stock: productData.vendorStock,
-          
+
           // Conservation structure admin
           adminProductName: productData.productStructure.adminProduct.name,
           adminProductDescription: productData.productStructure.adminProduct.description,
           adminProductPrice: productData.productStructure.adminProduct.price,
-          
+
           // Liaison design
           designId: design.id,
           designCloudinaryUrl: design.imageUrl,
@@ -1423,25 +1428,25 @@ export class VendorProductValidationService {
           designPositioning: 'CENTER',
           designScale: productData.productStructure.designApplication.scale || 0.6,
           designApplicationMode: 'PRESERVED',
-          
+
           // 🆕 INFORMATIONS DE POSITION ET DIMENSIONS DU DESIGN
           designWidth: designWidth,
           designHeight: designHeight,
-          
+
           // Sélections vendeur
           sizes: JSON.stringify(productData.selectedSizes),
           colors: JSON.stringify(productData.selectedColors),
-          
+
           // Statut - Admin peut forcer le statut ou bypass validation
-          status: productData.bypassAdminValidation ? 
+          status: productData.bypassAdminValidation ?
                   (productData.forcedStatus || 'PUBLISHED') :
                   (productData.forcedStatus || (design.isValidated ? 'DRAFT' : 'PENDING')),
           isValidated: productData.bypassAdminValidation ? true : design.isValidated,
           postValidationAction: productData.postValidationAction || 'AUTO_PUBLISH',
-          
+
           // Métadonnées
           vendorName: productData.vendorName,
-          vendorDescription: productData.vendorDescription,
+          vendorDescription: finalDescription,
           vendorStock: productData.vendorStock,
           basePriceAdmin: productData.productStructure.adminProduct.price,
         },

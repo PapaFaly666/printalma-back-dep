@@ -1006,4 +1006,51 @@ export class PaydunyaController {
       };
     }
   }
+
+  /**
+   * Test network connectivity to PayDunya API
+   * Useful for diagnosing connection issues
+   */
+  @Get('network-test')
+  @ApiOperation({ summary: 'Test network connectivity to PayDunya API' })
+  @ApiResponse({ status: 200, description: 'Network test results' })
+  async testNetworkConnectivity() {
+    try {
+      const startTime = Date.now();
+      const testStatus = await this.paydunyaService.testConnection();
+      const duration = Date.now() - startTime;
+
+      return {
+        success: true,
+        message: 'PayDunya API is reachable',
+        data: {
+          apiReachable: testStatus,
+          responseTime: duration,
+          timestamp: new Date().toISOString(),
+          apiEndpoint: this.configService.get('PAYDUNYA_MODE') === 'test'
+            ? 'https://app.paydunya.com/sandbox-api/v1'
+            : 'https://app.paydunya.com/api/v1'
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Network test failed: ${error.message}`);
+      return {
+        success: false,
+        message: 'Failed to connect to PayDunya API',
+        error: {
+          message: error.message,
+          code: error.code,
+          type: error.response ? 'http_error' : 'network_error',
+          details: error.response?.data || null
+        },
+        troubleshooting: [
+          'Check your internet connection',
+          'Verify firewall settings',
+          'Confirm PayDunya API is not experiencing downtime',
+          'Check DNS resolution for app.paydunya.com',
+          'Verify SSL/TLS certificates are valid'
+        ]
+      };
+    }
+  }
 }

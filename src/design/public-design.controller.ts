@@ -241,7 +241,10 @@ export class PublicDesignController {
                     cloudinaryUrl: true,
                     colorName: true,
                     colorCode: true,
-                    imageType: true
+                    imageType: true,
+                    finalImageUrl: true,
+                    finalImagePublicId: true,
+                    colorId: true
                   },
                   take: 3 // Limiter à 3 images par produit
                 }

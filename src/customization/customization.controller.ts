@@ -177,10 +177,12 @@ export class CustomizationController {
   /**
    * Upload d'une image pour une personnalisation
    * POST /customizations/upload-image
+   * Authentification optionnelle (fonctionne pour guests et users connectés)
    */
   @Post('upload-image')
+  @UseGuards(OptionalJwtAuthGuard) // Authentification optionnelle
   @UseInterceptors(FileInterceptor('file', multerConfig))
-  @ApiOperation({ summary: 'Upload image for customization' })
+  @ApiOperation({ summary: 'Upload client image for customization' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -189,7 +191,7 @@ export class CustomizationController {
         file: {
           type: 'string',
           format: 'binary',
-          description: 'Image file (JPEG, PNG, GIF, WebP, SVG - max 10MB)'
+          description: 'Image file (JPEG, PNG, GIF, WebP - max 10MB)'
         }
       }
     }
@@ -200,6 +202,7 @@ export class CustomizationController {
     schema: {
       type: 'object',
       properties: {
+        success: { type: 'boolean' },
         url: { type: 'string' },
         publicId: { type: 'string' },
         width: { type: 'number' },
@@ -207,8 +210,14 @@ export class CustomizationController {
       }
     }
   })
-  async uploadImage(@UploadedFile() file: Express.Multer.File) {
-    return this.customizationService.uploadCustomizationImage(file);
+  async uploadImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any
+  ) {
+    const userId = req.user?.id;
+    const sessionId = req.body?.sessionId || req.headers['x-session-id'];
+
+    return this.customizationService.uploadClientImage(file, userId, sessionId);
   }
 
   /**

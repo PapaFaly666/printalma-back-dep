@@ -98,6 +98,7 @@ export class CloudinaryService {
           resource_type: options.resource_type || 'auto',
           public_id: options.public_id || `${Date.now()}`,
           quality: options.quality || 90,
+          timeout: 120000, // 2 minutes timeout pour l'upload
           ...options,
         };
 
@@ -506,6 +507,122 @@ export class CloudinaryService {
 
   async deleteImage(publicId: string) {
     return await cloudinary.uploader.destroy(publicId, { invalidate: true });
+  }
+
+  /**
+   * Upload une image client vers Cloudinary pour la personnalisation
+   * @param buffer - Buffer de l'image
+   * @param filename - Nom du fichier original
+   * @param userId - ID utilisateur (optionnel)
+   * @param sessionId - ID de session guest (optionnel)
+   */
+  async uploadClientImage(
+    buffer: Buffer,
+    filename: string,
+    userId?: number,
+    sessionId?: string
+  ): Promise<{
+    url: string;
+    publicId: string;
+    width: number;
+    height: number;
+  }> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.ensureConfigured();
+
+        // Dossier spécifique pour les uploads client
+        const folder = 'client-uploads';
+
+        // Générer un public_id unique
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 15);
+        const userPrefix = userId ? `user_${userId}` : `guest_${sessionId?.substring(0, 8) || 'anonymous'}`;
+        const cleanFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 50);
+        const publicId = `${folder}/${userPrefix}_${timestamp}_${randomStr}`;
+
+        const uploadConfig = {
+          folder: folder,
+          public_id: publicId,
+          resource_type: 'image' as const,
+          // Optimisations
+          quality: 'auto:good' as const,
+          fetch_format: 'auto' as const,
+          // Limites de sécurité
+          max_image_width: 4096,
+          max_image_height: 4096,
+          // Métadonnées
+          context: {
+            type: 'client_upload',
+            uploaded_by: userId ? `user_${userId}` : `guest_${sessionId}`,
+            original_filename: cleanFilename,
+            uploaded_at: new Date().toISOString()
+          }
+        };
+
+        console.log(`📤 [Cloudinary] Upload image client: ${cleanFilename} (${Math.round(buffer.length / 1024)}KB)`);
+
+        const upload = cloudinary.uploader.upload_stream(
+          uploadConfig,
+          (error, result) => {
+            if (error) {
+              console.error('❌ [Cloudinary] Erreur upload client image:', error);
+              const errorMessage = error?.message || error?.error?.message || JSON.stringify(error);
+              return reject(new Error(`Client image upload failed: ${errorMessage}`));
+            }
+
+            console.log('✅ [Cloudinary] Image client uploadée:', {
+              url: result.secure_url,
+              publicId: result.public_id,
+              dimensions: { width: result.width, height: result.height }
+            });
+
+            resolve({
+              url: result.secure_url,
+              publicId: result.public_id,
+              width: result.width,
+              height: result.height
+            });
+          }
+        );
+
+        const bufferStream = require('stream').Readable.from(buffer);
+        bufferStream.pipe(upload);
+      } catch (error) {
+        console.error('❌ [Cloudinary] Erreur inattendue upload client image:', error);
+        const errorMessage = error?.message || String(error);
+        reject(new Error(`Client image upload failed: ${errorMessage}`));
+      }
+    });
+  }
+
+  /**
+   * Supprimer une image client de Cloudinary
+   * @param publicId - Public ID de l'image à supprimer
+   */
+  async deleteClientImage(publicId: string): Promise<void> {
+    try {
+      this.ensureConfigured();
+      const result = await cloudinary.uploader.destroy(publicId, { invalidate: true });
+      console.log('🗑️ [Cloudinary] Image client supprimée:', publicId, 'result:', result);
+    } catch (error) {
+      console.error('❌ [Cloudinary] Erreur suppression image client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupérer les informations d'une image depuis Cloudinary
+   * @param publicId - Public ID de l'image
+   */
+  async getImageInfo(publicId: string): Promise<any> {
+    try {
+      this.ensureConfigured();
+      return await cloudinary.api.resource(publicId);
+    } catch (error) {
+      console.error('❌ [Cloudinary] Erreur récupération info image:', error);
+      throw error;
+    }
   }
 
   async createFolder(folderName: string) {

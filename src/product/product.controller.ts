@@ -303,7 +303,8 @@ export class ProductController {
   @ApiQuery({ name: 'forVendorDesign', required: false, type: Boolean, description: 'Filtrer pour les designs vendeur (mockups avec délimitations)' })
   @ApiQuery({ name: 'status', required: false, enum: ['PUBLISHED', 'DRAFT'], description: 'Filtrer par statut' })
   @ApiQuery({ name: 'category', required: false, type: String, description: 'Filtrer par catégorie' })
-  @ApiQuery({ name: 'genre', required: false, enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE'], description: 'Filtrer par genre (public cible)' })
+  @ApiQuery({ name: 'genre', required: false, enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE', 'AUTOCOLLANT'], description: 'Filtrer par genre (public cible)' })
+  @ApiQuery({ name: 'requiresStock', required: false, type: Boolean, description: 'Filtrer par gestion de stock (true/false)' })
   @ApiQuery({ name: 'search', required: false, type: String, description: 'Rechercher par nom' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Nombre de produits à retourner' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Offset pour pagination' })
@@ -315,6 +316,7 @@ export class ProductController {
     @Query('status') status?: string,
     @Query('category') category?: string,
     @Query('genre') genre?: string,
+    @Query('requiresStock') requiresStock?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number
@@ -326,6 +328,7 @@ export class ProductController {
       status,
       category,
       genre,
+      requiresStock: requiresStock === 'true' ? true : requiresStock === 'false' ? false : undefined,
       search,
       limit: limit ? parseInt(limit.toString()) : undefined,
       offset: offset ? parseInt(offset.toString()) : undefined

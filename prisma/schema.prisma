@@ -44,9 +44,9 @@ model User {
   linkedin_url            String?                 @map("linkedin_url") @db.VarChar(500)
   professional_title      String?                 @map("professional_title") @db.VarChar(200)
   vendor_bio              String?                 @map("vendor_bio") @db.Text
-  profile_completed        Boolean                 @default(false) @map("profile_completed")
-  first_login_completed    Boolean                 @default(false) @map("first_login_completed")
-  onboarding_completed_at  DateTime?               @map("onboarding_completed_at")
+  profile_completed       Boolean                 @default(false) @map("profile_completed")
+  first_login_completed   Boolean                 @default(false) @map("first_login_completed")
+  onboarding_completed_at DateTime?               @map("onboarding_completed_at")
   activation_code         String?
   activation_code_expires DateTime?
   is_deleted              Boolean                 @default(false)
@@ -84,6 +84,9 @@ model User {
   vendorGalleries         VendorGallery[]         @relation("VendorGalleries")
   vendorDesignUsages      DesignUsage[]           @relation("VendorDesignUsages")
   vendorPhones            VendorPhone[]           @relation("VendorPhones")
+  vendorPhoneNumbers      VendorPhoneNumber[]     @relation("VendorPhoneNumbers")
+  vendorPhoneOTPs         PhoneOTPCode[]          @relation("VendorPhoneOTPs")
+  vendorSecurityLogs      SecurityLog[]           @relation("VendorSecurityLogs")
   vendorStickers          StickerProduct[]        @relation("VendorStickers")
   stickerFavorites        StickerFavorite[]       @relation("UserStickerFavorites")
 
@@ -112,41 +115,49 @@ model PasswordReset {
 }
 
 model Product {
-  id                       Int                    @id @default(autoincrement())
+  id                       Int               @id @default(autoincrement())
   name                     String
   description              String
   price                    Float
-  stock                    Int
-  status                   PublicationStatus      @default(DRAFT)
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
-  designsMetadata          Json?                  @default("{\"lastUpdated\": null, \"totalDesigns\": 0}")
-  genre                    ProductGenre           @default(UNISEXE)
-  hasCustomDesigns         Boolean                @default(false)
-  isDelete                 Boolean                @default(false)
-  isReadyProduct           Boolean                @default(false)
-  isValidated              Boolean                @default(true)
+  stock                    Int?
+  status                   PublicationStatus @default(DRAFT)
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  designsMetadata          Json?             @default("{\"lastUpdated\": null, \"totalDesigns\": 0}")
+  genre                    ProductGenre      @default(UNISEXE)
+  hasCustomDesigns         Boolean           @default(false)
+  isDelete                 Boolean           @default(false)
+  isReadyProduct           Boolean           @default(false)
+  isValidated              Boolean           @default(true)
   rejectionReason          String?
   submittedForValidationAt DateTime?
   validatedAt              DateTime?
   validatedBy              Int?
-  suggestedPrice           Float?                 @map("suggested_price")
-  categoryId               Int?                   @map("category_id")
-  subCategoryId            Int?                   @map("sub_category_id")
-  variationId              Int?                   @map("variation_id")
-  colorVariations          ColorVariation[]
-  orderItems               OrderItem[]
-  category                 Category?              @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  subCategory              SubCategory?           @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
-  validator                User?                  @relation("ProductValidator", fields: [validatedBy], references: [id])
-  variation                Variation?             @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
-  sizes                    ProductSize[]
-  stocks                   ProductStock[]
-  themeProducts            ThemeProduct[]
-  vendorProducts           VendorProduct[]
-  CategoryToProduct        CategoryToProduct[]
-  productCustomizations    ProductCustomization[]
-  stockMovements           StockMovement[]
+  suggestedPrice           Float?            @map("suggested_price")
+  requiresStock            Boolean           @default(true) @map("requires_stock") @db.Boolean
+  categoryId               Int?              @map("category_id")
+  subCategoryId            Int?              @map("sub_category_id")
+  variationId              Int?              @map("variation_id")
+
+  // 🆕 Champs pour la tarification par taille
+  useGlobalPricing     Boolean @default(false) @map("use_global_pricing")
+  globalCostPrice      Int     @default(0) @map("global_cost_price")
+  globalSuggestedPrice Int     @default(0) @map("global_suggested_price")
+
+  colorVariations       ColorVariation[]
+  orderItems            OrderItem[]
+  category              Category?              @relation("ProductCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  subCategory           SubCategory?           @relation("ProductSubCategory", fields: [subCategoryId], references: [id], onDelete: Restrict)
+  validator             User?                  @relation("ProductValidator", fields: [validatedBy], references: [id])
+  variation             Variation?             @relation("ProductVariation", fields: [variationId], references: [id], onDelete: Restrict)
+  sizes                 ProductSize[]
+  stocks                ProductStock[]
+  themeProducts         ThemeProduct[]
+  vendorProducts        VendorProduct[]
+  CategoryToProduct     CategoryToProduct[]
+  productCustomizations ProductCustomization[]
+  stockMovements        StockMovement[]
+  sizePrices            ProductSizePrice[] // 🆕 Relation avec les prix par taille
 
   @@index([isValidated])
   @@index([submittedForValidationAt])
@@ -154,6 +165,7 @@ model Product {
   @@index([categoryId])
   @@index([subCategoryId])
   @@index([variationId])
+  @@index([requiresStock])
 }
 
 model ProductSize {
@@ -178,6 +190,24 @@ model ProductStock {
   @@unique([productId, colorId, sizeName])
   @@index([productId])
   @@index([colorId])
+}
+
+/// 🆕 Prix par taille pour les produits
+/// Permet de définir des prix de revient et des prix de vente suggérés différents pour chaque taille
+model ProductSizePrice {
+  id             Int      @id @default(autoincrement())
+  productId      Int      @map("product_id")
+  size           String   @db.VarChar(100)
+  costPrice      Int      @default(0) @map("cost_price")
+  suggestedPrice Int      @map("suggested_price")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, size], name: "unique_product_size_price")
+  @@index([productId])
+  @@index([size])
+  @@map("product_size_prices")
 }
 
 model StockMovement {
@@ -265,6 +295,7 @@ model ColorVariation {
   name                String
   colorCode           String
   productId           Int
+  price               Float?
   product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItems          OrderItem[]
   images              ProductImage[]
@@ -324,7 +355,7 @@ model Delimitation {
 model Order {
   id                       Int         @id @default(autoincrement())
   orderNumber              String      @unique
-  userId                   Int
+  userId                   Int?
   status                   OrderStatus @default(PENDING)
   totalAmount              Float
   phoneNumber              String
@@ -376,7 +407,7 @@ model Order {
   vendorAmount        Float?    @map("vendor_amount")
   commissionAppliedAt DateTime? @map("commission_applied_at")
 
-  user                   User                      @relation(fields: [userId], references: [id])
+  user                   User?                     @relation(fields: [userId], references: [id])
   validator              User?                     @relation("OrderValidator", fields: [validatedBy], references: [id])
   orderItems             OrderItem[]
   paymentAttemptsHistory PaymentAttempt[]
@@ -537,67 +568,73 @@ model Design {
 /// VendorProduct représente un produit mis en vente par un vendeur à partir d'un produit de base (admin).
 /// Il stocke les variantes sélectionnées (tailles, couleurs) sous forme de tableau JSON pour simplifier le schéma.
 model VendorProduct {
-  id                       Int                     @id @default(autoincrement())
-  baseProductId            Int                     @map("base_product_id")
-  vendorId                 Int                     @map("vendor_id")
+  id                       Int                      @id @default(autoincrement())
+  baseProductId            Int                      @map("base_product_id")
+  vendorId                 Int                      @map("vendor_id")
   name                     String
   description              String?
   price                    Int
-  stock                    Int                     @default(0)
-  status                   VendorProductStatus     @default(PENDING)
-  isDelete                 Boolean                 @default(false)
-  postValidationAction     PostValidationAction    @default(AUTO_PUBLISH) @map("post_validation_action")
-  adminProductName         String?                 @map("admin_product_name")
-  adminProductDescription  String?                 @map("admin_product_description")
-  adminProductPrice        Int?                    @map("admin_product_price")
-  designBase64             String?                 @map("design_base64")
-  designCloudinaryUrl      String?                 @map("design_cloudinary_url")
-  designCloudinaryPublicId String?                 @map("design_cloudinary_public_id")
-  designPositioning        String?                 @default("CENTER") @map("design_positioning")
-  designScale              Float?                  @default(0.6) @map("design_scale")
-  designApplicationMode    String?                 @default("PRESERVED") @map("design_application_mode")
-  designId                 Int?                    @map("design_id")
-  salesCount               Int                     @default(0) @map("sales_count")
-  totalRevenue             Float                   @default(0) @map("total_revenue")
-  averageRating            Float?                  @map("average_rating")
-  lastSaleDate             DateTime?               @map("last_sale_date")
-  isBestSeller             Boolean                 @default(false) @map("is_best_seller")
-  bestSellerRank           Int?                    @map("best_seller_rank")
-  bestSellerCategory       String?                 @map("best_seller_category")
-  viewsCount               Int                     @default(0) @map("views_count")
-  designWidth              Int?                    @map("design_width")
-  designHeight             Int?                    @map("design_height")
-  designFormat             String?                 @map("design_format")
-  designFileSize           Int?                    @map("design_file_size")
-  finalImageUrl            String?                 @map("final_image_url")
-  finalImagePublicId       String?                 @map("final_image_public_id")
+  stock                    Int                      @default(0)
+  status                   VendorProductStatus      @default(PENDING)
+  isDelete                 Boolean                  @default(false)
+  postValidationAction     PostValidationAction     @default(AUTO_PUBLISH) @map("post_validation_action")
+  adminProductName         String?                  @map("admin_product_name")
+  adminProductDescription  String?                  @map("admin_product_description")
+  adminProductPrice        Int?                     @map("admin_product_price")
+  designBase64             String?                  @map("design_base64")
+  designCloudinaryUrl      String?                  @map("design_cloudinary_url")
+  designCloudinaryPublicId String?                  @map("design_cloudinary_public_id")
+  designPositioning        String?                  @default("CENTER") @map("design_positioning")
+  designScale              Float?                   @default(0.6) @map("design_scale")
+  designApplicationMode    String?                  @default("PRESERVED") @map("design_application_mode")
+  designId                 Int?                     @map("design_id")
+  salesCount               Int                      @default(0) @map("sales_count")
+  totalRevenue             Float                    @default(0) @map("total_revenue")
+  averageRating            Float?                   @map("average_rating")
+  lastSaleDate             DateTime?                @map("last_sale_date")
+  isBestSeller             Boolean                  @default(false) @map("is_best_seller")
+  bestSellerRank           Int?                     @map("best_seller_rank")
+  bestSellerCategory       String?                  @map("best_seller_category")
+  viewsCount               Int                      @default(0) @map("views_count")
+  designWidth              Int?                     @map("design_width")
+  designHeight             Int?                     @map("design_height")
+  designFormat             String?                  @map("design_format")
+  designFileSize           Int?                     @map("design_file_size")
+  finalImageUrl            String?                  @map("final_image_url")
+  finalImagePublicId       String?                  @map("final_image_public_id")
   sizes                    Json
   colors                   Json
-  defaultColorId           Int?                    @map("default_color_id")
+  defaultColorId           Int?                     @map("default_color_id")
   vendorName               String?
   vendorDescription        String?
-  vendorStock              Int                     @default(0)
-  basePriceAdmin           Float                   @default(0)
-  isValidated              Boolean                 @default(false)
+  vendorStock              Int                      @default(0)
+  basePriceAdmin           Float                    @default(0)
+  isValidated              Boolean                  @default(false)
   validatedAt              DateTime?
   validatedBy              Int?
   rejectionReason          String?
   submittedForValidationAt DateTime?
-  createdAt                DateTime                @default(now())
-  updatedAt                DateTime                @updatedAt
-  adminValidated           Boolean?                @map("admin_validated")
-  vendorSelectedThemeId    Int?                    @map("vendor_selected_theme_id")
-  vendorSelectedThemeName  String?                 @map("vendor_selected_theme_name")
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  adminValidated           Boolean?                 @map("admin_validated")
+  vendorSelectedThemeId    Int?                     @map("vendor_selected_theme_id")
+  vendorSelectedThemeName  String?                  @map("vendor_selected_theme_name")
   designProductLinks       DesignProductLink[]
   orderItems               OrderItem[]
-  designPositions          ProductDesignPosition[] @relation("VendorProductToDesignPosition")
+  designPositions          ProductDesignPosition[]  @relation("VendorProductToDesignPosition")
   designTransforms         VendorDesignTransform[]
-  baseProduct              Product                 @relation(fields: [baseProductId], references: [id])
-  design                   Design?                 @relation(fields: [designId], references: [id])
-  validator                User?                   @relation("VendorProductValidator", fields: [validatedBy], references: [id])
-  vendor                   User                    @relation(fields: [vendorId], references: [id])
+  baseProduct              Product                  @relation(fields: [baseProductId], references: [id])
+  design                   Design?                  @relation(fields: [designId], references: [id])
+  validator                User?                    @relation("VendorProductValidator", fields: [validatedBy], references: [id])
+  vendor                   User                     @relation(fields: [vendorId], references: [id])
   images                   VendorProductImage[]
   customizations           ProductCustomization[]
+  sizePrices               VendorProductSizePrice[]
+
+  // 🆕 Champs pour les prix par taille
+  useGlobalPricing     Boolean @default(false) @map("use_global_pricing")
+  globalCostPrice      Int?    @map("global_cost_price")
+  globalSuggestedPrice Int?    @map("global_suggested_price")
 
   @@index([vendorId])
   @@index([baseProductId])
@@ -1187,63 +1224,158 @@ model GalleryImage {
 /// 🆕 Suivi des utilisations de designs vendeurs pour le calcul des revenus
 /// Enregistre chaque fois qu'un client utilise un design vendeur dans une commande
 model DesignUsage {
-  id                  Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // Informations sur le design
-  designId            Int      @map("design_id")
-  designName          String   @map("design_name") @db.VarChar(255)
-  designPrice         Decimal  @map("design_price") @db.Decimal(10, 2)
+  designId    Int     @map("design_id")
+  designName  String  @map("design_name") @db.VarChar(255)
+  designPrice Decimal @map("design_price") @db.Decimal(10, 2)
 
   // Informations sur le vendeur
-  vendorId            Int      @map("vendor_id")
+  vendorId Int @map("vendor_id")
 
   // Informations sur la commande
-  orderId             Int      @map("order_id")
-  orderNumber         String   @map("order_number") @db.VarChar(50)
-  orderItemId         Int      @map("order_item_id")
+  orderId     Int    @map("order_id")
+  orderNumber String @map("order_number") @db.VarChar(50)
+  orderItemId Int    @map("order_item_id")
 
   // Informations sur le client
-  customerName        String   @map("customer_name") @db.VarChar(255)
-  customerEmail       String?  @map("customer_email") @db.VarChar(255)
+  customerName  String  @map("customer_name") @db.VarChar(255)
+  customerEmail String? @map("customer_email") @db.VarChar(255)
 
   // Informations sur le produit
-  productId           Int      @map("product_id")
-  productName         String   @map("product_name") @db.VarChar(255)
+  productId   Int    @map("product_id")
+  productName String @map("product_name") @db.VarChar(255)
 
   // Calcul des revenus
-  commissionRate      Decimal  @default(70.00) @map("commission_rate") @db.Decimal(5, 2)
-  vendorRevenue       Decimal  @map("vendor_revenue") @db.Decimal(10, 2)
-  platformFee         Decimal  @map("platform_fee") @db.Decimal(10, 2)
+  commissionRate Decimal @default(70.00) @map("commission_rate") @db.Decimal(5, 2)
+  vendorRevenue  Decimal @map("vendor_revenue") @db.Decimal(10, 2)
+  platformFee    Decimal @map("platform_fee") @db.Decimal(10, 2)
 
   // Statut de paiement
-  paymentStatus       DesignUsagePaymentStatus @default(PENDING) @map("payment_status")
+  paymentStatus DesignUsagePaymentStatus @default(PENDING) @map("payment_status")
 
   // Dates importantes
-  usedAt              DateTime  @default(now()) @map("used_at")
-  confirmedAt         DateTime? @map("confirmed_at")
-  readyForPayoutAt    DateTime? @map("ready_for_payout_at")
-  paidAt              DateTime? @map("paid_at")
+  usedAt           DateTime  @default(now()) @map("used_at")
+  confirmedAt      DateTime? @map("confirmed_at")
+  readyForPayoutAt DateTime? @map("ready_for_payout_at")
+  paidAt           DateTime? @map("paid_at")
 
   // Métadonnées
-  customizationId     Int?     @map("customization_id")
-  viewKey             String?  @map("view_key") @db.VarChar(50)
+  customizationId Int?    @map("customization_id")
+  viewKey         String? @map("view_key") @db.VarChar(50)
 
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  design              Design    @relation(fields: [designId], references: [id], onDelete: Cascade)
-  vendor              User      @relation("VendorDesignUsages", fields: [vendorId], references: [id], onDelete: Cascade)
-  order               Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem           OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  design    Design    @relation(fields: [designId], references: [id], onDelete: Cascade)
+  vendor    User      @relation("VendorDesignUsages", fields: [vendorId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
-  @@map("design_usages")
+  @@unique([designId, orderItemId], name: "unique_design_order_item")
   @@index([vendorId, paymentStatus], name: "idx_vendor_payment_status")
   @@index([orderId], name: "idx_order_id")
   @@index([designId], name: "idx_design_id")
-  @@unique([designId, orderItemId], name: "unique_design_order_item")
+  @@map("design_usages")
 }
 
+/// 🔒 Table de sécurité des numéros de téléphone vendeur
+/// Système de vérification OTP + Email + Période de sécurité 48h
+model VendorPhoneNumber {
+  id       Int @id @default(autoincrement())
+  vendorId Int @map("vendor_id")
+
+  // Informations du numéro
+  countryCode String  @default("+221") @map("country_code") @db.VarChar(5)
+  phoneNumber String  @map("phone_number") @db.VarChar(20)
+  isPrimary   Boolean @default(false) @map("is_primary")
+
+  // Sécurité
+  isVerified Boolean           @default(false) @map("is_verified")
+  verifiedAt DateTime?         @map("verified_at")
+  status     PhoneNumberStatus @default(PENDING)
+
+  // Période de sécurité (48h après vérification)
+  securityHoldUntil DateTime? @map("security_hold_until")
+
+  // Métadonnées
+  addedAt               DateTime  @default(now()) @map("added_at")
+  lastUsedForWithdrawal DateTime? @map("last_used_for_withdrawal")
+
+  // Relations
+  vendor User @relation("VendorPhoneNumbers", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, phoneNumber], name: "unique_vendor_phone_number")
+  @@index([vendorId])
+  @@index([status])
+  @@index([vendorId, isPrimary])
+  @@map("vendor_phone_numbers")
+}
+
+/// 🔐 Table des codes OTP pour vérification des téléphones
+model PhoneOTPCode {
+  id          Int    @id @default(autoincrement())
+  vendorId    Int    @map("vendor_id")
+  phoneNumber String @map("phone_number") @db.VarChar(20)
+
+  // Code OTP
+  code     String @db.VarChar(6)
+  codeHash String @map("code_hash") @db.VarChar(255)
+
+  // Expiration
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  // Statut
+  isUsed     Boolean   @default(false) @map("is_used")
+  verifiedAt DateTime? @map("verified_at")
+  attempts   Int       @default(0)
+
+  // Sécurité
+  ipAddress String? @map("ip_address") @db.VarChar(45)
+  userAgent String? @map("user_agent") @db.Text
+
+  // Relations
+  vendor User @relation("VendorPhoneOTPs", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@index([expiresAt])
+  @@index([isUsed])
+  @@map("phone_otp_codes")
+}
+
+/// 📝 Logs de sécurité pour traçabilité
+model SecurityLog {
+  id       Int @id @default(autoincrement())
+  vendorId Int @map("vendor_id")
+
+  // Action
+  action String @db.VarChar(50)
+  // 'PHONE_ADDED', 'PHONE_VERIFIED', 'PHONE_DELETED',
+  // 'OTP_SENT', 'OTP_VERIFIED', 'OTP_FAILED',
+  // 'WITHDRAWAL_ATTEMPTED', 'WITHDRAWAL_BLOCKED'
+
+  // Détails
+  phoneNumber String? @map("phone_number") @db.VarChar(20)
+  details     Json?
+
+  // Contexte
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  vendor User @relation("VendorSecurityLogs", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("security_logs")
+}
+
+/// ⚠️ DEPRECATED: Ancienne table VendorPhone (à supprimer après migration)
 model VendorPhone {
   id          Int      @id @default(autoincrement())
   vendorId    Int      @map("vendor_id")
@@ -1258,6 +1390,25 @@ model VendorPhone {
   @@index([vendorId])
   @@index([vendorId, isPrimary])
   @@map("vendor_phones")
+}
+
+/// 🆕 Prix par taille pour les produits vendeur
+/// Permet de définir des prix de revient et des prix de vente différents pour chaque taille
+model VendorProductSizePrice {
+  id              Int           @id @default(autoincrement())
+  vendorProductId Int           @map("vendor_product_id")
+  size            String        @db.VarChar(100)
+  costPrice       Int           @default(0) @map("cost_price")
+  suggestedPrice  Int           @map("suggested_price")
+  salePrice       Int?          @map("sale_price")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  vendorProduct   VendorProduct @relation(fields: [vendorProductId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorProductId, size], name: "unique_vendor_product_size_price")
+  @@index([vendorProductId])
+  @@index([size])
+  @@map("vendor_product_size_prices")
 }
 
 enum GalleryStatus {
@@ -1276,7 +1427,9 @@ enum VendorProductStatus {
   PUBLISHED
   DRAFT
   PENDING
+  PROCESSING // 🆕 Pour indiquer que les images sont en cours de génération
   REJECTED
+  ERROR // 🆕 Pour indiquer qu'une erreur s'est produite lors de la génération
 }
 
 enum ProductGenre {
@@ -1284,6 +1437,8 @@ enum ProductGenre {
   FEMME
   BEBE
   UNISEXE
+  AUTOCOLLANT
+  TABLEAU
 }
 
 enum PostValidationAction {
@@ -1390,94 +1545,94 @@ enum PaymentAttemptStatus {
 
 /// 🆕 Statut de paiement des utilisations de designs vendeurs
 enum DesignUsagePaymentStatus {
-  PENDING         // Commande en attente
-  CONFIRMED       // Commande confirmée (paiement reçu)
+  PENDING // Commande en attente
+  CONFIRMED // Commande confirmée (paiement reçu)
   READY_FOR_PAYOUT // Commande livrée, prêt pour paiement au vendeur
-  PAID            // Vendeur a été payé
-  CANCELLED       // Commande annulée (pas de paiement)
+  PAID // Vendeur a été payé
+  CANCELLED // Commande annulée (pas de paiement)
 }
 
 /// 🆕 Système de vente de stickers personnalisés
 /// Tailles prédéfinies pour les stickers
 model StickerSize {
-  id           String          @id @db.VarChar(50)
-  name         String          @db.VarChar(100)
-  description  String?         @db.Text
-  widthCm      Decimal         @map("width_cm") @db.Decimal(10, 2)
-  heightCm     Decimal         @map("height_cm") @db.Decimal(10, 2)
-  basePrice    Int             @map("base_price")
-  isActive     Boolean         @default(true) @map("is_active")
-  displayOrder Int             @default(0) @map("display_order")
-  createdAt    DateTime        @default(now()) @map("created_at")
+  id           String   @id @db.VarChar(50)
+  name         String   @db.VarChar(100)
+  description  String?  @db.Text
+  widthCm      Decimal  @map("width_cm") @db.Decimal(10, 2)
+  heightCm     Decimal  @map("height_cm") @db.Decimal(10, 2)
+  basePrice    Int      @map("base_price")
+  isActive     Boolean  @default(true) @map("is_active")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("sticker_sizes")
 }
 
 /// Finitions disponibles pour les stickers
 model StickerFinish {
-  id              String          @id @db.VarChar(50)
-  name            String          @db.VarChar(100)
-  description     String?         @db.Text
-  priceMultiplier Decimal         @default(1.00) @map("price_multiplier") @db.Decimal(3, 2)
-  isActive        Boolean         @default(true) @map("is_active")
-  displayOrder    Int             @default(0) @map("display_order")
-  createdAt       DateTime        @default(now()) @map("created_at")
+  id              String   @id @db.VarChar(50)
+  name            String   @db.VarChar(100)
+  description     String?  @db.Text
+  priceMultiplier Decimal  @default(1.00) @map("price_multiplier") @db.Decimal(3, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  displayOrder    Int      @default(0) @map("display_order")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   @@map("sticker_finishes")
 }
 
 /// Produits stickers créés par les vendeurs
 model StickerProduct {
-  id              Int                   @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // Références
-  vendorId        Int                   @map("vendor_id")
-  designId        Int                   @map("design_id")
+  vendorId Int @map("vendor_id")
+  designId Int @map("design_id")
 
   // Informations du produit
-  name            String                @db.VarChar(255)
-  description     String?               @db.Text
-  sku             String?               @unique @db.VarChar(100)
-  imageUrl        String?               @map("image_url") @db.VarChar(500)
-  cloudinaryPublicId String?            @map("cloudinary_public_id") @db.VarChar(255)
+  name               String  @db.VarChar(255)
+  description        String? @db.Text
+  sku                String? @unique @db.VarChar(100)
+  imageUrl           String? @map("image_url") @db.VarChar(500)
+  cloudinaryPublicId String? @map("cloudinary_public_id") @db.VarChar(255)
 
   // Configuration du sticker
-  sizeId          String                @map("size_id") @db.VarChar(50)
-  widthCm         Decimal               @map("width_cm") @db.Decimal(10, 2)
-  heightCm        Decimal               @map("height_cm") @db.Decimal(10, 2)
-  finish          String                @db.VarChar(50)
-  shape           StickerShape          @default(SQUARE)
+  sizeId   String       @map("size_id") @db.VarChar(50)
+  widthCm  Decimal      @map("width_cm") @db.Decimal(10, 2)
+  heightCm Decimal      @map("height_cm") @db.Decimal(10, 2)
+  finish   String       @db.VarChar(50)
+  shape    StickerShape @default(SQUARE)
 
   // Prix et quantités
-  basePrice       Int                   @map("base_price")
-  finishMultiplier Decimal              @default(1.00) @map("finish_multiplier") @db.Decimal(3, 2)
-  finalPrice      Int                   @map("final_price")
-  minQuantity     Int                   @default(1) @map("min_quantity")
-  maxQuantity     Int                   @default(100) @map("max_quantity")
+  basePrice        Int     @map("base_price")
+  finishMultiplier Decimal @default(1.00) @map("finish_multiplier") @db.Decimal(3, 2)
+  finalPrice       Int     @map("final_price")
+  minQuantity      Int     @default(1) @map("min_quantity")
+  maxQuantity      Int     @default(100) @map("max_quantity")
 
   // Configuration de génération d'image
-  stickerType     String?               @map("sticker_type") @db.VarChar(50)      // 'autocollant' | 'pare-chocs'
-  borderColor     String?               @map("border_color") @db.VarChar(50)      // 'glossy-white' | 'white' | 'matte-white' | 'transparent'
-  surface         String?               @map("surface") @db.VarChar(50)           // 'blanc-mat' | 'transparent'
+  stickerType String? @map("sticker_type") @db.VarChar(50) // 'autocollant' | 'pare-chocs'
+  borderColor String? @map("border_color") @db.VarChar(50) // 'glossy-white' | 'white' | 'matte-white' | 'transparent'
+  surface     String? @map("surface") @db.VarChar(50) // 'blanc-mat' | 'transparent'
 
   // Métadonnées
-  status          StickerProductStatus  @default(DRAFT)
-  isFeatured      Boolean               @default(false) @map("is_featured")
-  viewCount       Int                   @default(0) @map("view_count")
-  saleCount       Int                   @default(0) @map("sale_count")
+  status     StickerProductStatus @default(DRAFT)
+  isFeatured Boolean              @default(false) @map("is_featured")
+  viewCount  Int                  @default(0) @map("view_count")
+  saleCount  Int                  @default(0) @map("sale_count")
 
   // Timestamps
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
-  publishedAt     DateTime?             @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  publishedAt DateTime? @map("published_at")
 
   // Relations
-  vendor          User                  @relation("VendorStickers", fields: [vendorId], references: [id], onDelete: Cascade)
-  design          Design                @relation("StickerDesigns", fields: [designId], references: [id], onDelete: Cascade)
-  orderItems      StickerOrderItem[]
-  orderLineItems  OrderItem[]           @relation("StickerOrderItems")
-  views           StickerView[]
-  favorites       StickerFavorite[]
+  vendor         User               @relation("VendorStickers", fields: [vendorId], references: [id], onDelete: Cascade)
+  design         Design             @relation("StickerDesigns", fields: [designId], references: [id], onDelete: Cascade)
+  orderItems     StickerOrderItem[]
+  orderLineItems OrderItem[]        @relation("StickerOrderItems")
+  views          StickerView[]
+  favorites      StickerFavorite[]
 
   @@index([vendorId])
   @@index([designId])
@@ -1491,27 +1646,27 @@ model StickerProduct {
 
 /// Items de commande pour les stickers
 model StickerOrderItem {
-  id                Int            @id @default(autoincrement())
-  orderId           Int            @map("order_id")
-  stickerProductId  Int            @map("sticker_product_id")
+  id               Int @id @default(autoincrement())
+  orderId          Int @map("order_id")
+  stickerProductId Int @map("sticker_product_id")
 
   // Détails de la commande
-  quantity          Int
-  unitPrice         Int            @map("unit_price")
-  totalPrice        Int            @map("total_price")
+  quantity   Int
+  unitPrice  Int @map("unit_price")
+  totalPrice Int @map("total_price")
 
   // Configuration (snapshot au moment de la commande)
-  sizeName          String?        @map("size_name") @db.VarChar(100)
-  finishName        String?        @map("finish_name") @db.VarChar(100)
-  shapeName         String?        @map("shape_name") @db.VarChar(100)
-  dimensionsCm      String?        @map("dimensions_cm") @db.VarChar(50)
+  sizeName     String? @map("size_name") @db.VarChar(100)
+  finishName   String? @map("finish_name") @db.VarChar(100)
+  shapeName    String? @map("shape_name") @db.VarChar(100)
+  dimensionsCm String? @map("dimensions_cm") @db.VarChar(50)
 
   // Métadonnées
-  createdAt         DateTime       @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  stickerProduct    StickerProduct @relation(fields: [stickerProductId], references: [id])
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stickerProduct StickerProduct @relation(fields: [stickerProductId], references: [id])
 
   @@index([orderId])
   @@index([stickerProductId])
@@ -1520,13 +1675,13 @@ model StickerOrderItem {
 
 /// Analytics - Vues de stickers
 model StickerView {
-  id              Int            @id @default(autoincrement())
-  stickerId       Int            @map("sticker_id")
-  userId          Int?           @map("user_id")
-  sessionId       String?        @map("session_id") @db.VarChar(255)
-  viewedAt        DateTime       @default(now()) @map("viewed_at")
+  id        Int      @id @default(autoincrement())
+  stickerId Int      @map("sticker_id")
+  userId    Int?     @map("user_id")
+  sessionId String?  @map("session_id") @db.VarChar(255)
+  viewedAt  DateTime @default(now()) @map("viewed_at")
 
-  sticker         StickerProduct @relation(fields: [stickerId], references: [id], onDelete: Cascade)
+  sticker StickerProduct @relation(fields: [stickerId], references: [id], onDelete: Cascade)
 
   @@index([stickerId])
   @@index([viewedAt])
@@ -1535,13 +1690,13 @@ model StickerView {
 
 /// Analytics - Favoris de stickers
 model StickerFavorite {
-  id              Int            @id @default(autoincrement())
-  stickerId       Int            @map("sticker_id")
-  userId          Int            @map("user_id")
-  createdAt       DateTime       @default(now()) @map("created_at")
+  id        Int      @id @default(autoincrement())
+  stickerId Int      @map("sticker_id")
+  userId    Int      @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  sticker         StickerProduct @relation(fields: [stickerId], references: [id], onDelete: Cascade)
-  user            User           @relation("UserStickerFavorites", fields: [userId], references: [id], onDelete: Cascade)
+  sticker StickerProduct @relation(fields: [stickerId], references: [id], onDelete: Cascade)
+  user    User           @relation("UserStickerFavorites", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([stickerId, userId], name: "unique_sticker_favorite")
   @@index([stickerId])
@@ -1561,4 +1716,69 @@ enum StickerProductStatus {
   PENDING
   PUBLISHED
   REJECTED
+}
+
+/// Gestion du contenu de la page d'accueil
+/// Système de 3 sections avec nombre d'items fixe (6-5-6)
+model HomeContent {
+  id        String      @id @default(cuid())
+  type      ContentType
+  name      String      @db.VarChar(100)
+  imageUrl  String      @db.VarChar(500)
+  order     Int
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@unique([type, order])
+  @@map("home_content")
+}
+
+enum ContentType {
+  DESIGN
+  INFLUENCER
+  MERCHANDISING
+}
+
+/// 🔒 Statut des numéros de téléphone vendeur
+enum PhoneNumberStatus {
+  PENDING // En attente de vérification ou en période de sécurité
+  ACTIVE // Actif et utilisable pour retraits
+  SUSPENDED // Suspendu (comportement suspect)
+}
+
+/// 🔧 Configuration dynamique des fournisseurs de paiement
+/// Permet aux admins de gérer les clés API sans toucher au code
+/// Chaque provider a UN enregistrement avec les clés TEST et LIVE
+model PaymentConfig {
+  id        Int      @id @default(autoincrement())
+  provider  String   @unique @db.VarChar(50) // 'paydunya', 'paytech', etc.
+
+  // Configuration active
+  isActive   Boolean  @default(true) @map("is_active")
+  activeMode String   @default("test") @db.VarChar(10) @map("active_mode") // 'test' ou 'live'
+
+  // Clés API TEST
+  testMasterKey   String? @map("test_master_key") @db.VarChar(255)
+  testPrivateKey  String? @map("test_private_key") @db.VarChar(255)
+  testToken       String? @map("test_token") @db.VarChar(255)
+  testPublicKey   String? @map("test_public_key") @db.VarChar(255)
+
+  // Clés API LIVE
+  liveMasterKey   String? @map("live_master_key") @db.VarChar(255)
+  livePrivateKey  String? @map("live_private_key") @db.VarChar(255)
+  liveToken       String? @map("live_token") @db.VarChar(255)
+  livePublicKey   String? @map("live_public_key") @db.VarChar(255)
+
+  // Configuration additionnelle
+  webhookSecret String? @map("webhook_secret") @db.VarChar(255)
+  metadata      Json?   @default("{}")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([provider])
+  @@index([isActive])
+  @@index([activeMode])
+  @@map("payment_configs")
 }

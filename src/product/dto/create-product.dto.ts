@@ -7,6 +7,32 @@ enum PublicationStatus {
   DRAFT = 'DRAFT'
 }
 
+// 🆕 DTO pour les prix par taille
+export class SizePricingDto {
+  @ApiProperty({ description: 'Nom de la taille (ex: "S", "M", "L", "XL")' })
+  @IsString()
+  @IsNotEmpty()
+  size: string;
+
+  @ApiProperty({
+    description: 'Prix de revient pour cette taille (FCFA)',
+    example: 2000
+  })
+  @IsInt()
+  @Min(0, { message: 'Le prix de revient ne peut pas être négatif' })
+  @Type(() => Number)
+  costPrice: number;
+
+  @ApiProperty({
+    description: 'Prix de vente suggéré pour cette taille (FCFA)',
+    example: 5000
+  })
+  @IsInt()
+  @IsPositive({ message: 'Le prix de vente suggéré doit être supérieur à 0' })
+  @Type(() => Number)
+  suggestedPrice: number;
+}
+
 // Enum pour le type de coordonnées
 export enum CoordinateType {
   PERCENTAGE = 'PERCENTAGE',
@@ -158,7 +184,7 @@ export class ColorVariationDto {
   @MaxLength(100, { message: 'Le nom de la couleur ne peut pas dépasser 100 caractères' })
   name: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Code hexadécimal de la couleur (format #RRGGBB)',
     example: '#FF0000'
   })
@@ -174,7 +200,27 @@ export class ColorVariationDto {
   })
   colorCode: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
+    description: 'Prix spécifique pour cette variation de couleur (utilisé pour les autocollants)',
+    example: 2000,
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  price?: number;
+
+  @ApiProperty({
+    description: 'Stock par taille pour cette couleur (format JSON)',
+    example: { M: 10, L: 15, XL: 5 },
+    required: false
+  })
+  @IsOptional()
+  @IsObject()
+  stock?: { [size: string]: number };
+
+  @ApiProperty({
     description: 'Images pour cette variation de couleur',
     type: () => [ProductImageDto]
   })
@@ -301,6 +347,49 @@ export class CreateProductDto {
   @IsString({ each: true })
   sizes?: string[] = [];
 
+  // 🆕 Champs pour la tarification par taille
+  @ApiProperty({
+    description: 'Active les prix globaux pour toutes les tailles',
+    example: false,
+    required: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  useGlobalPricing?: boolean;
+
+  @ApiProperty({
+    description: 'Prix de revient global (FCFA) - utilisé si useGlobalPricing est true',
+    example: 2000,
+    required: false
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  globalCostPrice?: number;
+
+  @ApiProperty({
+    description: 'Prix de vente suggéré global (FCFA) - utilisé si useGlobalPricing est true',
+    example: 5000,
+    required: false
+  })
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @Type(() => Number)
+  globalSuggestedPrice?: number;
+
+  @ApiProperty({
+    description: 'Liste des prix par taille',
+    type: () => [SizePricingDto],
+    required: false
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SizePricingDto)
+  sizePricing?: SizePricingDto[];
+
   @ApiProperty({ 
     description: 'Indique si le produit est prêt (true) ou un mockup (false)',
     example: false,
@@ -310,19 +399,29 @@ export class CreateProductDto {
   @IsBoolean()
   isReadyProduct?: boolean = false;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Genre du produit (public cible)',
-    enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE'],
+    enum: ['HOMME', 'FEMME', 'BEBE', 'UNISEXE', 'AUTOCOLLANT'],
     example: 'UNISEXE',
     required: false
   })
   @IsOptional()
-  @IsEnum(['HOMME', 'FEMME', 'BEBE', 'UNISEXE'], { 
-    message: 'Le genre doit être "HOMME", "FEMME", "BEBE" ou "UNISEXE"' 
+  @IsEnum(['HOMME', 'FEMME', 'BEBE', 'UNISEXE', 'AUTOCOLLANT', 'TABLEAU'], {
+    message: 'Le genre doit être "HOMME", "FEMME", "BEBE", "UNISEXE", "AUTOCOLLANT" ou "TABLEAU"'
   })
   genre?: string = 'UNISEXE';
 
-  @ApiProperty({ 
+  @ApiProperty({
+    description: 'Indique si le produit nécessite une gestion de stock',
+    example: true,
+    default: true,
+    required: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  requiresStock?: boolean = true;
+
+  @ApiProperty({
     description: 'Variations de couleur du produit',
     type: () => [ColorVariationDto]
   })

@@ -8,7 +8,33 @@ export enum ReadyProductGenre {
   HOMME = 'HOMME',
   FEMME = 'FEMME',
   BEBE = 'BEBE',
-  UNISEXE = 'UNISEXE'
+  UNISEXE = 'UNISEXE',
+  AUTOCOLLANT = 'AUTOCOLLANT',
+  TABLEAU = 'TABLEAU'
+}
+
+// 🆕 DTO pour les prix par taille
+export class SizePricingDto {
+  @ApiProperty({ description: 'Nom de la taille (ex: "S", "M", "L", "XL")' })
+  @IsString()
+  @IsNotEmpty()
+  size: string;
+
+  @ApiProperty({
+    description: 'Prix de revient pour cette taille (FCFA)',
+    example: 2000
+  })
+  @IsInt()
+  @Min(0, { message: 'Le prix de revient ne peut pas être négatif' })
+  costPrice: number;
+
+  @ApiProperty({
+    description: 'Prix de vente suggéré pour cette taille (FCFA)',
+    example: 5000
+  })
+  @IsInt()
+  @IsPositive({ message: 'Le prix de vente suggéré doit être supérieur à 0' })
+  suggestedPrice: number;
 }
 
 export class ReadyProductImageDto {
@@ -33,7 +59,7 @@ export class ReadyColorVariationDto {
   @MaxLength(100, { message: 'Le nom de la couleur ne peut pas dépasser 100 caractères' })
   name: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Code hexadécimal de la couleur (format #RRGGBB)',
     example: '#FF0000'
   })
@@ -49,7 +75,18 @@ export class ReadyColorVariationDto {
   })
   colorCode: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
+    description: 'Prix spécifique pour cette variation de couleur (utilisé pour les autocollants)',
+    example: 2000,
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  price?: number;
+
+  @ApiProperty({
     description: 'Images pour cette variation de couleur',
     type: () => [ReadyProductImageDto]
   })
@@ -145,6 +182,49 @@ export class CreateReadyProductDto {
   @IsString({ each: true })
   sizes?: string[] = [];
 
+  // 🆕 Champs pour la tarification par taille
+  @ApiProperty({
+    description: 'Active les prix globaux pour toutes les tailles',
+    example: false,
+    required: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  useGlobalPricing?: boolean;
+
+  @ApiProperty({
+    description: 'Prix de revient global (FCFA) - utilisé si useGlobalPricing est true',
+    example: 2000,
+    required: false
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  globalCostPrice?: number;
+
+  @ApiProperty({
+    description: 'Prix de vente suggéré global (FCFA) - utilisé si useGlobalPricing est true',
+    example: 5000,
+    required: false
+  })
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @Type(() => Number)
+  globalSuggestedPrice?: number;
+
+  @ApiProperty({
+    description: 'Liste des prix par taille',
+    type: () => [SizePricingDto],
+    required: false
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SizePricingDto)
+  sizePricing?: SizePricingDto[];
+
   @ApiProperty({ 
     description: 'Variations de couleur du produit',
     type: () => [ReadyColorVariationDto]
@@ -164,15 +244,25 @@ export class CreateReadyProductDto {
   @IsBoolean()
   isReadyProduct?: boolean; // ✅ Par défaut true pour les produits prêts
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Genre du produit prêt (public cible)',
     enum: ReadyProductGenre,
     example: ReadyProductGenre.HOMME,
     required: false
   })
-  @IsEnum(ReadyProductGenre, { 
-    message: 'Le genre doit être "HOMME", "FEMME", "BEBE" ou "UNISEXE"' 
+  @IsEnum(ReadyProductGenre, {
+    message: 'Le genre doit être "HOMME", "FEMME", "BEBE", "UNISEXE", "AUTOCOLLANT" ou "TABLEAU"'
   })
   @IsOptional()
   genre?: ReadyProductGenre;
+
+  @ApiProperty({
+    description: 'Indique si le produit nécessite une gestion de stock',
+    example: true,
+    default: true,
+    required: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  requiresStock?: boolean = true;
 } 

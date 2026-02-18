@@ -1,79 +1,128 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsArray, IsOptional, IsObject, ValidateNested, IsIn, Min, Max, Matches } from 'class-validator';
+import { IsString, IsNumber, IsArray, IsOptional, IsObject, ValidateNested, IsIn, Min, Max, Matches, IsBoolean } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 // DTO pour un élément de texte
+// Basé sur la documentation BACKEND_ORDER_CUSTOMIZATION_GUIDE.md
 export class TextElementDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'ID unique de l\'élément (ex: "text-1234567890")' })
   @IsString()
   id: string;
 
-  @ApiProperty({ enum: ['text'] })
+  @ApiProperty({ enum: ['text'], description: 'Type fixe pour les textes' })
   type: 'text';
 
-  @ApiProperty()
-  @IsNumber()
-  x: number;
-
-  @ApiProperty()
-  @IsNumber()
-  y: number;
-
-  @ApiProperty()
-  @IsNumber()
-  width: number;
-
-  @ApiProperty()
-  @IsNumber()
-  height: number;
-
-  @ApiProperty()
-  @IsNumber()
-  rotation: number;
-
-  @ApiProperty()
-  @IsNumber()
-  zIndex: number;
-
-  @ApiProperty()
+  @ApiProperty({ description: 'Contenu du texte avec sauts de ligne (\\n)' })
   @IsString()
   text: string;
 
-  @ApiProperty()
+  // Position (en pourcentage du canvas, 0-1)
+  @ApiProperty({ description: 'Position X (0-1, ex: 0.5 = 50% du canvas)' })
   @IsNumber()
+  @Min(0)
+  @Max(1)
+  x: number;
+
+  @ApiProperty({ description: 'Position Y (0-1, ex: 0.5 = 50% du canvas)' })
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  y: number;
+
+  // Dimensions (en pixels)
+  @ApiProperty({ description: 'Largeur de la boîte de texte en pixels' })
+  @IsNumber()
+  @Min(10)
+  width: number;
+
+  @ApiProperty({ description: 'Hauteur de la boîte de texte en pixels' })
+  @IsNumber()
+  @Min(10)
+  height: number;
+
+  // Transformation
+  @ApiProperty({ description: 'Rotation en degrés (0-360)' })
+  @IsNumber()
+  @Min(0)
+  @Max(360)
+  rotation: number;
+
+  @ApiPropertyOptional({ description: 'Échelle (1 = 100%, 2 = 200%)' })
+  @IsNumber()
+  @Min(0.1)
+  @Max(10)
+  @IsOptional()
+  scale?: number;
+
+  @ApiProperty({ description: 'Ordre d\'empilement (z-index)' })
+  @IsNumber()
+  zIndex: number;
+
+  // Style du texte
+  @ApiProperty({ description: 'Taille de police en pixels (ex: 24)' })
+  @IsNumber()
+  @Min(1)
   fontSize: number;
 
-  @ApiProperty()
-  @IsNumber()
-  baseFontSize: number;
-
-  @ApiProperty()
-  @IsNumber()
-  baseWidth: number;
-
-  @ApiProperty()
+  @ApiProperty({ description: 'Police (ex: "Arial", "Roboto", etc.)' })
   @IsString()
   fontFamily: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Couleur hex (ex: "#000000")', pattern: '^#[0-9A-Fa-f]{6}$' })
   @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/)
   color: string;
 
-  @ApiProperty({ enum: ['normal', 'bold'] })
-  fontWeight: 'normal' | 'bold';
+  // Formatage
+  @ApiPropertyOptional({ description: 'Graisse de la police ("normal", "bold", "600", etc.)' })
+  @IsString()
+  @IsOptional()
+  fontWeight?: string;
 
-  @ApiProperty({ enum: ['normal', 'italic'] })
-  fontStyle: 'normal' | 'italic';
+  @ApiPropertyOptional({ description: 'Style de la police ("normal", "italic")' })
+  @IsString()
+  @IsIn(['normal', 'italic'])
+  @IsOptional()
+  fontStyle?: string;
 
-  @ApiProperty({ enum: ['none', 'underline'] })
-  textDecoration: 'none' | 'underline';
+  @ApiPropertyOptional({ description: 'Décoration du texte ("none", "underline", "line-through")' })
+  @IsString()
+  @IsIn(['none', 'underline', 'line-through'])
+  @IsOptional()
+  textDecoration?: string;
 
-  @ApiProperty({ enum: ['left', 'center', 'right'] })
-  textAlign: 'left' | 'center' | 'right';
+  @ApiPropertyOptional({ description: 'Alignement du texte ("left", "center", "right")' })
+  @IsString()
+  @IsIn(['left', 'center', 'right'])
+  @IsOptional()
+  textAlign?: string;
 
-  @ApiProperty()
+  // Métadonnées
+  @ApiPropertyOptional({ description: 'Élément verrouillé' })
+  @IsBoolean()
+  @IsOptional()
+  locked?: boolean;
+
+  @ApiPropertyOptional({ description: 'Élément visible' })
+  @IsBoolean()
+  @IsOptional()
+  visible?: boolean;
+
+  // Champs existants spécifiques Printalma
+  @ApiPropertyOptional({ description: 'Taille de police de base (calcul)' })
   @IsNumber()
-  curve: number;
+  @IsOptional()
+  baseFontSize?: number;
+
+  @ApiPropertyOptional({ description: 'Largeur de base (calcul)' })
+  @IsNumber()
+  @IsOptional()
+  baseWidth?: number;
+
+  @ApiPropertyOptional({ description: 'Courbure du texte (effet courbe)' })
+  @IsNumber()
+  @IsOptional()
+  curve?: number;
 }
 
 // DTO pour un élément d'image
@@ -120,6 +169,38 @@ export class ImageElementDto {
   @ApiProperty()
   @IsNumber()
   naturalHeight: number;
+
+  // 📤 Pour les uploads client (nouveau)
+  @ApiPropertyOptional({ description: 'Cloudinary public ID pour les images uploadées par le client' })
+  @IsString()
+  @IsOptional()
+  cloudinaryPublicId?: string;
+
+  @ApiPropertyOptional({ description: 'Indique si l\'image a été uploadée par le client (true) ou est un design vendeur (false)' })
+  @IsBoolean()
+  @IsOptional()
+  isClientUpload?: boolean;
+
+  // 💰 Pour les designs vendeur (optionnel)
+  @ApiPropertyOptional({ description: 'ID du design vendeur (si applicable)' })
+  @IsNumber()
+  @IsOptional()
+  designId?: number;
+
+  @ApiPropertyOptional({ description: 'Prix du design vendeur en FCFA (si applicable)' })
+  @IsNumber()
+  @IsOptional()
+  designPrice?: number;
+
+  @ApiPropertyOptional({ description: 'Nom du design vendeur (si applicable)' })
+  @IsString()
+  @IsOptional()
+  designName?: string;
+
+  @ApiPropertyOptional({ description: 'ID du vendeur (si applicable)' })
+  @IsNumber()
+  @IsOptional()
+  vendorId?: number;
 }
 
 // DTO pour une sélection de taille

@@ -90,6 +90,11 @@ export class VendorWizardProductService {
       const savedImages = await this.processWizardImages(productImages);
 
       // 5. Créer le produit wizard dans une transaction
+      // Si le vendeur ne fournit pas de description, on utilise celle du produit de base
+      const finalDescription = vendorDescription && vendorDescription.trim().length > 0
+        ? vendorDescription
+        : baseProduct.description;
+
       const wizardProduct = await this.prisma.$transaction(async (tx) => {
         // Créer le produit
         const product = await tx.vendorProduct.create({
@@ -97,7 +102,7 @@ export class VendorWizardProductService {
             vendorId: vendorId,
             baseProductId: baseProductId,
             name: vendorName, // Nom personnalisé du vendeur
-            description: vendorDescription,
+            description: finalDescription,
             price: vendorPrice,
             stock: vendorStock,
             status: forcedStatus as any,
@@ -109,10 +114,11 @@ export class VendorWizardProductService {
             colors: selectedColors as unknown as any,
             // 🔧 Mémoriser quelques infos admin du produit de base
             adminProductName: baseProduct.name || `Produit base ${baseProductId}`,
+            adminProductDescription: baseProduct.description,
             adminProductPrice: Math.round(baseProduct.price),
             // Champs mémo optionnels
             vendorName: vendorName,
-            vendorDescription: vendorDescription,
+            vendorDescription: finalDescription,
             vendorStock: vendorStock,
           },
           include: {

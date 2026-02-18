@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CommissionService } from '../commission/commission.service';
+import { WithdrawalSecurityService } from '../vendor-phone/services/withdrawal-security.service';
 import { FundsRequestStatus, PaymentMethodType } from '@prisma/client';
 import {
   VendorFundsRequestFiltersDto,
@@ -19,6 +20,12 @@ import {
   VendorFundsRequestsListData,
   AdminFundsStatistics,
 } from './dto/vendor-funds.dto';
+import {
+  MIN_WITHDRAWAL_AMOUNT,
+  MAX_WITHDRAWAL_AMOUNT,
+  MAX_WITHDRAWALS_PER_DAY,
+  VALID_PAYMENT_METHODS,
+} from './constants/withdrawal.constants';
 
 @Injectable()
 export class VendorFundsService {
@@ -27,6 +34,7 @@ export class VendorFundsService {
   constructor(
     private prisma: PrismaService,
     private commissionService: CommissionService,
+    private withdrawalSecurityService: WithdrawalSecurityService,
   ) {}
 
   /**
@@ -47,32 +55,26 @@ export class VendorFundsService {
     // Calculer les gains depuis les commandes LIVRÉES ET PAYÉES uniquement
     // 🔒 SÉCURITÉ: Le vendeur ne peut retirer que les montants des commandes livrées ET payées
     // Ces commandes ont déjà la commission appliquée et le paiement validé
+    // ✅ CORRECTION: Utiliser le même filtre que order.service.ts (getVendorOrders)
     const validOrders = await this.prisma.order.findMany({
       where: {
         status: 'DELIVERED',
         paymentStatus: 'PAID',
-        // Filtrer les commandes contenant des produits du vendeur
+        // 🎯 Filtrer les commandes contenant spécifiquement les produits vendeur de ce vendeur
         orderItems: {
           some: {
-            product: {
-              vendorProducts: {
-                some: {
-                  vendorId: vendorId,
-                },
-              },
-            },
-          },
-        },
+            vendorProduct: {
+              vendorId: vendorId
+            }
+          }
+        }
       },
       include: {
         orderItems: {
           include: {
-            product: {
-              include: {
-                vendorProducts: {
-                  where: { vendorId: vendorId },
-                },
-              },
+            product: true,
+            vendorProduct: {
+              where: { vendorId: vendorId }
             },
           },
         },
@@ -81,39 +83,47 @@ export class VendorFundsService {
 
     console.log(`[VENDOR ${vendorId}] Nombre de commandes valides trouvées: ${validOrders.length}`);
 
-    // ✅ CORRECTION: Ne calculer les gains QUE sur les revenus de designs, PAS sur les produits complets
-    // Le vendeur ne gagne de l'argent que sur les designs qu'il vend, pas sur les produits de base
-    let totalEarnings = 0; // Gains nets pour le vendeur (après commission) = UNIQUEMENT revenus designs
+    // 💰 Calculer les gains des produits vendeurs (order.vendorAmount)
+    let totalProductEarnings = 0; // Gains des produits vendus
     let totalCommissionAmount = 0; // Commission totale prélevée par l'admin
-    let thisMonthEarnings = 0;
-    let lastMonthEarnings = 0;
-    let totalSalesAmount = 0; // Montant total des ventes avant commission
+    let thisMonthProductEarnings = 0;
+    let lastMonthProductEarnings = 0;
 
-    // ⚠️ IMPORTANT: On ne calcule PLUS les gains sur les VendorProducts
-    // Les vendeurs gagnent uniquement via les designs vendus (table design_usages)
-    // Cette boucle est conservée uniquement pour le tracking/logging si nécessaire
+    // 📦 Calculer les gains des produits (order.vendorAmount)
     for (const order of validOrders) {
-      for (const item of order.orderItems) {
-        if (item.product.vendorProducts.length > 0) {
-          const orderItemTotal = item.unitPrice * item.quantity;
+      const orderVendorAmount = order.vendorAmount || 0;
+      const orderCommission = order.commissionAmount || 0;
 
-          // Log uniquement pour le tracking (pas de calcul de gains)
-          console.log(`[VENDOR ${vendorId}] Commande ${order.orderNumber} (ID: ${order.id}) - Produit vendu (gains via designs uniquement):`, {
-            orderItemTotal,
-            orderStatus: order.status,
-            paymentStatus: order.paymentStatus,
-          });
-        }
+      totalProductEarnings += orderVendorAmount;
+      totalCommissionAmount += orderCommission;
+
+      // Calcul mensuel
+      const orderDate = new Date(order.createdAt);
+      if (orderDate >= firstDayThisMonth) {
+        thisMonthProductEarnings += orderVendorAmount;
       }
+      if (orderDate >= firstDayLastMonth && orderDate <= lastDayLastMonth) {
+        lastMonthProductEarnings += orderVendorAmount;
+      }
+
+      console.log(`[VENDOR ${vendorId}] Commande ${order.orderNumber} (ID: ${order.id}) - Produit vendu:`, {
+        vendorAmount: orderVendorAmount,
+        commission: orderCommission,
+        orderStatus: order.status,
+        paymentStatus: order.paymentStatus,
+      });
     }
 
-    // 🎨 Ajouter les revenus des designs PRÊTS POUR PAIEMENT (commandes livrées)
-    // ✅ CORRECTION: Utiliser READY_FOR_PAYOUT au lieu de CONFIRMED
-    // Les designs ne sont disponibles pour retrait que lorsque la commande est LIVRÉE
+    // 🎨 Ajouter les revenus des designs des commandes LIVRÉES
+    // ✅ CORRECTION: Filtrer par le statut de la commande (DELIVERED) au lieu du paymentStatus
     const designUsages = await this.prisma.designUsage.findMany({
       where: {
         vendorId,
-        paymentStatus: 'READY_FOR_PAYOUT' // Designs des commandes livrées (pas seulement payées)
+        paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT'] },
+        order: {
+          status: 'DELIVERED',
+          paymentStatus: 'PAID'
+        }
       },
       select: {
         vendorRevenue: true,
@@ -124,41 +134,58 @@ export class VendorFundsService {
     console.log(`[VENDOR ${vendorId}] Nombre de designs utilisés trouvés: ${designUsages.length}`);
 
     let totalDesignRevenue = 0;
-    let totalDesignCommission = 0;
+    let thisMonthDesignEarnings = 0;
+    let lastMonthDesignEarnings = 0;
+
     for (const designUsage of designUsages) {
       const designRevenue = parseFloat(designUsage.vendorRevenue.toString());
       totalDesignRevenue += designRevenue;
-      totalEarnings += designRevenue; // Ajouter aux gains totaux
 
       // Gains de ce mois
       if (designUsage.usedAt >= firstDayThisMonth) {
-        thisMonthEarnings += designRevenue;
+        thisMonthDesignEarnings += designRevenue;
       }
 
       // Gains du mois dernier
       if (designUsage.usedAt >= firstDayLastMonth && designUsage.usedAt <= lastDayLastMonth) {
-        lastMonthEarnings += designRevenue;
+        lastMonthDesignEarnings += designRevenue;
       }
     }
+
+    // 💰 Total des gains = Produits + Designs
+    const totalEarnings = totalProductEarnings + totalDesignRevenue;
+    const thisMonthEarnings = thisMonthProductEarnings + thisMonthDesignEarnings;
+    const lastMonthEarnings = lastMonthProductEarnings + lastMonthDesignEarnings;
 
     // ✅ Calculer la commission totale des designs pour le reporting
     const designUsagesForCommission = await this.prisma.designUsage.findMany({
       where: {
         vendorId,
-        paymentStatus: 'READY_FOR_PAYOUT' // Même filtre que pour les revenus
+        paymentStatus: { in: ['CONFIRMED', 'READY_FOR_PAYOUT'] },
+        order: {
+          status: 'DELIVERED',
+          paymentStatus: 'PAID'
+        }
       },
       select: {
         platformFee: true
       }
     });
 
+    let totalDesignCommission = 0;
     for (const usage of designUsagesForCommission) {
       totalDesignCommission += parseFloat(usage.platformFee.toString());
     }
 
-    totalCommissionAmount = totalDesignCommission; // Commission totale = somme des platformFee
+    // 💰 Commission totale = Commission produits + Commission designs
+    totalCommissionAmount += totalDesignCommission;
 
-    console.log(`[VENDOR ${vendorId}] Total revenus designs: ${totalDesignRevenue} FCFA, Commission: ${totalCommissionAmount} FCFA`);
+    console.log(`[VENDOR ${vendorId}] Calcul complet:`, {
+      totalProductEarnings,
+      totalDesignRevenue,
+      totalEarnings,
+      totalCommissionAmount
+    });
 
     // Calculer les montants en attente et payés
     const pendingRequests = await this.prisma.vendorFundsRequest.findMany({
@@ -208,9 +235,9 @@ export class VendorFundsService {
     });
 
     console.log(`[VENDOR ${vendorId}] Calcul complet des gains:`, {
-      totalSalesAmount,
-      totalEarnings,
+      totalProductEarnings,
       totalDesignRevenue,
+      totalEarnings,
       totalCommissionAmount,
       paidAmount,
       pendingAmount,
@@ -222,6 +249,7 @@ export class VendorFundsService {
       totalEarnings,
       pendingAmount,
       availableAmount,
+      fundsRequestAvailableAmount: availableAmount, // 💰 Montant disponible pour appel de fonds
       thisMonthEarnings,
       lastMonthEarnings,
       commissionPaid: totalCommissionAmount, // Commission réelle déduite
@@ -269,6 +297,7 @@ export class VendorFundsService {
     return {
       totalEarnings: realTimeEarnings.totalEarnings,
       availableAmount: availableAmount,
+      fundsRequestAvailableAmount: availableAmount, // 💰 Montant disponible pour appel de fonds
       pendingAmount: pendingAmount + approvedAmount, // Comprend les montants en attente et approuvés
       thisMonthEarnings: realTimeEarnings.thisMonthEarnings,
       lastMonthEarnings: realTimeEarnings.lastMonthEarnings,
@@ -370,11 +399,15 @@ export class VendorFundsService {
 
     // Validation des champs requis
     if (!amount || typeof amount !== 'number' || amount <= 0) {
-      throw new BadRequestException('Le montant est requis et doit être un nombre positif (minimum 1000 FCFA)');
+      throw new BadRequestException(`Le montant est requis et doit être un nombre positif (minimum ${MIN_WITHDRAWAL_AMOUNT.toLocaleString('fr-FR')} FCFA)`);
     }
 
-    if (amount < 1000) {
-      throw new BadRequestException('Le montant minimum de retrait est de 1000 FCFA');
+    if (amount < MIN_WITHDRAWAL_AMOUNT) {
+      throw new BadRequestException(`Le montant minimum de retrait est de ${MIN_WITHDRAWAL_AMOUNT.toLocaleString('fr-FR')} FCFA`);
+    }
+
+    if (amount > MAX_WITHDRAWAL_AMOUNT) {
+      throw new BadRequestException(`Le montant maximum de retrait est de ${MAX_WITHDRAWAL_AMOUNT.toLocaleString('fr-FR')} FCFA`);
     }
 
     if (!description || typeof description !== 'string' || description.trim().length === 0) {
@@ -396,6 +429,81 @@ export class VendorFundsService {
 
     if (paymentMethod === 'BANK_TRANSFER' && (!iban || typeof iban !== 'string')) {
       throw new BadRequestException('L\'IBAN est requis pour les virements bancaires');
+    }
+
+    // 🔒 Vérifier la limite de retraits par jour
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayRequestsCount = await this.prisma.vendorFundsRequest.count({
+      where: {
+        vendorId,
+        createdAt: {
+          gte: todayStart
+        }
+      }
+    });
+
+    if (todayRequestsCount >= MAX_WITHDRAWALS_PER_DAY) {
+      throw new BadRequestException(
+        `Vous avez atteint la limite de ${MAX_WITHDRAWALS_PER_DAY} demandes de retrait par jour. ` +
+        `Veuillez réessayer demain.`
+      );
+    }
+
+    // ✅ Vérifier que le vendeur a des commandes livrées
+    const deliveredOrdersCount = await this.prisma.order.count({
+      where: {
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+        orderItems: {
+          some: {
+            product: {
+              vendorProducts: {
+                some: {
+                  vendorId: vendorId,
+                },
+              },
+            },
+          },
+        },
+      }
+    });
+
+    if (deliveredOrdersCount === 0) {
+      throw new BadRequestException(
+        'Vous devez avoir au moins une commande livrée pour demander un retrait. ' +
+        'Seules les commandes livrées peuvent être retirées.'
+      );
+    }
+
+    // 🔒 SÉCURITÉ: Vérifier que le vendeur a un numéro de téléphone actif
+    if (paymentMethod !== 'BANK_TRANSFER') {
+      const securityCheck = await this.withdrawalSecurityService.canWithdraw(vendorId, amount);
+
+      if (!securityCheck.allowed) {
+        this.logger.warn(`🚫 [VENDOR ${vendorId}] Retrait bloqué par sécurité: ${securityCheck.reason}`);
+
+        // Logger la tentative bloquée
+        await this.withdrawalSecurityService.logWithdrawalAttempt(
+          vendorId,
+          phoneNumber || '',
+          amount,
+          false,
+          securityCheck.reason
+        );
+
+        // Messages d'erreur détaillés selon la raison
+        let errorMessage = securityCheck.reason;
+
+        if (securityCheck.remainingHours) {
+          errorMessage += `\n\nPour votre sécurité, les nouveaux numéros de téléphone sont soumis à une période de vérification de 48 heures.`;
+        }
+
+        throw new BadRequestException(errorMessage);
+      }
+
+      this.logger.log(`✅ [VENDOR ${vendorId}] Vérification de sécurité du numéro réussie`);
     }
 
     // Vérifier le solde disponible avec un calcul précis en temps réel
@@ -461,6 +569,19 @@ export class VendorFundsService {
         data: orderLinks,
       });
     }
+
+    // 🔒 Logger la demande de retrait réussie pour traçabilité
+    if (paymentMethod !== 'BANK_TRANSFER' && phoneNumber) {
+      await this.withdrawalSecurityService.logWithdrawalAttempt(
+        vendorId,
+        phoneNumber,
+        amount,
+        true, // success
+        undefined
+      );
+    }
+
+    this.logger.log(`✅ [VENDOR ${vendorId}] Demande de retrait créée avec succès: ${amount} FCFA`);
 
     return this.formatFundsRequest(fundsRequest);
   }

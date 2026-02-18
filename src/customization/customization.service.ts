@@ -516,7 +516,7 @@ export class CustomizationService {
   }
 
   /**
-   * Upload d'une image pour une personnalisation
+   * Upload d'une image pour une personnalisation (legacy - utilise uploadClientImage)
    * POST /api/customizations/upload-image
    */
   async uploadCustomizationImage(file: Express.Multer.File) {
@@ -548,6 +548,68 @@ export class CustomizationService {
       width: result.width,
       height: result.height
     };
+  }
+
+  /**
+   * Upload d'une image client pour personnalisation
+   * POST /api/customizations/upload-image
+   * Supporte les utilisateurs connectés et les guests
+   */
+  async uploadClientImage(
+    file: Express.Multer.File,
+    userId?: number,
+    sessionId?: string
+  ) {
+    this.logger.log(`📤 [Customization] Upload image client:`, {
+      filename: file.originalname,
+      size: (file.size / 1024).toFixed(2) + ' KB',
+      mimetype: file.mimetype,
+      userId: userId || 'guest',
+      sessionId: sessionId?.substring(0, 8) + '...'
+    });
+
+    // Valider le fichier
+    if (!file) {
+      throw new BadRequestException('Aucun fichier fourni');
+    }
+
+    // Vérifier la taille (max 10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException('La taille du fichier dépasse 10MB');
+    }
+
+    // Vérifier le type MIME
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!allowedMimes.includes(file.mimetype)) {
+      throw new BadRequestException(`Type de fichier invalide: ${file.mimetype}. Formats acceptés: ${allowedMimes.join(', ')}`);
+    }
+
+    try {
+      // Upload vers Cloudinary avec tracking user/session
+      const result = await this.cloudinaryService.uploadClientImage(
+        file.buffer,
+        file.originalname,
+        userId,
+        sessionId
+      );
+
+      this.logger.log('✅ [Customization] Image client uploadée avec succès:', {
+        url: result.url,
+        publicId: result.publicId,
+        dimensions: `${result.width}x${result.height}`
+      });
+
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      this.logger.error('❌ [Customization] Erreur upload image client:', error);
+      throw new BadRequestException(
+        error.message || 'Erreur lors de l\'upload de l\'image'
+      );
+    }
   }
 
   /**

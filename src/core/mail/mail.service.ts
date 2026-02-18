@@ -1457,4 +1457,143 @@ export class MailService {
       // Ne pas bloquer la création du compte pour un problème d'email
     }
   }
+
+  /**
+   * Envoie une notification d'ajout de numéro de téléphone avec période de sécurité
+   */
+  async sendPhoneAddedNotification(params: {
+    to: string;
+    vendorName: string;
+    phoneNumber: string;
+    activationDate: Date;
+  }): Promise<void> {
+    const { to, vendorName, phoneNumber, activationDate } = params;
+
+    const subject = '🔒 Nouveau numéro ajouté à votre compte PrintAlma';
+
+    const formattedDate = activationDate.toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: rgb(20, 104, 154); border-bottom: 2px solid rgb(20, 104, 154); padding-bottom: 10px;">
+          Nouveau numéro de téléphone ajouté
+        </h2>
+
+        <p>Bonjour <strong>${vendorName}</strong>,</p>
+
+        <p>Un nouveau numéro de téléphone a été ajouté à votre compte PrintAlma :</p>
+
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Numéro:</strong> ${phoneNumber}</p>
+          <p style="margin: 10px 0 0 0;"><strong>Date d'activation:</strong> ${formattedDate}</p>
+        </div>
+
+        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <h3 style="margin-top: 0; color: #92400e;">⏱️ Période de sécurité: 48 heures</h3>
+          <p style="margin: 0; color: #92400e;">
+            Par mesure de sécurité, ce numéro ne pourra être utilisé pour des retraits
+            qu'après une période de 48 heures. Cela permet de protéger votre compte contre
+            les accès non autorisés.
+          </p>
+        </div>
+
+        <div style="background: #fee2e2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <h3 style="margin-top: 0; color: #991b1b;">⚠️ Vous n'avez pas effectué cette action?</h3>
+          <p style="margin: 0; color: #991b1b;">
+            Si vous n'êtes pas à l'origine de cet ajout, veuillez <strong>contacter immédiatement</strong>
+            notre support à <a href="mailto:security@printalma.com" style="color: #991b1b; font-weight: bold;">security@printalma.com</a>
+            ou changez votre mot de passe dès maintenant.
+          </p>
+        </div>
+
+        <div style="background: #e0f2fe; border-left: 4px solid #0284c7; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <h3 style="margin-top: 0; color: #075985;">ℹ️ Comment ça marche?</h3>
+          <ul style="margin: 10px 0; padding-left: 20px; color: #075985;">
+            <li>Votre numéro est maintenant vérifié et enregistré</li>
+            <li>Vous pourrez l'utiliser pour les retraits après ${formattedDate}</li>
+            <li>Vous recevrez une confirmation par email quand il sera activé</li>
+            <li>Vous pouvez voir le statut dans votre espace vendeur</li>
+          </ul>
+        </div>
+
+        <p style="color: #6b7280; font-size: 12px; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+          Cet email a été envoyé automatiquement par PrintAlma. Merci de ne pas y répondre.<br>
+          Pour toute question, contactez notre support: <a href="mailto:support@printalma.com">support@printalma.com</a>
+        </p>
+      </div>
+    `;
+
+    try {
+      await this.mailerService.sendMail({
+        to,
+        subject,
+        html,
+      });
+      console.log(`📧 Email de notification d'ajout de numéro envoyé à ${to}`);
+    } catch (error) {
+      console.error('Erreur envoi email notification numéro:', error);
+      // Ne pas bloquer l'opération pour un problème d'email
+    }
+  }
+
+  /**
+   * Envoie une notification de suppression de numéro
+   */
+  async sendPhoneRemovedNotification(params: {
+    to: string;
+    vendorName: string;
+    phoneNumber: string;
+  }): Promise<void> {
+    const { to, vendorName, phoneNumber } = params;
+
+    const subject = '🗑️ Numéro de téléphone supprimé de votre compte';
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: rgb(20, 104, 154); border-bottom: 2px solid rgb(20, 104, 154); padding-bottom: 10px;">
+          Numéro de téléphone supprimé
+        </h2>
+
+        <p>Bonjour <strong>${vendorName}</strong>,</p>
+
+        <p>Le numéro de téléphone suivant a été supprimé de votre compte PrintAlma :</p>
+
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Numéro supprimé:</strong> ${phoneNumber}</p>
+          <p style="margin: 10px 0 0 0;"><strong>Date de suppression:</strong> ${new Date().toLocaleString('fr-FR')}</p>
+        </div>
+
+        <div style="background: #fee2e2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <h3 style="margin-top: 0; color: #991b1b;">⚠️ Vous n'avez pas effectué cette action?</h3>
+          <p style="margin: 0; color: #991b1b;">
+            Si vous n'êtes pas à l'origine de cette suppression, veuillez <strong>contacter immédiatement</strong>
+            notre support à <a href="mailto:security@printalma.com" style="color: #991b1b; font-weight: bold;">security@printalma.com</a>
+            et changez votre mot de passe dès maintenant.
+          </p>
+        </div>
+
+        <p style="color: #6b7280; font-size: 12px; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+          Cet email a été envoyé automatiquement par PrintAlma. Merci de ne pas y répondre.
+        </p>
+      </div>
+    `;
+
+    try {
+      await this.mailerService.sendMail({
+        to,
+        subject,
+        html,
+      });
+      console.log(`📧 Email de notification de suppression envoyé à ${to}`);
+    } catch (error) {
+      console.error('Erreur envoi email notification suppression:', error);
+    }
+  }
 }

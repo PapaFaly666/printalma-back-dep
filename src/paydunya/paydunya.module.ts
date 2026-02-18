@@ -8,17 +8,20 @@ import { PaydunyaSyncService } from './paydunya-sync.service';
 import { PaydunyaCronService } from './paydunya-cron.service';
 import { PrismaService } from '../prisma.service';
 import { OrderModule } from '../order/order.module';
+import { PaymentConfigModule } from '../payment-config/payment-config.module';
 
 /**
  * PayDunya Payment Module
  * Handles all payment processing through PayDunya gateway
  * Includes automatic payment status verification via cron job
+ * Now supports dynamic configuration from database
  */
 @Module({
   imports: [
     ConfigModule,
     ScheduleModule,
     forwardRef(() => OrderModule),
+    PaymentConfigModule, // Import du module de configuration dynamique
   ],
   controllers: [PaydunyaController, PaydunyaCronController],
   providers: [PaydunyaService, PaydunyaSyncService, PaydunyaCronService, PrismaService],

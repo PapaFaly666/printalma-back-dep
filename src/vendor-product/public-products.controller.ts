@@ -445,7 +445,7 @@ export class PublicProductsController {
     @Query('limit') limit?: number,
   ) {
     this.logger.log(`🔍 Recherche publique: "${query}"`);
-    
+
     try {
       const result = await this.vendorPublishService.searchPublicVendorProducts({
         query,
@@ -463,6 +463,131 @@ export class PublicProductsController {
       };
     } catch (error) {
       this.logger.error(`❌ Erreur recherche publique: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ PRODUITS AVEC MÊME DESIGN - Endpoint public
+   * Récupère tous les autres produits qui portent le même design
+   */
+  @Get('vendor-products/:id/same-design')
+  @ApiOperation({
+    summary: 'Produits avec le même design (Public)',
+    description: `
+    **ENDPOINT PUBLIC** - Récupère tous les autres produits qui portent le même design:
+
+    ✅ **Même design** - Tous les produits utilisant le même design
+    ✅ **finalUrlImage** - Images finales avec design appliqué pour chaque couleur
+    ✅ **Exclu le produit actuel** - Ne retourne PAS le produit dont l'ID est passé
+    ✅ **Produits publiés uniquement** - Seulement les produits PUBLISHED
+    ✅ **Informations complètes** - Prix, vendeur, images, etc.
+
+    **EXEMPLE:**
+    Si le produit 171 utilise le design "religion" (id: 5),
+    cet endpoint retourne tous les autres produits qui utilisent ce même design.
+
+    **PARAMÈTRES:**
+    - id: ID du produit vendeur (pour trouver son design et exclure ce produit)
+    - limit: Nombre de résultats (défaut: 20, max: 100)
+    `
+  })
+  @ApiParam({
+    name: 'id',
+    type: 'number',
+    description: 'ID du produit vendeur',
+    example: 171
+  })
+  @ApiQuery({ name: 'limit', required: false, type: 'number', description: 'Nombre de résultats (défaut: 20, max: 100)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Produits avec même design récupérés',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Produits avec même design récupérés' },
+        data: {
+          type: 'object',
+          properties: {
+            designId: { type: 'number', example: 5 },
+            designName: { type: 'string', example: 'religion' },
+            products: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'number', example: 156 },
+                  vendorName: { type: 'string', example: 'stik' },
+                  price: { type: 'number', example: 2000 },
+                  adminProduct: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'number' },
+                      name: { type: 'string' },
+                      colorVariations: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'number' },
+                            name: { type: 'string', example: 'dzdz' },
+                            colorCode: { type: 'string', example: '#ffffff' },
+                            finalUrlImage: { type: 'string', example: 'https://res.cloudinary.com/...' }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  finalImages: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        colorId: { type: 'number' },
+                        colorName: { type: 'string' },
+                        finalImageUrl: { type: 'string' }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            total: { type: 'number', example: 5 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Produit introuvable',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: false },
+        message: { type: 'string', example: 'Produit 999 introuvable' }
+      }
+    }
+  })
+  async getProductsWithSameDesign(
+    @Param('id', ParseIntPipe) productId: number,
+    @Query('limit') limit?: number,
+  ) {
+    this.logger.log(`🎨 Récupération produits avec même design que le produit ${productId}`);
+
+    try {
+      const result = await this.vendorPublishService.getPublicProductsWithSameDesign(productId, {
+        limit: Math.min(limit || 20, 100)
+      });
+
+      return {
+        success: true,
+        message: `Produits avec même design récupérés (${result.total} trouvé${result.total > 1 ? 's' : ''})`,
+        data: result
+      };
+    } catch (error) {
+      this.logger.error(`❌ Erreur récupération produits même design: ${error.message}`);
       throw error;
     }
   }

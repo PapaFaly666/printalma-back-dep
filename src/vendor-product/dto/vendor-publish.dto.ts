@@ -3,6 +3,29 @@ import { IsString, IsNumber, IsArray, IsObject, ValidateNested, IsOptional, Min,
 import { Type } from 'class-transformer';
 
 // -----------------------------------------------------------------------------
+// 💰 SIZE PRICING DTOs
+// -----------------------------------------------------------------------------
+
+export class SizePricingDto {
+  @ApiProperty({ example: 'S', description: 'Nom de la taille' })
+  @IsString()
+  size: string;
+
+  @ApiProperty({ example: 8000, description: 'Prix de revient en FCFA' })
+  @IsNumber()
+  costPrice: number;
+
+  @ApiProperty({ example: 12000, description: 'Prix de vente suggéré en FCFA' })
+  @IsNumber()
+  suggestedPrice: number;
+
+  @ApiProperty({ example: 15000, required: false, description: 'Prix de vente défini par le vendeur (optionnel)' })
+  @IsOptional()
+  @IsNumber()
+  salePrice?: number;
+}
+
+// -----------------------------------------------------------------------------
 // 📦  ADMIN PRODUCT STRUCTURE DTOs
 // -----------------------------------------------------------------------------
 
@@ -152,9 +175,10 @@ export class VendorPublishDto {
   @IsString()
   vendorName: string;
 
-  @ApiProperty({ example: 'T-shirt premium avec design dragon exclusif' })
+  @ApiProperty({ example: 'T-shirt premium avec design dragon exclusif', required: false, description: 'Description personnalisée du vendeur. Si non fournie, la description du produit admin sera utilisée.' })
+  @IsOptional()
   @IsString()
-  vendorDescription: string;
+  vendorDescription?: string;
 
   @ApiProperty({ example: 100 })
   @IsNumber()
@@ -241,14 +265,56 @@ export class VendorPublishDto {
     // height?: number;
   };
 
-  @ApiProperty({ 
-    example: false, 
+  @ApiProperty({
+    example: false,
     required: false,
-    description: 'Bypass validation pour mode développement/test' 
+    description: 'Bypass validation pour mode développement/test'
   })
   @IsOptional()
   @IsBoolean()
   bypassValidation?: boolean;
+
+  // -----------------------------------------------------------------------------
+  // 💰 SIZE PRICING - Prix par taille
+  // -----------------------------------------------------------------------------
+
+  @ApiProperty({
+    example: false,
+    required: false,
+    description: 'Utiliser des prix globaux pour toutes les tailles'
+  })
+  @IsOptional()
+  @IsBoolean()
+  useGlobalPricing?: boolean;
+
+  @ApiProperty({
+    example: 10000,
+    required: false,
+    description: 'Prix de revient global (si useGlobalPricing = true)'
+  })
+  @IsOptional()
+  @IsNumber()
+  globalCostPrice?: number;
+
+  @ApiProperty({
+    example: 15000,
+    required: false,
+    description: 'Prix de vente suggéré global (si useGlobalPricing = true)'
+  })
+  @IsOptional()
+  @IsNumber()
+  globalSuggestedPrice?: number;
+
+  @ApiProperty({
+    type: [SizePricingDto],
+    required: false,
+    description: 'Prix par taille (si useGlobalPricing = false)'
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SizePricingDto)
+  sizePricing?: SizePricingDto[];
 }
 
 export class VendorPublishResponseDto {
@@ -290,6 +356,66 @@ export class VendorPublishResponseDto {
   @ApiProperty({ example: true, required: false })
   @IsOptional()
   isDesignReused?: boolean;
+
+  // ⏱️ TIMING: Informations de timing pour la génération des images finales
+  @ApiProperty({
+    required: false,
+    description: 'Informations de timing pour la génération des images finales (pour le frontend)',
+    example: {
+      totalGenerationTime: 12500,
+      totalColors: 4,
+      colorsProcessed: 4,
+      colorsRemaining: 0,
+      averageTimePerColor: 3125,
+      estimatedRemainingTime: 0,
+      colorTimings: [
+        { colorName: 'Blanc', duration: 3000, success: true },
+        { colorName: 'Blue', duration: 3200, success: true },
+        { colorName: 'Rouge', duration: 3100, success: true },
+        { colorName: 'Noir', duration: 3200, success: true }
+      ],
+      estimatedTimePerImage: 3125,
+      completionPercentage: 100,
+      isAsync: true,
+      statusEndpoint: '/vendor/products/:id/images-status',
+      userMessage: 'Génération des images en cours...'
+    }
+  })
+  @IsOptional()
+  timing?: {
+    /** Temps total de génération en millisecondes */
+    totalGenerationTime?: number;
+    /** Nombre total de couleurs à traiter */
+    totalColors?: number;
+    /** Nombre de couleurs traitées avec succès */
+    colorsProcessed?: number;
+    /** Nombre de couleurs restantes */
+    colorsRemaining?: number;
+    /** Temps moyen par couleur en millisecondes */
+    averageTimePerColor?: number;
+    /** Temps estimé restant en millisecondes */
+    estimatedRemainingTime?: number;
+    /** Détails de timing pour chaque couleur */
+    colorTimings?: Array<{
+      colorName: string;
+      duration: number;
+      success: boolean;
+    }>;
+    /** Temps estimé par image (basé sur la moyenne ou défaut 3s) - pour guide frontend */
+    estimatedTimePerImage?: number;
+    /** Pourcentage de complétion */
+    completionPercentage?: number;
+    /** Indique si la génération est asynchrone (non-bloquante) */
+    isAsync?: boolean;
+    /** Endpoint pour vérifier le statut de génération (si isAsync = true) */
+    statusEndpoint?: string;
+    /** Message utilisateur pour afficher pendant la génération */
+    userMessage?: string;
+    /** Temps total estimé pour la génération (ms) */
+    estimatedTotalTime?: number;
+    /** Indique si on peut vérifier le statut */
+    canCheckStatus?: boolean;
+  };
 
   // 🆕 PROPRIÉTÉS SPÉCIFIQUES AU MODE TRANSFORMATION
   @ApiProperty({ example: 15, required: false, description: 'ID de la transformation sauvegardée' })
