@@ -24,7 +24,7 @@ async createGallery(formData: any) {
       try {
         captions.push(JSON.parse(caption));
       } catch (e) {
-        captions.push({ caption });
+        captions.push({ caption });  
       }
     }
   }
