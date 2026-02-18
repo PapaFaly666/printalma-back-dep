@@ -1,0 +1,45 @@
+# =====================================================
+# VARIABLES D'ENVIRONNEMENT POUR RENDER FRONTEND
+# =====================================================
+# Service: printalma-website-dep
+#
+# INSTRUCTIONS:
+# 1. Allez sur https://dashboard.render.com
+# 2. Cliquez sur printalma-website-dep
+# 3. Onglet "Environment"
+# 4. Choisissez la version selon votre framework:
+#    - Si vous utilisez VITE → Version A
+#    - Si vous utilisez Create React App → Version B
+# 5. Après avoir ajouté les variables:
+#    - Allez dans "Manual Deploy"
+#    - Cliquez sur "Clear build cache & deploy"
+#    - ATTENDEZ que le build se termine!
+# =====================================================
+
+# =====================================================
+# VERSION A - POUR VITE (Recommandé)
+# =====================================================
+
+VITE_API_URL=https://printalma-back-dep.onrender.com
+VITE_WS_URL=https://printalma-back-dep.onrender.com
+VITE_FRONTEND_URL=https://printalma-website-dep.onrender.com
+
+# =====================================================
+# VERSION B - POUR CREATE REACT APP
+# =====================================================
+
+REACT_APP_API_URL=https://printalma-back-dep.onrender.com
+REACT_APP_WS_URL=https://printalma-back-dep.onrender.com
+REACT_APP_FRONTEND_URL=https://printalma-website-dep.onrender.com
+
+# =====================================================
+# COMMENT SAVOIR QUEL FRAMEWORK VOUS UTILISEZ?
+# =====================================================
+# Regardez dans votre package.json frontend:
+# - Si vous voyez "vite" → Utilisez VERSION A
+# - Si vous voyez "react-scripts" → Utilisez VERSION B
+# =====================================================
+
+# IMPORTANT: N'oubliez pas de redéployer après!
+# Les variables d'environnement frontend sont compilées
+# dans le build, donc un simple redémarrage ne suffit pas.

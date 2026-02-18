@@ -482,4 +482,59 @@ export class PaydunyaService {
       return false;
     }
   }
+
+  /**
+   * Initiate Orange Money Sénégal payment via SoftPay API
+   * Doc: https://developers.paydunya.com/doc/FR/softpay
+   * Endpoint: POST /softpay/new-orange-money-senegal
+   *
+   * Orange Money requires this dedicated SoftPay call AFTER creating the invoice.
+   * The standard checkout redirect does NOT work for Orange Money.
+   */
+  async initiateSoftPayOrangeMoney(
+    invoiceToken: string,
+    customerName: string,
+    customerEmail: string,
+    phoneNumber: string,
+  ): Promise<{ url: string; other_url?: { om_url?: string; maxit_url?: string }; fees?: number; currency?: string }> {
+    try {
+      this.logger.log(`🟠 [SoftPay OM] Initiation paiement Orange Money pour token: ${invoiceToken}`);
+
+      const axiosInstance = await this.getAxiosInstance();
+
+      const payload = {
+        customer_name: customerName,
+        customer_email: customerEmail,
+        phone_number: phoneNumber,
+        invoice_token: invoiceToken,
+      };
+
+      this.logger.log(`🟠 [SoftPay OM] Payload: ${JSON.stringify(payload)}`);
+
+      const response = await axiosInstance.post('/softpay/new-orange-money-senegal', payload);
+
+      this.logger.log(`🟠 [SoftPay OM] Réponse PayDunya: ${JSON.stringify(response.data)}`);
+
+      if (response.data.success === true && response.data.url) {
+        this.logger.log(`✅ [SoftPay OM] URL Orange Money: ${response.data.url}`);
+        return {
+          url: response.data.url,
+          other_url: response.data.other_url,
+          fees: response.data.fees,
+          currency: response.data.currency,
+        };
+      }
+
+      throw new BadRequestException(
+        response.data.message || 'Échec de l\'initiation du paiement Orange Money'
+      );
+    } catch (error) {
+      this.logger.error(`❌ [SoftPay OM] Erreur: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`   Status: ${error.response.status}`);
+        this.logger.error(`   Response: ${JSON.stringify(error.response.data)}`);
+      }
+      throw error;
+    }
+  }
 }

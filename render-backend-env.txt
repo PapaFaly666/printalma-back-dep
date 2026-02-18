@@ -1,0 +1,65 @@
+# =====================================================
+# VARIABLES D'ENVIRONNEMENT POUR RENDER BACKEND
+# =====================================================
+# Service: printalma-back-dep
+#
+# INSTRUCTIONS:
+# 1. Allez sur https://dashboard.render.com
+# 2. Cliquez sur printalma-back-dep
+# 3. Onglet "Environment"
+# 4. Copiez-collez chaque ligne ci-dessous (KEY=VALUE)
+# =====================================================
+
+# Base de données Neon
+DATABASE_URL=postgresql://neondb_owner:npg_0sgo5NeipWTz@ep-hidden-river-aduafitn-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+
+# JWT Secret pour l'authentification
+JWT_SECRET=12a99aeunv847e3e8e941jnb5612fdeb62f87fab6a54a859405c041ae14cfeod
+
+# Cloudinary (stockage d'images)
+CLOUDINARY_CLOUD_NAME=dsxab4qnu
+CLOUDINARY_API_KEY=267848335846173
+CLOUDINARY_API_SECRET=WLhzU3riCxujR1DXRXyMmLPUCoU
+
+# Configuration SMTP (envoi d'emails)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=pfdiagne35@gmail.com
+SMTP_PASS=azdebdsvilmpowld
+
+# PayTech (Gateway de paiement alternatif)
+PAYTECH_API_KEY=f0f53dfdf8c227f94f3e62a63b27da1bcf9eebee92fb5383bd6a12ac9c3ff1aa
+PAYTECH_API_SECRET=70315dc3646985f2e89732e4b505cf94b3057d34aad70db1f623ecc5d016856b
+PAYTECH_ENVIRONMENT=test
+PAYTECH_IPN_URL=https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69
+PAYTECH_SUCCESS_URL=https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69?status=success
+PAYTECH_CANCEL_URL=https://webhook.site/f6e65778-b5b6-4050-9dfe-2e6ec6f84b69?status=cancel
+
+# =====================================================
+# PAYDUNYA - CONFIGURATION LIVE (PRODUCTION)
+# =====================================================
+# ATTENTION: Mode LIVE = Vrais paiements !
+# =====================================================
+
+# Clés PayDunya LIVE
+PAYDUNYA_MASTER_KEY=BYRJC1bN-y1Cd-zIzw-HNmm-1rxJsAYSlFV1
+PAYDUNYA_PRIVATE_KEY=live_private_wFaMv8rlrXEPBMrhdLvCGkgnZrx
+PAYDUNYA_PUBLIC_KEY=live_public_wSgaaAEcQw2ntO8Y4aIBHeyGwvt
+PAYDUNYA_TOKEN=aoSNq1dFGdWsscRFF63O
+PAYDUNYA_MODE=live
+
+# URLs PayDunya - CRITIQUE POUR LE FONCTIONNEMENT !
+PAYDUNYA_CALLBACK_URL=https://printalma-back-dep.onrender.com/paydunya/webhook
+PAYDUNYA_SUCCESS_URL=https://printalma-website-dep.onrender.com/order-confirmation
+PAYDUNYA_RETURN_URL=https://printalma-website-dep.onrender.com/order-confirmation
+PAYDUNYA_CANCEL_URL=https://printalma-website-dep.onrender.com/order-confirmation
+
+# URL Frontend - IMPORTANT pour CORS
+FRONTEND_URL=https://printalma-website-dep.onrender.com
+
+# Port (optionnel, Render le définit automatiquement)
+PORT=3004
+
+# =====================================================
+# TOTAL: 24 variables à configurer
+# =====================================================
