@@ -484,6 +484,60 @@ export class PaydunyaService {
   }
 
   /**
+   * Initiate Wave Sénégal payment via SoftPay API
+   * Doc: https://developers.paydunya.com/doc/FR/softpay
+   * Endpoint: POST /softpay/wave-senegal
+   *
+   * Wave requires this dedicated SoftPay call AFTER creating the invoice.
+   * The standard checkout redirect does NOT work for Wave.
+   */
+  async initiateSoftPayWave(
+    invoiceToken: string,
+    customerName: string,
+    customerEmail: string,
+    phoneNumber: string,
+  ): Promise<{ redirect_url: string; fees?: number; currency?: string }> {
+    try {
+      this.logger.log(`🌊 [SoftPay Wave] Initiation paiement Wave pour token: ${invoiceToken}`);
+
+      const axiosInstance = await this.getAxiosInstance();
+
+      const payload = {
+        customer_name: customerName,
+        customer_email: customerEmail,
+        phone_number: phoneNumber,
+        invoice_token: invoiceToken,
+      };
+
+      this.logger.log(`🌊 [SoftPay Wave] Payload: ${JSON.stringify(payload)}`);
+
+      const response = await axiosInstance.post('/softpay/wave-senegal', payload);
+
+      this.logger.log(`🌊 [SoftPay Wave] Réponse PayDunya: ${JSON.stringify(response.data)}`);
+
+      if (response.data.success === true && response.data.redirect_url) {
+        this.logger.log(`✅ [SoftPay Wave] URL Wave: ${response.data.redirect_url}`);
+        return {
+          redirect_url: response.data.redirect_url,
+          fees: response.data.fees,
+          currency: response.data.currency,
+        };
+      }
+
+      throw new BadRequestException(
+        response.data.message || 'Échec de l\'initiation du paiement Wave'
+      );
+    } catch (error) {
+      this.logger.error(`❌ [SoftPay Wave] Erreur: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`   Status: ${error.response.status}`);
+        this.logger.error(`   Response: ${JSON.stringify(error.response.data)}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Initiate Orange Money Sénégal payment via SoftPay API
    * Doc: https://developers.paydunya.com/doc/FR/softpay
    * Endpoint: POST /softpay/new-orange-money-senegal
