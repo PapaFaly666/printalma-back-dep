@@ -1,0 +1,85 @@
+🎉 PAIEMENT TEST CRÉÉ AVEC SUCCÈS !
+=====================================
+
+✅ Le backend Render est bien configuré !
+✅ PayDunya fonctionne en mode LIVE !
+
+📋 INFORMATIONS DU PAIEMENT TEST
+=====================================
+
+📝 Token: d4EVmD0hreOOugrR2H0E
+💰 Montant: 1000 FCFA (environ 1.50 EUR)
+📦 Commande: TEST-1771456963
+
+⚠️  MODE LIVE - VRAI PAIEMENT !
+
+💳 URL DE PAIEMENT À OUVRIR DANS LE NAVIGATEUR:
+=====================================
+
+https://paydunya.com/checkout/invoice/d4EVmD0hreOOugrR2H0E
+
+👆 COPIEZ CETTE URL ET OUVREZ-LA DANS VOTRE NAVIGATEUR
+
+
+📋 ÉTAPES POUR TESTER LE PAIEMENT:
+=====================================
+
+1. Copiez l'URL ci-dessus
+2. Ouvrez-la dans votre navigateur
+3. Vous verrez la page de paiement PayDunya
+4. Choisissez votre méthode de paiement:
+   - Orange Money
+   - Wave
+   - Free Money
+   - Carte bancaire
+   - etc.
+5. Effectuez le paiement (1000 FCFA)
+6. Après le paiement, vous serez redirigé vers:
+   https://printalma-website-dep.onrender.com/order-confirmation
+
+
+🔍 VÉRIFIER LE STATUT DU PAIEMENT:
+=====================================
+
+Avant de payer:
+https://printalma-back-dep.onrender.com/paydunya/status/d4EVmD0hreOOugrR2H0E
+
+Après avoir payé, vérifiez de nouveau cette URL pour voir:
+- status: "completed" (si paiement réussi)
+- status: "failed" (si paiement échoué)
+
+
+✅ CE QUE VOUS DEVEZ OBSERVER:
+=====================================
+
+✓ La page PayDunya s'ouvre correctement
+✓ Vous voyez "PrintAlma" comme nom du marchand
+✓ Le montant affiché est 1000 FCFA
+✓ Après paiement, redirection vers order-confirmation
+✓ Le webhook est appelé automatiquement par PayDunya
+✓ Le statut de la commande se met à jour
+
+
+❌ SI ÇA NE MARCHE PAS:
+=====================================
+
+1. Vérifiez les logs backend Render:
+   https://dashboard.render.com → printalma-back-dep → Logs
+
+2. Vérifiez la configuration PayDunya:
+   https://printalma-back-dep.onrender.com/paydunya/test-config
+
+3. Vérifiez le statut du paiement:
+   https://printalma-back-dep.onrender.com/paydunya/status/d4EVmD0hreOOugrR2H0E
+
+
+🔐 SÉCURITÉ:
+=====================================
+
+- Ce paiement est en mode LIVE (vrai argent)
+- PayDunya enverra un webhook à votre backend après le paiement
+- Le webhook URL est: https://printalma-back-dep.onrender.com/paydunya/webhook
+- Votre backend doit être accessible pour recevoir le webhook
+
+
+📅 Date du test: $(date)

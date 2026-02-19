@@ -80,7 +80,7 @@ Après avoir ajouté toutes les variables, le service va automatiquement redéma
 3. Allez dans l'onglet **Environment**
 4. Cliquez sur **Add Environment Variable**
 
-### B. Déterminer votre framework frontend
+### B. Déterminer votre framework frontend 
 
 Vérifiez dans votre `package.json` frontend si vous utilisez :
 - **Vite** → Utilisez le préfixe `VITE_`
@@ -92,17 +92,22 @@ Vérifiez dans votre `package.json` frontend si vous utilisez :
 
 ```bash
 VITE_API_URL=https://printalma-back-dep.onrender.com
-VITE_WS_URL=https://printalma-back-dep.onrender.com
+VITE_WS_URL=printalma-back-dep.onrender.com
 VITE_FRONTEND_URL=https://printalma-website-dep.onrender.com
 ```
+
+**⚠️ ATTENTION :** `VITE_WS_URL` ne contient PAS `https://` ni `wss://` - juste le hostname !
+Votre code frontend construit automatiquement le protocole `wss://` ou `ws://`.
 
 **OU pour Create React App :**
 
 ```bash
 REACT_APP_API_URL=https://printalma-back-dep.onrender.com
-REACT_APP_WS_URL=https://printalma-back-dep.onrender.com
+REACT_APP_WS_URL=printalma-back-dep.onrender.com
 REACT_APP_FRONTEND_URL=https://printalma-website-dep.onrender.com
 ```
+
+**⚠️ ATTENTION :** `REACT_APP_WS_URL` ne contient PAS `https://` ni `wss://` - juste le hostname !
 
 ### D. Redéployer le frontend
 

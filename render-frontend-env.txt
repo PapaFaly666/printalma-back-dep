@@ -21,16 +21,22 @@
 # =====================================================
 
 VITE_API_URL=https://printalma-back-dep.onrender.com
-VITE_WS_URL=https://printalma-back-dep.onrender.com
+VITE_WS_URL=printalma-back-dep.onrender.com
 VITE_FRONTEND_URL=https://printalma-website-dep.onrender.com
+
+# ⚠️ IMPORTANT: VITE_WS_URL ne contient PAS https:// ni wss://
+# Le code frontend construit automatiquement le protocole wss://
 
 # =====================================================
 # VERSION B - POUR CREATE REACT APP
 # =====================================================
 
 REACT_APP_API_URL=https://printalma-back-dep.onrender.com
-REACT_APP_WS_URL=https://printalma-back-dep.onrender.com
+REACT_APP_WS_URL=printalma-back-dep.onrender.com
 REACT_APP_FRONTEND_URL=https://printalma-website-dep.onrender.com
+
+# ⚠️ IMPORTANT: REACT_APP_WS_URL ne contient PAS https:// ni wss://
+# Le code frontend construit automatiquement le protocole wss://
 
 # =====================================================
 # COMMENT SAVOIR QUEL FRAMEWORK VOUS UTILISEZ?
