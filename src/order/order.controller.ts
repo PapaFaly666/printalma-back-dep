@@ -333,6 +333,45 @@ export class OrderController {
     };
   }
 
+  // Mettre à jour le statut de paiement d'une commande (public - appelé par le frontend après retour PayDunya)
+  @Patch(':id/payment-status')
+  @HttpCode(HttpStatus.OK)
+  async updatePaymentStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { payment_status: string; transaction_id?: string; payment_failure_reason?: string }
+  ) {
+    const { payment_status, transaction_id, payment_failure_reason } = body;
+
+    if (!payment_status) {
+      throw new BadRequestException('payment_status est requis');
+    }
+
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) {
+      throw new NotFoundException(`Commande ${id} introuvable`);
+    }
+
+    const isPaid = payment_status.toUpperCase() === 'PAID';
+
+    await this.prisma.order.update({
+      where: { id },
+      data: {
+        paymentStatus: payment_status.toUpperCase(),
+        ...(transaction_id ? { transactionId: transaction_id } : {}),
+        ...(payment_failure_reason ? { lastPaymentFailureReason: payment_failure_reason } : {}),
+        ...(isPaid ? { status: OrderStatus.CONFIRMED, confirmedAt: new Date() } : {}),
+        lastPaymentAttemptAt: new Date(),
+      },
+    });
+
+    this.logger.log(`💳 Statut paiement commande #${id} mis à jour: ${payment_status.toUpperCase()} (transactionId: ${transaction_id || 'non fourni'})`);
+
+    return {
+      success: true,
+      message: `Statut de paiement mis à jour: ${payment_status.toUpperCase()}`,
+    };
+  }
+
   // Annuler une commande (utilisateur propriétaire seulement)
   @Delete(':id/cancel')
   @UseGuards(JwtAuthGuard)
