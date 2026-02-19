@@ -101,54 +101,6 @@ export class PaydunyaController {
   }
 
   /**
-   * Initiate Wave Sénégal payment via SoftPay
-   * Doc: https://developers.paydunya.com/doc/FR/softpay
-   * Public endpoint - called after invoice creation
-   */
-  @Post('softpay/wave')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Initiate Wave Sénégal payment via SoftPay' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['invoice_token', 'customer_name', 'phone_number'],
-      properties: {
-        invoice_token: { type: 'string', example: 'GS46gkCAnRv3WfRwFdJU' },
-        customer_name: { type: 'string', example: 'Amadou Diallo' },
-        customer_email: { type: 'string', example: 'amadou@example.com' },
-        phone_number: { type: 'string', example: '778676477' },
-      },
-    },
-  })
-  async initiateSoftPayWave(
-    @Body() body: {
-      invoice_token: string;
-      customer_name: string;
-      customer_email?: string;
-      phone_number: string;
-    }
-  ) {
-    if (!body.invoice_token || !body.customer_name || !body.phone_number) {
-      throw new BadRequestException('invoice_token, customer_name et phone_number sont requis');
-    }
-
-    this.logger.log(`🌊 SoftPay Wave demandé pour token: ${body.invoice_token}`);
-
-    const result = await this.paydunyaService.initiateSoftPayWave(
-      body.invoice_token,
-      body.customer_name,
-      body.customer_email || '',
-      body.phone_number,
-    );
-
-    return {
-      success: true,
-      message: 'Paiement Wave initié - redirigez l\'utilisateur vers l\'URL fournie',
-      data: result,
-    };
-  }
-
-  /**
    * Initialize a payment and get redirect URL
    * Public endpoint - no authentication required
    */
