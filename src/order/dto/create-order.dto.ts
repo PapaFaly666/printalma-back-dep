@@ -364,6 +364,7 @@ export class CreateOrderItemDto {
 export enum PaymentMethod {
   PAYDUNYA = 'PAYDUNYA',
   PAYTECH = 'PAYTECH',
+  ORANGE_MONEY = 'ORANGE_MONEY',
   CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
   OTHER = 'OTHER'
 }

@@ -65,6 +65,26 @@ export class PaymentConfigController {
   }
 
   /**
+   * Active ou désactive le paiement à la livraison
+   * POST /admin/payment-config/cash-on-delivery/toggle
+   * Body: { "isActive": true|false }
+   */
+  @Post('cash-on-delivery/toggle')
+  toggleCod(@Body() body: { isActive: boolean }) {
+    return this.paymentConfigService.upsertCodStatus(body.isActive);
+  }
+
+  /**
+   * Récupère le statut du paiement à la livraison (admin)
+   * GET /admin/payment-config/cash-on-delivery
+   * Doit être AVANT @Get(':provider') pour éviter le conflit de route
+   */
+  @Get('cash-on-delivery')
+  getCodStatus() {
+    return this.paymentConfigService.getCodStatus();
+  }
+
+  /**
    * Basculer entre TEST et LIVE
    * POST /admin/payment-config/switch
    * Body: { "provider": "paydunya", "mode": "live" }

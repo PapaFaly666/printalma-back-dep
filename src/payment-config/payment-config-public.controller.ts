@@ -11,6 +11,16 @@ export class PaymentConfigPublicController {
   constructor(private readonly paymentConfigService: PaymentConfigService) {}
 
   /**
+   * Récupère le statut du paiement à la livraison
+   * GET /payment-config/cash-on-delivery
+   * Doit être AVANT @Get(':provider') pour éviter le conflit de route
+   */
+  @Get('cash-on-delivery')
+  async getCodStatus() {
+    return this.paymentConfigService.getCodStatus();
+  }
+
+  /**
    * Récupère la configuration publique pour un provider
    * GET /payment-config/:provider
    *

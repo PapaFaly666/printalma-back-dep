@@ -8,6 +8,7 @@ export enum PaymentMode {
 export enum PaymentProvider {
   PAYDUNYA = 'PAYDUNYA',
   PAYTECH = 'PAYTECH',
+  ORANGE_MONEY = 'ORANGE_MONEY',
 }
 
 export class CreatePaymentConfigDto {

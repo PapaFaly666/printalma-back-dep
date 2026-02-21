@@ -222,6 +222,35 @@ export class PaymentConfigService {
   }
 
   /**
+   * Récupère le statut du paiement à la livraison
+   * Retourne true par défaut si aucune configuration n'existe
+   */
+  async getCodStatus(): Promise<{ isEnabled: boolean }> {
+    const config = await this.prisma.paymentConfig.findUnique({
+      where: { provider: 'CASH_ON_DELIVERY' },
+    });
+    return { isEnabled: config ? config.isActive : true };
+  }
+
+  /**
+   * Active ou désactive le paiement à la livraison (upsert)
+   */
+  async upsertCodStatus(isActive: boolean): Promise<{ isEnabled: boolean }> {
+    await this.prisma.paymentConfig.upsert({
+      where: { provider: 'CASH_ON_DELIVERY' },
+      update: { isActive },
+      create: {
+        provider: 'CASH_ON_DELIVERY',
+        isActive,
+        activeMode: 'live',
+        metadata: {},
+      },
+    });
+    this.logger.log(`Paiement à la livraison ${isActive ? 'activé' : 'désactivé'}`);
+    return { isEnabled: isActive };
+  }
+
+  /**
    * Supprime une configuration spécifique
    */
   async remove(provider: string) {

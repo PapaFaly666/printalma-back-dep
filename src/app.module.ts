@@ -45,6 +45,7 @@ import { StickerModule } from './sticker/sticker.module';
 import { HomeContentModule } from './home-content/home-content.module';
 import { VendorPhoneModule } from './vendor-phone/vendor-phone.module';
 import { PaymentConfigModule } from './payment-config/payment-config.module';
+import { OrangeMoneyModule } from './orange-money/orange-money.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { PaymentConfigModule } from './payment-config/payment-config.module';
     PaymentConfigModule, // Module de configuration dynamique des paiements
     PaytechModule,
     PaydunyaModule,
+    OrangeMoneyModule,
     PaymentModule,
     CustomizationModule,
     DeliveryModule,
