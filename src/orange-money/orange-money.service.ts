@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma.service';
@@ -116,13 +116,34 @@ export class OrangeMoneyService {
       this.logger.log(`✅ Token Orange Money obtenu (expire dans ${response.data.expires_in}s)`);
       return this.accessToken;
     } catch (error: any) {
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+
       this.logger.error('❌ Erreur lors de la récupération du token Orange:');
       this.logger.error(`   Mode: ${mode}`);
       this.logger.error(`   URL: ${authUrl}`);
-      this.logger.error(`   Status: ${error.response?.status}`);
-      this.logger.error(`   Data: ${JSON.stringify(error.response?.data)}`);
+      this.logger.error(`   Status: ${status}`);
+      this.logger.error(`   Data: ${JSON.stringify(errorData)}`);
       this.logger.error(`   Message: ${error.message}`);
-      throw new BadRequestException('Failed to authenticate with Orange Money API');
+
+      // Gestion détaillée des erreurs HTTP selon la doc
+      if (status === 401) {
+        throw new BadRequestException(
+          'Orange Money authentication failed: Invalid credentials (Client ID or Client Secret incorrect)'
+        );
+      } else if (status === 400) {
+        throw new BadRequestException(
+          `Orange Money authentication failed: Bad request - ${errorData?.error_description || errorData?.message || 'Invalid parameters'}`
+        );
+      } else if (status === 500 || status === 502 || status === 503) {
+        throw new BadRequestException(
+          'Orange Money API is temporarily unavailable. Please retry in a few seconds.'
+        );
+      } else {
+        throw new BadRequestException(
+          `Failed to authenticate with Orange Money API: ${error.message}`
+        );
+      }
     }
   }
 
@@ -172,6 +193,7 @@ export class OrangeMoneyService {
     }
 
     const FRONTEND_URL = this.configService.get<string>('FRONTEND_URL') || 'https://printalma-website-dep.onrender.com';
+    const BACKEND_URL = this.configService.get<string>('BACKEND_URL') || 'https://printalma-back-dep.onrender.com';
     const reference = `OM-${dto.orderNumber}-${Date.now()}`;
 
     const payload = {
@@ -179,8 +201,11 @@ export class OrangeMoneyService {
         unit: 'XOF',
         value: dto.amount,
       },
-      callbackCancelUrl: `${FRONTEND_URL}/order-confirmation?orderNumber=${dto.orderNumber}&status=cancelled`,
-      callbackSuccessUrl: `${FRONTEND_URL}/order-confirmation?orderNumber=${dto.orderNumber}&status=success`,
+      // URLs de redirection pour l'utilisateur (frontend)
+      callbackCancelUrl: `${FRONTEND_URL}/payment/orange-money?orderNumber=${dto.orderNumber}&status=cancelled`,
+      callbackSuccessUrl: `${FRONTEND_URL}/payment/orange-money?orderNumber=${dto.orderNumber}&status=success`,
+      // URL de notification pour le webhook backend
+      notificationUrl: `${BACKEND_URL}/orange-money/callback`,
       code: merchantCode,
       metadata: {
         orderId: dto.orderId.toString(),
@@ -211,6 +236,17 @@ export class OrangeMoneyService {
 
       this.logger.log(`✅ QR Code Orange généré pour ${dto.orderNumber}`);
 
+      // 🆕 Sauvegarder la référence dans transactionId pour la traçabilité (comme PayDunya)
+      await this.prisma.order.update({
+        where: { id: dto.orderId },
+        data: {
+          transactionId: reference,
+          paymentMethod: 'ORANGE_MONEY'
+        }
+      });
+
+      this.logger.log(`💾 Référence ${reference} sauvegardée dans transactionId pour order ${dto.orderNumber}`);
+
       return {
         qrCode: response.data.qrCode,
         deepLinks: response.data.deepLinks,
@@ -218,13 +254,41 @@ export class OrangeMoneyService {
         reference,
       };
     } catch (error: any) {
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+
       this.logger.error('❌ Erreur génération QR Orange:');
       this.logger.error(`   Mode: ${mode}`);
       this.logger.error(`   URL: ${qrUrl}`);
-      this.logger.error(`   Status: ${error.response?.status}`);
-      this.logger.error(`   Data: ${JSON.stringify(error.response?.data)}`);
+      this.logger.error(`   Status: ${status}`);
+      this.logger.error(`   Data: ${JSON.stringify(errorData)}`);
       this.logger.error(`   Message: ${error.message}`);
-      throw new BadRequestException(error.response?.data?.message || 'Failed to generate Orange Money payment');
+
+      // Gestion détaillée des erreurs HTTP selon la doc
+      if (status === 401) {
+        // Token expiré ou invalide - Réessayer avec un nouveau token
+        this.logger.warn('⚠️ Token expiré, tentative de renouvellement...');
+        this.accessToken = null;
+        this.tokenExpiry = 0;
+        throw new BadRequestException(
+          'Orange Money authentication expired. Please retry - a new token will be obtained automatically.'
+        );
+      } else if (status === 400) {
+        // Paramètres manquants ou invalides
+        const errorMsg = errorData?.message || errorData?.error || 'Invalid parameters';
+        throw new BadRequestException(
+          `Orange Money payment creation failed: ${errorMsg}. Please check amount, merchant code, and validity.`
+        );
+      } else if (status === 500 || status === 502 || status === 503) {
+        // Erreur serveur Orange
+        throw new BadRequestException(
+          'Orange Money API is temporarily unavailable. Please retry in a few seconds.'
+        );
+      } else {
+        throw new BadRequestException(
+          errorData?.message || error.message || 'Failed to generate Orange Money payment'
+        );
+      }
     }
   }
 
@@ -270,54 +334,195 @@ export class OrangeMoneyService {
    *   status: "SUCCESS" | "FAILED" | "CANCELLED",
    *   transactionId: "TXN_123456",
    *   reference: "CMD_456",
+   *   apiKey: "CLE_SECRETE",
    *   metadata: { orderNumber: "..." }
    * }
    */
   async handleCallback(payload: any): Promise<void> {
-    this.logger.log('📞 Callback Orange Money reçu:', JSON.stringify(payload));
+    this.logger.log('========== TRAITEMENT CALLBACK ORANGE MONEY ==========');
+    this.logger.log('📦 Payload reçu:', JSON.stringify(payload, null, 2));
 
-    // Extraire les données du callback
-    const { reference, status, transactionId, metadata } = payload;
+    // 1. VÉRIFICATION DE L'API KEY (SÉCURITÉ CRITIQUE)
+    const { apiKey, reference, status, transactionId, metadata, amount, code } = payload;
 
-    // Essayer de trouver la commande par reference OU par metadata.orderNumber
-    const orderNumber = metadata?.orderNumber || reference;
+    // Récupérer l'apiKey attendue depuis la config ou l'environnement
+    const expectedApiKey = this.configService.get<string>('ORANGE_CALLBACK_API_KEY');
+
+    if (expectedApiKey && apiKey !== expectedApiKey) {
+      this.logger.error('🚨 SÉCURITÉ: apiKey invalide dans le callback Orange Money');
+      this.logger.error(`   apiKey reçue: ${apiKey?.substring(0, 10)}...`);
+      this.logger.error(`   apiKey attendue: ${expectedApiKey?.substring(0, 10)}...`);
+      throw new BadRequestException('Invalid API key');
+    }
+
+    this.logger.log(`🔍 Données extraites du callback:`);
+    this.logger.log(`   - Status: ${status}`);
+    this.logger.log(`   - TransactionId: ${transactionId}`);
+    this.logger.log(`   - Reference: ${reference}`);
+    this.logger.log(`   - Code marchand: ${code}`);
+    this.logger.log(`   - Amount: ${amount?.value} ${amount?.unit}`);
+    this.logger.log(`   - Metadata: ${JSON.stringify(metadata)}`);
+
+    // 2. VÉRIFIER QUE LA RÉFÉRENCE EXISTE
+    // Essayer plusieurs sources pour obtenir le orderNumber
+    const orderNumber = metadata?.orderNumber ||
+                       metadata?.order_number ||
+                       (reference && reference.includes('OM-') ? reference.split('-')[1] : null);
 
     if (!orderNumber) {
-      this.logger.warn('⚠️ Callback sans orderNumber ni reference');
+      this.logger.error('❌ ERREUR: Callback sans orderNumber ni reference valide');
+      this.logger.error('   Payload complet:', JSON.stringify(payload, null, 2));
+      this.logger.error('   metadata:', JSON.stringify(metadata, null, 2));
+      this.logger.error('   reference:', reference);
       return;
     }
 
-    // Trouver la commande
+    this.logger.log(`🔎 Recherche de la commande: ${orderNumber}`);
+
+    // 3. TROUVER LA COMMANDE
     const order = await this.prisma.order.findFirst({
       where: { orderNumber },
     });
 
     if (!order) {
-      this.logger.warn(`⚠️ Commande ${orderNumber} introuvable`);
+      this.logger.error(`❌ ERREUR: Commande ${orderNumber} introuvable dans la base de données`);
+      this.logger.error(`   Recherche tentée avec orderNumber = "${orderNumber}"`);
+      this.logger.error(`   Veuillez vérifier que la commande existe`);
       return;
     }
 
-    // Mettre à jour le statut selon la réponse Orange (doc: SUCCESS, FAILED, CANCELLED)
+    this.logger.log(`✅ Commande trouvée:`);
+    this.logger.log(`   - ID: ${order.id}`);
+    this.logger.log(`   - Numéro: ${order.orderNumber}`);
+    this.logger.log(`   - Statut paiement actuel: ${order.paymentStatus}`);
+    this.logger.log(`   - Transaction ID actuel: ${order.transactionId || 'null'}`);
+    this.logger.log(`   - Méthode de paiement: ${order.paymentMethod}`);
+    this.logger.log(`   - Montant total: ${order.totalAmount} FCFA`);
+
+    // 4. VÉRIFICATION D'IDEMPOTENCE (éviter double traitement)
+    if (order.paymentStatus === 'PAID') {
+      this.logger.warn('⚠️ IDEMPOTENCE: Callback déjà traité pour cette commande');
+      this.logger.warn(`   Commande ${orderNumber} est déjà marquée comme PAYÉE`);
+      this.logger.warn(`   Transaction ID existante: ${order.transactionId}`);
+      this.logger.warn(`   Callback actuel - TransactionId: ${transactionId}`);
+      this.logger.warn(`   → Ignorer ce callback pour éviter le double traitement`);
+      return;
+    }
+
+    // 5. TRAITER SELON LE STATUT
     if (status === 'SUCCESS') {
-      await this.prisma.order.update({
+      this.logger.log(`💰 PAIEMENT RÉUSSI - Mise à jour de la commande en PAYÉE...`);
+
+      const updatedOrder = await this.prisma.order.update({
         where: { id: order.id },
         data: {
           paymentStatus: 'PAID',
           transactionId: transactionId || reference,
+          paymentMethod: 'ORANGE_MONEY',
         },
       });
-      this.logger.log(`✅ Commande ${orderNumber} marquée comme PAYÉE (transaction: ${transactionId || reference})`);
+
+      this.logger.log(`✅✅✅ SUCCÈS: Commande ${orderNumber} marquée comme PAYÉE`);
+      this.logger.log(`   - Nouveau statut: ${updatedOrder.paymentStatus}`);
+      this.logger.log(`   - Transaction ID enregistrée: ${updatedOrder.transactionId}`);
+      this.logger.log(`   - Montant payé: ${amount?.value} ${amount?.unit}`);
+      this.logger.log(`   - Code marchand: ${code}`);
+      this.logger.log(`   - Timestamp: ${new Date().toISOString()}`);
+
+      // TODO: Envoyer email de confirmation au client
+      // await this.sendConfirmationEmail(order.email, order);
+
     } else if (status === 'CANCELLED' || status === 'FAILED') {
-      await this.prisma.order.update({
+      this.logger.log(`❌ PAIEMENT ÉCHOUÉ - Mise à jour de la commande...`);
+      this.logger.log(`   - Raison: ${status}`);
+
+      const updatedOrder = await this.prisma.order.update({
         where: { id: order.id },
         data: {
           paymentStatus: 'FAILED',
           transactionId: transactionId || reference,
+          paymentMethod: 'ORANGE_MONEY',
         },
       });
-      this.logger.log(`❌ Commande ${orderNumber} marquée comme ÉCHOUÉE (statut: ${status})`);
+
+      this.logger.log(`❌ Commande ${orderNumber} marquée comme ÉCHOUÉE`);
+      this.logger.log(`   - Statut Orange Money: ${status}`);
+      this.logger.log(`   - Nouveau statut BDD: ${updatedOrder.paymentStatus}`);
+      this.logger.log(`   - Transaction ID enregistrée: ${updatedOrder.transactionId}`);
+      this.logger.log(`   - Code marchand: ${code}`);
+      this.logger.log(`   - Timestamp: ${new Date().toISOString()}`);
+
+      // TODO: Envoyer notification au client (paiement échoué)
+      // await this.notifyClientPaymentFailed(order.email);
+
     } else {
-      this.logger.warn(`⚠️ Statut inconnu reçu d'Orange Money: ${status}`);
+      this.logger.warn(`⚠️⚠️⚠️ ATTENTION: Statut inconnu reçu d'Orange Money: "${status}"`);
+      this.logger.warn(`   Statuts attendus: SUCCESS, FAILED, CANCELLED`);
+      this.logger.warn(`   Statut reçu: ${status}`);
+      this.logger.warn(`   Payload complet: ${JSON.stringify(payload, null, 2)}`);
+      this.logger.warn(`   → La commande ${orderNumber} n'a PAS été mise à jour`);
     }
+
+    this.logger.log('========== FIN TRAITEMENT CALLBACK ==========');
+    this.logger.log('');
+  }
+
+  /**
+   * Vérifie le statut de paiement d'une commande
+   * Utilisé pour le polling côté frontend
+   */
+  async getPaymentStatus(orderNumber: string): Promise<{
+    paymentStatus: string | null;
+    transactionId: string | null;
+    paymentMethod: string | null;
+    totalAmount: number;
+    orderStatus: string;
+    shouldRedirect?: boolean;
+    redirectUrl?: string;
+    message?: string;
+  }> {
+    const order = await this.prisma.order.findFirst({
+      where: { orderNumber },
+      select: {
+        paymentStatus: true,
+        transactionId: true,
+        paymentMethod: true,
+        totalAmount: true,
+        status: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderNumber} not found`);
+    }
+
+    const response: any = {
+      paymentStatus: order.paymentStatus,
+      transactionId: order.transactionId,
+      paymentMethod: order.paymentMethod,
+      totalAmount: order.totalAmount,
+      orderStatus: order.status,
+    };
+
+    // 🆕 Si le paiement est déjà effectué, indiquer qu'une redirection est nécessaire
+    if (order.paymentStatus === 'PAID') {
+      const FRONTEND_URL = this.configService.get<string>('FRONTEND_URL') || 'https://printalma-website-dep.onrender.com';
+
+      this.logger.log(`💰 Commande ${orderNumber} déjà payée - Redirection nécessaire`);
+
+      response.shouldRedirect = true;
+      response.redirectUrl = `${FRONTEND_URL}/payment/orange-money?orderNumber=${orderNumber}&status=success`;
+      response.message = 'Cette commande a déjà été payée avec succès';
+    } else if (order.paymentStatus === 'FAILED') {
+      const FRONTEND_URL = this.configService.get<string>('FRONTEND_URL') || 'https://printalma-website-dep.onrender.com';
+
+      this.logger.log(`❌ Commande ${orderNumber} - Paiement échoué - Redirection nécessaire`);
+
+      response.shouldRedirect = true;
+      response.redirectUrl = `${FRONTEND_URL}/payment/orange-money?orderNumber=${orderNumber}&status=failed`;
+      response.message = 'Le paiement de cette commande a échoué';
+    }
+
+    return response;
   }
 }
