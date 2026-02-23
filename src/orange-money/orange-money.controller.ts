@@ -24,6 +24,34 @@ export class OrangeMoneyController {
   }
 
   /**
+   * Enregistre l'URL de callback auprès d'Orange Money
+   * POST /orange-money/register-callback
+   *
+   * IMPORTANT: À exécuter UNE FOIS lors du déploiement en production
+   * pour que Orange Money sache où envoyer les callbacks
+   */
+  @Post('register-callback')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Register callback URL with Orange Money' })
+  async registerCallback() {
+    this.logger.log('📋 Enregistrement du callback URL...');
+    const result = await this.orangeMoneyService.registerCallbackUrl();
+    return result;
+  }
+
+  /**
+   * Vérifie l'URL de callback enregistrée
+   * GET /orange-money/verify-callback
+   */
+  @Get('verify-callback')
+  @ApiOperation({ summary: 'Verify registered callback URL' })
+  async verifyCallback() {
+    this.logger.log('🔍 Vérification du callback URL enregistré...');
+    const result = await this.orangeMoneyService.getRegisteredCallbackUrl();
+    return result;
+  }
+
+  /**
    * Génère un QR Code / Deeplink Orange Money pour un paiement
    * POST /orange-money/payment
    */
@@ -160,6 +188,39 @@ export class OrangeMoneyController {
         success: false,
         error: error.message,
         payload: mockPayload
+      };
+    }
+  }
+
+  /**
+   * Annule manuellement une commande Orange Money en attente
+   * POST /orange-money/cancel-payment/:orderNumber
+   *
+   * Utilisé quand:
+   * - L'utilisateur abandonne le paiement
+   * - Le QR code expire
+   * - Orange Money ne notifie pas d'échec
+   */
+  @Post('cancel-payment/:orderNumber')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Cancel pending Orange Money payment' })
+  @ApiParam({ name: 'orderNumber', description: 'Order number to cancel' })
+  async cancelPayment(@Param('orderNumber') orderNumber: string) {
+    this.logger.log(`🚫 Annulation manuelle du paiement: ${orderNumber}`);
+
+    try {
+      await this.orangeMoneyService.cancelPendingPayment(orderNumber);
+      return {
+        success: true,
+        message: 'Paiement annulé avec succès',
+        orderNumber,
+      };
+    } catch (error: any) {
+      this.logger.error('❌ Erreur annulation paiement:', error.message);
+      return {
+        success: false,
+        error: error.message,
+        orderNumber,
       };
     }
   }

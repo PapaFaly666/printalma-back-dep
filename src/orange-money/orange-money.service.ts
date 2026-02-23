@@ -293,6 +293,113 @@ export class OrangeMoneyService {
   }
 
   /**
+   * Enregistre l'URL de callback auprès d'Orange Money
+   * À faire UNE FOIS lors du déploiement en production
+   *
+   * Doc: https://developer.orange-sonatel.com/documentation
+   * Endpoint: POST /api/notification/v1/merchantcallback
+   */
+  async registerCallbackUrl(): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    try {
+      const token = await this.getAccessToken();
+      const mode = this.configService.get<string>('ORANGE_MONEY_MODE') || 'sandbox';
+      const merchantCode = this.configService.get<string>(`ORANGE_MONEY_MERCHANT_CODE_${mode.toUpperCase()}`);
+      const BACKEND_URL = this.configService.get<string>('BACKEND_URL') || 'https://printalma-back-dep.onrender.com';
+
+      const notificationUrl = mode === 'sandbox'
+        ? 'https://api.sandbox.orange-sonatel.com/api/notification/v1/merchantcallback'
+        : 'https://api.orange-sonatel.com/api/notification/v1/merchantcallback';
+
+      const callbackPayload = {
+        code: merchantCode,
+        name: 'Printalma Payment Callback',
+        callbackUrl: `${BACKEND_URL}/orange-money/callback`,
+      };
+
+      this.logger.log('📋 Enregistrement du callback URL auprès d\'Orange Money...');
+      this.logger.log(`   Mode: ${mode}`);
+      this.logger.log(`   Merchant Code: ${merchantCode}`);
+      this.logger.log(`   Callback URL: ${callbackPayload.callbackUrl}`);
+
+      const response = await axios.post(
+        notificationUrl,
+        callbackPayload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      this.logger.log('✅ Callback URL enregistré avec succès!');
+      this.logger.log(`   Response: ${JSON.stringify(response.data)}`);
+
+      return {
+        success: true,
+        message: 'Callback URL registered successfully',
+        data: response.data,
+      };
+    } catch (error: any) {
+      this.logger.error('❌ Erreur lors de l\'enregistrement du callback URL:');
+      this.logger.error(`   Status: ${error.response?.status}`);
+      this.logger.error(`   Data: ${JSON.stringify(error.response?.data)}`);
+      this.logger.error(`   Message: ${error.message}`);
+
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to register callback URL',
+      };
+    }
+  }
+
+  /**
+   * Vérifie l'URL de callback enregistrée
+   * Endpoint: GET /api/notification/v1/merchantcallback?code=MERCHANT_CODE
+   */
+  async getRegisteredCallbackUrl(): Promise<{
+    success: boolean;
+    data?: any;
+  }> {
+    try {
+      const token = await this.getAccessToken();
+      const mode = this.configService.get<string>('ORANGE_MONEY_MODE') || 'sandbox';
+      const merchantCode = this.configService.get<string>(`ORANGE_MONEY_MERCHANT_CODE_${mode.toUpperCase()}`);
+
+      const notificationUrl = mode === 'sandbox'
+        ? `https://api.sandbox.orange-sonatel.com/api/notification/v1/merchantcallback?code=${merchantCode}`
+        : `https://api.orange-sonatel.com/api/notification/v1/merchantcallback?code=${merchantCode}`;
+
+      this.logger.log('🔍 Vérification du callback URL enregistré...');
+
+      const response = await axios.get(notificationUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      this.logger.log('✅ Callback URL récupéré:');
+      this.logger.log(`   ${JSON.stringify(response.data)}`);
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error: any) {
+      this.logger.error('❌ Erreur lors de la vérification du callback URL:');
+      this.logger.error(`   ${error.message}`);
+
+      return {
+        success: false,
+      };
+    }
+  }
+
+  /**
    * Teste la connexion à l'API Orange Money
    */
   async testConnection(): Promise<{
@@ -524,5 +631,42 @@ export class OrangeMoneyService {
     }
 
     return response;
+  }
+
+  /**
+   * Annule une commande Orange Money en attente
+   * Utilisé quand Orange Money ne notifie pas d'échec (timeout, abandon, etc.)
+   */
+  async cancelPendingPayment(orderNumber: string): Promise<void> {
+    this.logger.log(`🚫 Annulation du paiement pour: ${orderNumber}`);
+
+    const order = await this.prisma.order.findFirst({
+      where: { orderNumber },
+    });
+
+    if (!order) {
+      this.logger.error(`❌ Commande ${orderNumber} introuvable`);
+      throw new NotFoundException(`Order ${orderNumber} not found`);
+    }
+
+    if (order.paymentStatus === 'PAID') {
+      this.logger.warn(`⚠️ Impossible d'annuler: commande ${orderNumber} déjà payée`);
+      throw new BadRequestException('Cannot cancel: order already paid');
+    }
+
+    if (order.paymentStatus !== 'PENDING') {
+      this.logger.warn(`⚠️ Commande ${orderNumber} n'est pas en attente (statut: ${order.paymentStatus})`);
+      throw new BadRequestException(`Order is not pending (status: ${order.paymentStatus})`);
+    }
+
+    // Marquer comme CANCELLED
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentStatus: 'CANCELLED',
+      },
+    });
+
+    this.logger.log(`✅ Commande ${orderNumber} annulée (${order.paymentStatus} → CANCELLED)`);
   }
 }
