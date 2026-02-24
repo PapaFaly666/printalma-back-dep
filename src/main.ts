@@ -66,6 +66,7 @@ async function bootstrap() {
     .addTag('vendor-publication', 'Publication de produits par les vendeurs')
     .addTag('orders', 'Gestion des commandes')
     .addTag('notifications', 'Système de notifications')
+    .addTag('Orange Money', 'Paiement Orange Money - Génération QR Code et gestion webhooks')
     .addBearerAuth()
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);
