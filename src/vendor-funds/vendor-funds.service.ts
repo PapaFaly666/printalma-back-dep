@@ -4,10 +4,13 @@ import {
   ForbiddenException,
   BadRequestException,
   Logger,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CommissionService } from '../commission/commission.service';
 import { WithdrawalSecurityService } from '../vendor-phone/services/withdrawal-security.service';
+import { OrangeMoneyService } from '../orange-money/orange-money.service';
 import { FundsRequestStatus, PaymentMethodType } from '@prisma/client';
 import {
   VendorFundsRequestFiltersDto,
@@ -35,6 +38,8 @@ export class VendorFundsService {
     private prisma: PrismaService,
     private commissionService: CommissionService,
     private withdrawalSecurityService: WithdrawalSecurityService,
+    @Inject(forwardRef(() => OrangeMoneyService))
+    private orangeMoneyService: OrangeMoneyService,
   ) {}
 
   /**
@@ -874,6 +879,67 @@ export class VendorFundsService {
       throw new BadRequestException('Le rejet de demandes n\'est plus autorisé.');
     }
 
+    // 💰 Si le statut passe à APPROVED ou PAID et que la méthode est ORANGE_MONEY,
+    // déclencher automatiquement le Cash In
+    let cashInTransactionId: string | null = null;
+
+    if ((status === 'APPROVED' || status === 'PAID') && request.paymentMethod === 'ORANGE_MONEY') {
+      this.logger.log(`💰 Déclenchement automatique du Cash In pour la demande #${requestId}`);
+
+      // Vérifier que le numéro de téléphone est présent
+      if (!request.phoneNumber) {
+        throw new BadRequestException(
+          'Impossible de déclencher le Cash In : numéro de téléphone manquant'
+        );
+      }
+
+      // Récupérer les infos du vendeur
+      const vendor = await this.prisma.user.findUnique({
+        where: { id: request.vendorId },
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      });
+
+      const vendorName = vendor
+        ? `${vendor.firstName} ${vendor.lastName}`
+        : `Vendeur #${request.vendorId}`;
+
+      try {
+        // Exécuter le Cash In
+        const cashInResult = await this.orangeMoneyService.executeCashIn({
+          amount: request.amount,
+          customerPhone: request.phoneNumber,
+          customerName: vendorName,
+          reference: `FUNDS-REQ-${requestId}`,
+          description: request.description || 'Paiement appel de fonds vendeur',
+          fundsRequestId: requestId,
+          receiveNotification: true, // Notifier le vendeur par SMS
+        });
+
+        cashInTransactionId = cashInResult.transactionId;
+
+        this.logger.log(`✅ Cash In réussi - Transaction ID: ${cashInTransactionId}`);
+
+        // Si le Cash In est immédiatement SUCCESS, passer le statut à PAID
+        if (cashInResult.status === 'SUCCESS') {
+          this.logger.log(`✅ Cash In confirmé immédiatement - Statut PAID`);
+          // Le statut sera mis à PAID dans la mise à jour ci-dessous
+        } else {
+          this.logger.log(`⏳ Cash In en attente de confirmation - Statut: ${cashInResult.status}`);
+          // Le callback mettra à jour le statut plus tard
+        }
+      } catch (error) {
+        this.logger.error(`❌ Erreur lors du Cash In automatique: ${error.message}`);
+        // Ne pas bloquer la mise à jour de la demande
+        // L'admin pourra réessayer manuellement si nécessaire
+        throw new BadRequestException(
+          `Erreur lors du paiement Orange Money: ${error.message}. Veuillez réessayer ou utiliser une autre méthode de paiement.`
+        );
+      }
+    }
+
     // Mettre à jour la demande
     const updatedRequest = await this.prisma.vendorFundsRequest.update({
       where: { id: requestId },
@@ -885,6 +951,8 @@ export class VendorFundsService {
         processedAt: new Date(),
         // 🔧 Ajouter la date de validation quand l'admin traite la demande
         validatedAt: new Date(),
+        // 💰 Enregistrer le transactionId du Cash In si disponible
+        ...(cashInTransactionId && { transactionId: cashInTransactionId }),
       },
       include: {
         vendor: {

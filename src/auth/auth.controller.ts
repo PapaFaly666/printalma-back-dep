@@ -2,6 +2,7 @@ import { Controller, Post, Body, UseGuards, Get, Put, Delete, Req, BadRequestExc
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/user-dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { CreateClientDto, ChangePasswordDto, ListClientsQueryDto, ForgotPasswordDto, ResetPasswordDto, VerifyResetTokenDto, ForceChangePasswordDto, AdminResetPasswordDto, UpdateVendorProfileDto as UpdateVendorGeneralProfileDto, ExtendedVendorProfileResponseDto, AdminUpdateVendorDto } from './dto/create-client.dto';
 import { UpdateSocialMediaDto, SocialMediaResponseDto } from './dto/update-social-media.dto';
 import { UpdateVendorBioProfileDto, VendorProfileResponseDto } from './dto/update-vendor-profile.dto';
@@ -25,12 +26,26 @@ export class AuthController {
 	@Post('login')
 	async login(
 		@Body() loginDto: LoginDto,
+		@Req() request: Request,
 		@Res({ passthrough: true }) response: Response
 	) {
+		// Récupérer l'IP et le User-Agent
+		const ipAddress = request.ip || request.headers['x-forwarded-for'] as string || 'unknown';
+		const userAgent = request.headers['user-agent'] || 'unknown';
+
+		// Ajouter au DTO
+		loginDto.ipAddress = ipAddress;
+		loginDto.userAgent = userAgent;
+
 		const result = await this.authService.login(loginDto);
 
 		// Si changement de mot de passe requis, pas de cookie
 		if ('mustChangePassword' in result) {
+			return result;
+		}
+
+		// Si OTP requis, retourner le message sans cookie
+		if ('otpRequired' in result) {
 			return result;
 		}
 
@@ -44,6 +59,32 @@ export class AuthController {
 		});
 
 		// Retourner seulement les données utilisateur (pas le token)
+		return {
+			user: result.user
+		};
+	}
+
+	/**
+	 * Vérifie le code OTP et finalise la connexion
+	 * POST /auth/verify-otp
+	 */
+	@Post('verify-otp')
+	async verifyOtp(
+		@Body() verifyOtpDto: VerifyOtpDto,
+		@Res({ passthrough: true }) response: Response
+	) {
+		const result = await this.authService.verifyOtpAndLogin(verifyOtpDto);
+
+		// Définir le cookie httpOnly avec le token
+		response.cookie('auth_token', result.access_token, {
+			httpOnly: true,
+			secure: process.env.NODE_ENV === 'production',
+			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+			maxAge: 30 * 24 * 60 * 60 * 1000, // 30 jours
+			path: '/'
+		});
+
+		// Retourner seulement les données utilisateur
 		return {
 			user: result.user
 		};

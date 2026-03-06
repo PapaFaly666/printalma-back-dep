@@ -12,6 +12,9 @@ import { PaydunyaModule } from '../paydunya/paydunya.module';
 import { ConfigModule } from '@nestjs/config';
 import { CustomizationModule } from '../customization/customization.module';
 import { VendorFundsModule } from '../vendor-funds/vendor-funds.module';
+import { MailModule } from '../core/mail/mail.module';
+import { CloudinaryModule } from '../core/cloudinary/cloudinary.module';
+import { OrderMockupGeneratorService } from './services/order-mockup-generator.service';
 
 @Module({
   imports: [
@@ -23,6 +26,8 @@ import { VendorFundsModule } from '../vendor-funds/vendor-funds.module';
     forwardRef(() => PaydunyaModule),
     CustomizationModule, // 🎨 Module de personnalisation
     VendorFundsModule, // Module de gestion des fonds vendeur
+    MailModule, // 📧 Module d'envoi d'emails
+    CloudinaryModule, // 📤 Module d'upload d'images
   ],
   controllers: [OrderController],
   providers: [
@@ -33,7 +38,8 @@ import { VendorFundsModule } from '../vendor-funds/vendor-funds.module';
     RealBestSellersService,
     SalesStatsUpdaterService,
     PaytechService,
+    OrderMockupGeneratorService, // 🎨 Service de génération de mockups
   ],
-  exports: [OrderService, OrderGateway],
+  exports: [OrderService, OrderGateway, OrderMockupGeneratorService],
 })
 export class OrderModule {} 

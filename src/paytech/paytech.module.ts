@@ -3,12 +3,13 @@ import { ConfigModule } from '@nestjs/config';
 import { PaytechService } from './paytech.service';
 import { PaytechController } from './paytech.controller';
 import { JwtModule } from '@nestjs/jwt';
-import { OrderService } from '../order/order.service';
 import { PrismaService } from '../prisma.service';
 import { SalesStatsUpdaterService } from '../vendor-product/services/sales-stats-updater.service';
 import { RealBestSellersService } from '../vendor-product/services/real-best-sellers.service';
 import { PaydunyaModule } from '../paydunya/paydunya.module';
 import { CustomizationModule } from '../customization/customization.module';
+import { MailModule } from '../core/mail/mail.module';
+import { OrderModule } from '../order/order.module';
 
 /**
  * PayTech Payment Module
@@ -25,12 +26,13 @@ import { CustomizationModule } from '../customization/customization.module';
       signOptions: { expiresIn: '24h' },
     }),
     forwardRef(() => PaydunyaModule),
+    forwardRef(() => OrderModule), // 📦 Import OrderModule pour OrderService et OrderMockupGeneratorService
     CustomizationModule, // 🎨 Module de personnalisation
+    MailModule, // 📧 Module d'envoi d'emails
   ],
   controllers: [PaytechController],
   providers: [
     PaytechService,
-    OrderService,
     PrismaService,
     SalesStatsUpdaterService,
     RealBestSellersService,

@@ -109,3 +109,35 @@ export class PaymentConfigController {
     return this.paymentConfigService.remove(provider);
   }
 }
+
+/**
+ * Controller admin pour gérer l'activation/désactivation des méthodes de paiement
+ */
+@Controller('admin/payment-methods')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.SUPERADMIN)
+export class PaymentMethodsAdminController {
+  constructor(private readonly paymentConfigService: PaymentConfigService) {}
+
+  /**
+   * Récupère la liste de TOUTES les méthodes de paiement avec leur statut
+   * GET /admin/payment-methods
+   */
+  @Get()
+  async getAllPaymentMethods() {
+    return this.paymentConfigService.getAllPaymentMethods();
+  }
+
+  /**
+   * Active ou désactive une méthode de paiement
+   * PATCH /admin/payment-methods/:provider/toggle
+   * Body: { "isActive": true|false }
+   */
+  @Patch(':provider/toggle')
+  async togglePaymentMethod(
+    @Param('provider') provider: string,
+    @Body() body: { isActive: boolean },
+  ) {
+    return this.paymentConfigService.togglePaymentMethod(provider, body.isActive);
+  }
+}

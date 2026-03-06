@@ -2,6 +2,9 @@ import { Injectable, NotFoundException, Logger, BadRequestException } from '@nes
 import { PrismaService } from '../prisma.service';
 import { CreateCustomizationDto, UpdateCustomizationDto } from './dto/create-customization.dto';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
+import { OrderMockupGeneratorService } from '../order/services/order-mockup-generator.service';
+import { ProductPreviewGeneratorService } from '../vendor-product/services/product-preview-generator.service';
+import { MailService } from '../core/mail/mail.service';
 
 @Injectable()
 export class CustomizationService {
@@ -9,7 +12,10 @@ export class CustomizationService {
 
   constructor(
     private prisma: PrismaService,
-    private cloudinaryService: CloudinaryService
+    private cloudinaryService: CloudinaryService,
+    private mockupGenerator: OrderMockupGeneratorService,
+    private previewGenerator: ProductPreviewGeneratorService,
+    private mailService: MailService
   ) {}
 
   /**
@@ -141,6 +147,8 @@ export class CustomizationService {
       sessionId: userId ? null : dto.sessionId,
       status: 'draft',
       ...(dto.vendorProductId && { vendorProductId: dto.vendorProductId }),
+      ...(dto.clientEmail && { clientEmail: dto.clientEmail }),
+      ...(dto.clientName && { clientName: dto.clientName }),
     };
 
     // Données pour create (inclut productId et userId)
@@ -199,6 +207,9 @@ export class CustomizationService {
       this.logger.debug(`  - designElements: ${Array.isArray(updated.designElements) ? (updated.designElements as any[]).length : 0} éléments`);
       this.logger.debug(`  - elementsByView: ${updated.elementsByView ? JSON.stringify(updated.elementsByView).substring(0, 200) + '...' : 'null'}`);
 
+      // 🎨 Générer mockup et envoyer email si un email est fourni
+      await this.generateAndSendCustomizationEmail(updated, dto.clientEmail);
+
       return updated;
     }
 
@@ -237,6 +248,9 @@ export class CustomizationService {
       this.logger.debug(`  - designElements: ${Array.isArray(updated.designElements) ? (updated.designElements as any[]).length : 0} éléments`);
       this.logger.debug(`  - elementsByView: ${updated.elementsByView ? JSON.stringify(updated.elementsByView).substring(0, 200) + '...' : 'null'}`);
 
+      // 🎨 Générer mockup et envoyer email si un email est fourni
+      await this.generateAndSendCustomizationEmail(updated, dto.clientEmail);
+
       return updated;
     } else {
       // Créer nouveau
@@ -259,6 +273,9 @@ export class CustomizationService {
       this.logger.debug(`✅ Created customization ${created.id}:`);
       this.logger.debug(`  - designElements: ${Array.isArray(created.designElements) ? (created.designElements as any[]).length : 0} éléments`);
       this.logger.debug(`  - elementsByView: ${created.elementsByView ? JSON.stringify(created.elementsByView).substring(0, 200) + '...' : 'null'}`);
+
+      // 🎨 Générer mockup et envoyer email si un email est fourni
+      await this.generateAndSendCustomizationEmail(created, dto.clientEmail);
 
       return created;
     }
@@ -786,5 +803,225 @@ export class CustomizationService {
 
     // Appeler la méthode existante
     return this.upsertCustomization(dto, userId, customizationId);
+  }
+
+  /**
+   * 🎨📧 Générer le mockup de la personnalisation et envoyer un email au client
+   *
+   * @param customization - Personnalisation sauvegardée
+   * @param clientEmail - Email du client (optionnel)
+   */
+  private async generateAndSendCustomizationEmail(customization: any, clientEmail?: string): Promise<void> {
+    // Si pas d'email fourni, ne rien faire
+    if (!clientEmail) {
+      this.logger.log(`⏭️  Pas d'email fourni - génération de mockup et envoi ignorés`);
+      return;
+    }
+
+    this.logger.log(`\n🎨📧 ===== GÉNÉRATION MOCKUP ET ENVOI EMAIL =====`);
+    this.logger.log(`📧 Email client: ${clientEmail}`);
+    this.logger.log(`🆔 Customization ID: ${customization.id}`);
+
+    try {
+      // 1. Vérifier qu'il y a des éléments de design
+      const elementsByView = customization.elementsByView || {};
+      const viewKeys = Object.keys(elementsByView);
+
+      if (viewKeys.length === 0) {
+        this.logger.warn(`⚠️  Aucune vue trouvée - pas de mockup à générer`);
+        return;
+      }
+
+      const firstViewKey = viewKeys[0];
+      const elements = elementsByView[firstViewKey];
+
+      if (!Array.isArray(elements) || elements.length === 0) {
+        this.logger.warn(`⚠️  Aucun élément de design - pas de mockup à générer`);
+        return;
+      }
+
+      this.logger.log(`🎨 ${elements.length} élément(s) de design trouvé(s) dans la vue ${firstViewKey}`);
+
+      // 2. Récupérer l'image du produit (via colorVariation)
+      const colorVariation = customization.product?.colorVariations?.find(
+        (cv: any) => cv.id === customization.colorVariationId
+      );
+
+      if (!colorVariation || !colorVariation.images?.[0]?.url) {
+        this.logger.warn(`⚠️  Image du produit introuvable - pas de mockup à générer`);
+        return;
+      }
+
+      const productImageUrl = colorVariation.images[0].url;
+      this.logger.log(`📸 Image du produit: ${productImageUrl}`);
+
+      // 3. Récupérer la délimitation
+      const delimitation = customization.delimitations?.[0];
+
+      if (delimitation) {
+        this.logger.log(`📐 Délimitation: ${delimitation.width}x${delimitation.height}px`);
+      }
+
+      // 4. Générer le mockup avec le système robuste (Sharp)
+      this.logger.log(`🎨 Génération du mockup avec Sharp (système robuste)...`);
+      this.logger.log(`📐 Configuration:`);
+      this.logger.log(`   - Image produit: ${productImageUrl}`);
+      this.logger.log(`   - Nombre d'éléments: ${elements.length}`);
+      this.logger.log(`   - Délimitation: ${delimitation ? `${delimitation.width}x${delimitation.height}px` : 'Aucune'}`);
+
+      let mockupUrl: string;
+
+      try {
+        // Utiliser OrderMockupGeneratorService (support multi-éléments avec Sharp)
+        mockupUrl = await this.mockupGenerator.generateOrderMockup({
+          productImageUrl,
+          elements,
+          delimitation: delimitation ? {
+            x: delimitation.x,
+            y: delimitation.y,
+            width: delimitation.width,
+            height: delimitation.height
+          } : undefined
+        });
+
+        this.logger.log(`✅ Mockup généré avec succès: ${mockupUrl}`);
+      } catch (error) {
+        this.logger.error(`❌ Erreur lors de la génération du mockup:`, error.message);
+        throw new Error(`Échec de la génération du mockup: ${error.message}`);
+      }
+
+      // 5. Mettre à jour la personnalisation avec l'URL du mockup
+      await this.prisma.productCustomization.update({
+        where: { id: customization.id },
+        data: {
+          previewImageUrl: mockupUrl,        // Compatibilité
+          finalImageUrlCustom: mockupUrl     // ✨ Nouvelle URL image finale Sharp
+        }
+      });
+
+      this.logger.log(`💾 Mockup sauvegardé dans previewImageUrl et finalImageUrlCustom`);
+
+      // 6. Envoyer l'email au client
+      this.logger.log(`📧 Envoi de l'email à ${clientEmail}...`);
+
+      await this.mailService.sendCustomizationEmail({
+        email: clientEmail,
+        productName: customization.product?.name || 'Produit personnalisé',
+        mockupUrl,
+        clientName: customization.clientName
+      });
+
+      this.logger.log(`✅ Email envoyé avec succès à ${clientEmail}`);
+      this.logger.log(`===== FIN GÉNÉRATION ET ENVOI =====\n`);
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur lors de la génération/envoi:`, error.message);
+      this.logger.error(`   Stack:`, error.stack);
+      // Ne pas faire échouer la sauvegarde si l'email échoue
+    }
+  }
+
+  /**
+   * 🔄 RÉGÉNÉRER LE MOCKUP D'UNE PERSONNALISATION
+   * Force la génération de finalImageUrlCustom même sans email
+   *
+   * @param customizationId - ID de la personnalisation
+   */
+  async regenerateCustomizationMockup(customizationId: number) {
+    this.logger.log(`🔄 Régénération mockup pour customization ${customizationId}`);
+
+    try {
+      // 1. Récupérer la personnalisation avec toutes les données
+      const customization = await this.prisma.productCustomization.findUnique({
+        where: { id: customizationId },
+        include: {
+          product: {
+            include: {
+              colorVariations: {
+                include: {
+                  images: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!customization) {
+        throw new NotFoundException(`Personnalisation ${customizationId} introuvable`);
+      }
+
+      this.logger.log(`✅ Personnalisation trouvée: ${customization.id}`);
+
+      // 2. Vérifier qu'il y a des éléments de design
+      const elementsByView = customization.elementsByView || {};
+      const viewKeys = Object.keys(elementsByView);
+
+      if (viewKeys.length === 0) {
+        throw new BadRequestException('Aucune vue trouvée - impossible de générer le mockup');
+      }
+
+      const firstViewKey = viewKeys[0];
+      const elements = elementsByView[firstViewKey];
+
+      if (!Array.isArray(elements) || elements.length === 0) {
+        throw new BadRequestException('Aucun élément de design - impossible de générer le mockup');
+      }
+
+      this.logger.log(`🎨 ${elements.length} élément(s) de design trouvé(s)`);
+
+      // 3. Récupérer l'image du produit (via colorVariation)
+      const colorVariation = customization.product?.colorVariations?.find(
+        (cv: any) => cv.id === customization.colorVariationId
+      );
+
+      if (!colorVariation || !colorVariation.images?.[0]?.url) {
+        throw new BadRequestException('Image du produit introuvable');
+      }
+
+      const productImageUrl = colorVariation.images[0].url;
+      this.logger.log(`📸 Image du produit: ${productImageUrl}`);
+
+      // 4. Récupérer la délimitation
+      const delimitation = customization.delimitations?.[0];
+
+      // 5. Générer le mockup avec Sharp
+      this.logger.log(`🎨 Génération du mockup avec Sharp...`);
+
+      const mockupUrl = await this.mockupGenerator.generateOrderMockup({
+        productImageUrl,
+        elements,
+        delimitation: delimitation ? {
+          x: delimitation.x,
+          y: delimitation.y,
+          width: delimitation.width,
+          height: delimitation.height
+        } : undefined
+      });
+
+      this.logger.log(`✅ Mockup généré: ${mockupUrl}`);
+
+      // 6. Mettre à jour la personnalisation avec l'URL du mockup
+      await this.prisma.productCustomization.update({
+        where: { id: customization.id },
+        data: {
+          previewImageUrl: mockupUrl,
+          finalImageUrlCustom: mockupUrl
+        }
+      });
+
+      this.logger.log(`💾 Mockup sauvegardé dans finalImageUrlCustom`);
+
+      return {
+        success: true,
+        customizationId: customization.id,
+        finalImageUrlCustom: mockupUrl,
+        message: 'Mockup régénéré avec succès'
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur lors de la régénération:`, error.message);
+      throw error;
+    }
   }
 }

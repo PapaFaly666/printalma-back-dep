@@ -46,6 +46,9 @@ import { HomeContentModule } from './home-content/home-content.module';
 import { VendorPhoneModule } from './vendor-phone/vendor-phone.module';
 import { PaymentConfigModule } from './payment-config/payment-config.module';
 import { OrangeMoneyModule } from './orange-money/orange-money.module';
+import { AdminSettingsModule } from './admin-settings/admin-settings.module';
+import { VendorStatsModule } from './vendor-stats/vendor-stats.module';
+import { PermissionsModule } from './permissions/permissions.module';
 
 @Module({
   imports: [
@@ -93,6 +96,9 @@ import { OrangeMoneyModule } from './orange-money/orange-money.module';
     StickerModule,
     HomeContentModule,
     VendorPhoneModule,
+    AdminSettingsModule, // Module des paramètres administrateur
+    VendorStatsModule, // Module des statistiques vendeur
+    PermissionsModule, // Module de gestion des permissions et rôles
   ],
   controllers: [AppController, SizeController],
   providers: [AppService, PrismaService, SizeService],

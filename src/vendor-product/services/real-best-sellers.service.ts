@@ -90,7 +90,7 @@ export class RealBestSellersService {
       // 2. Construire les conditions WHERE
       const whereConditions: any = {
         order: {
-          status: 'DELIVERED', // Seulement les commandes livrées
+          status: { in: ['CONFIRMED', 'DELIVERED'] }, // ✅ Commandes confirmées ou livrées
           createdAt: {
             gte: dateRange.from,
             lte: dateRange.to
@@ -138,8 +138,8 @@ export class RealBestSellersService {
         JOIN "Product" p ON p.id = vp."baseProductId"
         JOIN "User" u ON u.id = vp."vendorId"
         
-        WHERE 
-          o.status = 'DELIVERED'
+        WHERE
+          o.status IN ('CONFIRMED', 'DELIVERED')
           AND o."createdAt" >= $1
           AND o."createdAt" <= $2
           ${vendorId ? 'AND vp."vendorId" = $3' : ''}
@@ -208,15 +208,15 @@ export class RealBestSellersService {
 
       // 8. Calculer les statistiques globales
       const statsQuery = `
-        SELECT 
+        SELECT
           COUNT(DISTINCT vp.id) as total_products,
           COALESCE(SUM(oi.quantity * oi."unitPrice"), 0) as total_revenue,
           COALESCE(SUM(oi.quantity), 0) as total_quantity_sold
         FROM "OrderItem" oi
         JOIN "Order" o ON o.id = oi."orderId"
         JOIN "VendorProduct" vp ON vp.id = oi."productId"
-        WHERE 
-          o.status = 'DELIVERED'
+        WHERE
+          o.status IN ('CONFIRMED', 'DELIVERED')
           AND o."createdAt" >= $1
           AND o."createdAt" <= $2
           ${vendorId ? 'AND vp."vendorId" = $3' : ''}

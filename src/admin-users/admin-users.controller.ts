@@ -39,7 +39,7 @@ export class AdminUsersController {
   constructor(private readonly adminUsersService: AdminUsersService) {}
 
   @Get()
-  @RequirePermissions('users.view')
+  @RequirePermissions('users.admins.view')
   @ApiOperation({ summary: 'Récupérer tous les utilisateurs avec filtres et pagination' })
   @ApiQuery({ name: 'search', required: false, description: 'Recherche par nom ou email' })
   @ApiQuery({ name: 'roleId', required: false, description: 'Filtrer par rôle' })
@@ -55,7 +55,7 @@ export class AdminUsersController {
   }
 
   @Get('admins-only')
-  @RequirePermissions('users.view')
+  @RequirePermissions('users.admins.view')
   @ApiOperation({ summary: 'Lister uniquement les admins et superadmins (exclut vendeurs)' })
   @ApiQuery({ name: 'search', required: false, description: 'Recherche par nom ou email' })
   @ApiQuery({ name: 'page', required: false, description: 'Numéro de page' })
@@ -66,7 +66,7 @@ export class AdminUsersController {
   }
 
   @Get('stats')
-  @RequirePermissions('users.view')
+  @RequirePermissions('users.admins.view')
   @ApiOperation({ summary: 'Récupérer les statistiques des utilisateurs' })
   @ApiResponse({
     status: 200,
@@ -77,7 +77,7 @@ export class AdminUsersController {
   }
 
   @Get(':id')
-  @RequirePermissions('users.view')
+  @RequirePermissions('users.admins.view')
   @ApiOperation({ summary: 'Récupérer un utilisateur par ID' })
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
   @ApiResponse({
@@ -93,7 +93,7 @@ export class AdminUsersController {
   }
 
   @Post()
-  @RequirePermissions('users.create')
+  @RequirePermissions('users.admins.create')
   @ApiOperation({ summary: 'Créer un nouvel utilisateur' })
   @ApiResponse({
     status: 201,
@@ -113,7 +113,7 @@ export class AdminUsersController {
   }
 
   @Patch(':id')
-  @RequirePermissions('users.update')
+  @RequirePermissions('users.admins.edit')
   @ApiOperation({ summary: 'Mettre à jour un utilisateur' })
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
   @ApiResponse({
@@ -136,7 +136,7 @@ export class AdminUsersController {
   }
 
   @Delete(':id')
-  @RequirePermissions('users.delete')
+  @RequirePermissions('users.admins.delete')
   @ApiOperation({ summary: 'Supprimer un utilisateur' })
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
   @ApiResponse({
@@ -153,7 +153,7 @@ export class AdminUsersController {
   }
 
   @Post(':id/reset-password')
-  @RequirePermissions('users.reset_password')
+  @RequirePermissions('users.admins.edit')
   @ApiOperation({ summary: 'Réinitialiser le mot de passe d\'un utilisateur' })
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
   @ApiResponse({
@@ -172,7 +172,7 @@ export class AdminUsersController {
   }
 
   @Patch(':id/status')
-  @RequirePermissions('users.update_status')
+  @RequirePermissions('users.admins.edit')
   @ApiOperation({ summary: 'Changer le statut d\'un utilisateur' })
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
   @ApiResponse({
@@ -191,7 +191,7 @@ export class AdminUsersController {
   }
 
   @Get(':id/permissions')
-  @RequirePermissions('users.view')
+  @RequirePermissions('users.admins.view')
   @ApiOperation({ summary: 'Récupérer les permissions d\'un utilisateur' })
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
   @ApiResponse({
@@ -207,7 +207,7 @@ export class AdminUsersController {
   }
 
   @Post(':id/permissions')
-  @RequirePermissions('users.manage_permissions')
+  @RequirePermissions('users.admins.roles')
   @ApiOperation({
     summary: 'Attribuer des permissions personnalisées à un utilisateur',
     description: 'Crée un rôle personnalisé unique pour l\'utilisateur avec les permissions spécifiées. Si l\'utilisateur avait déjà un rôle personnalisé, il sera remplacé.'
@@ -229,7 +229,7 @@ export class AdminUsersController {
   }
 
   @Post(':id/permissions/reset')
-  @RequirePermissions('users.manage_permissions')
+  @RequirePermissions('users.admins.roles')
   @ApiOperation({
     summary: 'Réinitialiser les permissions d\'un utilisateur',
     description: 'Remplace le rôle personnalisé de l\'utilisateur par un rôle de base. Supprime automatiquement l\'ancien rôle personnalisé s\'il n\'est utilisé par aucun autre utilisateur.'

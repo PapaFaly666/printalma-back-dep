@@ -1,7 +1,8 @@
-import { Controller, Post, Body, HttpCode, Logger, Get, Param, Query, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, Logger, Get, Param, Query, NotFoundException, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { OrangeMoneyService } from './orange-money.service';
 import { CreateOrangePaymentDto } from './dto/orange-payment.dto';
+import { ExecuteCashInDto, CashInResponseDto } from './dto/orange-cashin.dto';
 import { OrangeTransactionStatus, OrangeTransactionType } from './interfaces/orange-transaction.interface';
 import { OrangeCallbackPayload, OrangeCallbackPayloadFull } from './interfaces/orange-callback.interface';
 
@@ -588,6 +589,184 @@ export class OrangeMoneyController {
         success: false,
         error: error.message,
         payload: mockPayload
+      };
+    }
+  }
+
+  /**
+   * Exécute un Cash In Orange Money - Envoie de l'argent vers un wallet client
+   * POST /orange-money/cashin
+   *
+   * IMPORTANT: Endpoint protégé - Réservé aux admins pour les paiements de vendeurs
+   *
+   * Cas d'usage :
+   * - Paiement des appels de fonds vendeurs
+   * - Remboursements clients
+   * - Cashback
+   */
+  @Post('cashin')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Execute Cash In to send money to a customer wallet',
+    description: 'Sends money from the platform retailer account to a customer Orange Money wallet. Used for vendor payouts, refunds, cashback, etc.'
+  })
+  @ApiBody({ type: ExecuteCashInDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Cash In executed successfully',
+    type: CashInResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid parameters or insufficient balance',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Token expired',
+  })
+  async executeCashIn(@Body() dto: ExecuteCashInDto): Promise<CashInResponseDto> {
+    this.logger.log(`💰 Endpoint Cash In appelé - Montant: ${dto.amount} FCFA vers ${dto.customerPhone}`);
+
+    try {
+      const result = await this.orangeMoneyService.executeCashIn(dto);
+      this.logger.log(`✅ Cash In réussi - Transaction ID: ${result.transactionId}`);
+      return result;
+    } catch (error: any) {
+      this.logger.error(`❌ Erreur Cash In: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Reçoit le callback webhook pour les Cash In
+   * POST /orange-money/cashin-callback
+   *
+   * Ce endpoint est appelé par Orange Money de manière asynchrone
+   * après l'exécution d'un Cash In pour confirmer le statut final
+   */
+  @Post('cashin-callback')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Receive Cash In webhook callback from Orange Money',
+    description: 'Handles asynchronous callbacks from Orange Money API to confirm Cash In status'
+  })
+  @ApiBody({
+    description: 'Callback payload from Orange Money',
+    schema: {
+      type: 'object',
+      properties: {
+        transactionId: { type: 'string', example: 'CI1234.5678.91023' },
+        status: { type: 'string', example: 'SUCCESS' },
+        amount: {
+          type: 'object',
+          properties: {
+            value: { type: 'number', example: 50000 },
+            unit: { type: 'string', example: 'XOF' },
+          },
+        },
+        customer: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '221771234567' },
+            idType: { type: 'string', example: 'MSISDN' },
+          },
+        },
+        partner: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '221781234567' },
+            idType: { type: 'string', example: 'MSISDN' },
+          },
+        },
+        reference: { type: 'string', example: 'CASHIN-1234567890' },
+        metadata: {
+          type: 'object',
+          properties: {
+            fundsRequestId: { type: 'string', example: '123' },
+            customerName: { type: 'string', example: 'Mamadou Diallo' },
+            description: { type: 'string', example: 'Paiement appel de fonds vendeur' },
+          },
+        },
+        type: { type: 'string', example: 'CASHIN' },
+        channel: { type: 'string', example: 'API' },
+      },
+    },
+  })
+  async handleCashInCallback(@Body() callbackData: any) {
+    this.logger.log('📨 Callback Cash In Orange Money reçu');
+    this.logger.log(`📦 Data: ${JSON.stringify(callbackData, null, 2)}`);
+
+    try {
+      await this.orangeMoneyService.handleCashInCallback(callbackData);
+      return {
+        success: true,
+        message: 'Callback Cash In traité avec succès',
+      };
+    } catch (error: any) {
+      this.logger.error(`❌ Erreur traitement callback Cash In: ${error.message}`);
+      // ⚠️ On retourne quand même 200 pour ne pas bloquer Orange Money
+      return {
+        success: false,
+        error: error.message,
+        message: 'Erreur lors du traitement du callback, sera réessayé',
+      };
+    }
+  }
+
+  /**
+   * Endpoint de test pour simuler un callback Cash In (développement uniquement)
+   * POST /orange-money/test-cashin-callback
+   */
+  @Post('test-cashin-callback')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: '[DEV ONLY] Test Cash In callback',
+    description: 'Simulates a Cash In callback from Orange Money for testing purposes'
+  })
+  async testCashInCallback(
+    @Body() body: { fundsRequestId: number; status?: string }
+  ) {
+    this.logger.warn('⚠️ ENDPOINT DE TEST - Ne pas utiliser en production');
+
+    const mockPayload = {
+      transactionId: `CI-TEST-${Date.now()}`,
+      status: body.status || 'SUCCESS',
+      amount: {
+        value: 50000,
+        unit: 'XOF',
+      },
+      customer: {
+        id: '221771234567',
+        idType: 'MSISDN',
+      },
+      partner: {
+        id: '221781234567',
+        idType: 'MSISDN',
+      },
+      reference: `CASHIN-TEST-${body.fundsRequestId}`,
+      metadata: {
+        fundsRequestId: body.fundsRequestId.toString(),
+        customerName: 'Test Vendeur',
+        description: 'Test Cash In',
+      },
+      type: 'CASHIN',
+      channel: 'API',
+    };
+
+    try {
+      await this.orangeMoneyService.handleCashInCallback(mockPayload);
+
+      return {
+        success: true,
+        message: 'Callback Cash In simulé avec succès',
+        payload: mockPayload,
+      };
+    } catch (error: any) {
+      this.logger.error('❌ Erreur test callback Cash In:', error.message);
+      return {
+        success: false,
+        error: error.message,
+        payload: mockPayload,
       };
     }
   }

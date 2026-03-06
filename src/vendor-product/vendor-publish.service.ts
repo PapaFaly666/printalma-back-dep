@@ -3807,6 +3807,102 @@ export class VendorPublishService {
       }
     });
   }
+
+  /**
+   * 🔄 RÉGÉNÉRER LES IMAGES FINALES D'UN PRODUIT
+   * Force la génération des finalImageUrl pour toutes les couleurs
+   */
+  async regenerateFinalImages(productId: number, vendorId: number) {
+    this.logger.log(`🔄 Régénération des images finales pour produit ${productId}`);
+
+    try {
+      // 1. Vérifier que le produit appartient au vendeur
+      const product = await this.prisma.vendorProduct.findFirst({
+        where: {
+          id: productId,
+          vendorId: vendorId,
+        },
+        include: {
+          design: true,
+          baseProduct: {
+            include: {
+              colorVariations: true
+            }
+          }
+        }
+      });
+
+      if (!product) {
+        throw new NotFoundException(`Produit ${productId} introuvable ou n'appartient pas au vendeur`);
+      }
+
+      if (!product.design) {
+        throw new BadRequestException(`Produit ${productId} n'a pas de design associé`);
+      }
+
+      // 2. Récupérer la position du design
+      const designPosition = await this.designPositionService.getPositionByDesignId(
+        productId,
+        product.design.id
+      );
+
+      if (!designPosition) {
+        throw new BadRequestException(`Aucune position de design trouvée pour le produit ${productId}`);
+      }
+
+      this.logger.log(`✅ Position récupérée: ${JSON.stringify(designPosition)}`);
+
+      // 3. Préparer la liste des couleurs
+      const colors = product.baseProduct.colorVariations.map(cv => ({
+        id: cv.id,
+        name: cv.name,
+        colorCode: cv.colorCode
+      }));
+
+      this.logger.log(`🎨 ${colors.length} couleurs à traiter`);
+
+      // 4. Déterminer si c'est un autocollant
+      const isSticker = product.baseProduct.genre === 'AUTOCOLLANT';
+
+      // 5. Lancer la génération (SYNCHRONE pour cette fois, pour debug)
+      this.logger.log(`🚀 Début génération synchrone des images finales...`);
+
+      const result = await this.imageGenerationQueue.generateImagesForColors(
+        productId,
+        colors,
+        {
+          id: product.design.id,
+          name: product.design.name,
+          imageUrl: product.design.imageUrl
+        },
+        designPosition,
+        isSticker
+      );
+
+      this.logger.log(`✅ Génération terminée: ${result.colorsProcessed}/${result.totalColors} images générées`);
+
+      return {
+        success: true,
+        message: 'Images finales régénérées avec succès',
+        productId,
+        result: {
+          totalColors: result.totalColors,
+          colorsProcessed: result.colorsProcessed,
+          colorsRemaining: result.colorsRemaining,
+          totalGenerationTime: result.totalGenerationTime,
+          averageTimePerColor: result.averageTimePerColor,
+          generatedImages: result.generatedImages.map(img => ({
+            colorId: img.colorId,
+            url: img.url
+          }))
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur régénération images pour produit ${productId}:`, error);
+      throw error;
+    }
+  }
 }
 
 

@@ -238,3 +238,83 @@ export interface OrangeErrorResponse {
     message?: string;
   }>;
 }
+
+/**
+ * Payload pour l'exécution d'un Cash In
+ * Doc: Cash In > POST /api/eWallet/v1/cashins > Request Body
+ *
+ * Exemple :
+ * ```json
+ * {
+ *   "amount": { "unit": "XOF", "value": 50000 },
+ *   "customer": { "id": "221771234567", "idType": "MSISDN", "walletType": "PRINCIPAL" },
+ *   "partner": { "id": "221781234567", "idType": "MSISDN", "encryptedPinCode": "..." },
+ *   "reference": "FUNDS-REQ-12345",
+ *   "receiveNotification": false,
+ *   "metadata": { "fundsRequestId": "123", "reason": "Paiement vendeur" }
+ * }
+ * ```
+ */
+export interface OrangeCashInPayload {
+  /** Montant du Cash In */
+  amount: Money;
+
+  /** Informations du client bénéficiaire */
+  customer: {
+    id: string; // MSISDN du client (ex: "221771234567")
+    idType: OrangeIdType;
+    walletType?: OrangeWalletType;
+  };
+
+  /** Informations du partenaire (retailer qui effectue le Cash In) */
+  partner: {
+    id: string; // MSISDN ou CODE du partenaire
+    idType: OrangeIdType;
+    encryptedPinCode: string; // PIN code crypté avec la clé publique
+    walletType?: OrangeWalletType;
+  };
+
+  /** Référence externe (0-50 caractères) */
+  reference?: string;
+
+  /** Date de création de la requête (ISO 8601) */
+  requestDate?: string;
+
+  /** Recevoir notification SMS */
+  receiveNotification?: boolean;
+
+  /** Métadonnées personnalisées (max 10 paires clé-valeur) */
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Réponse de l'API POST /api/eWallet/v1/cashins
+ * Doc: Cash In > POST /api/eWallet/v1/cashins > Response (200, 201)
+ *
+ * Exemple :
+ * ```json
+ * {
+ *   "description": "Transaction successful",
+ *   "reference": "FUNDS-REQ-12345",
+ *   "requestId": "1234.5678.91023",
+ *   "status": "SUCCESS",
+ *   "transactionId": "CI1234.5678.91023"
+ * }
+ * ```
+ */
+export interface OrangeCashInResponse {
+  /** Description du résultat */
+  description?: string;
+
+  /** Référence externe */
+  reference?: string;
+
+  /** ID de la requête */
+  requestId?: string;
+
+  /** Statut de la transaction */
+  status: OrangeTransactionStatus;
+
+  /** ID unique de la transaction généré par Orange Money */
+  transactionId: string;
+}

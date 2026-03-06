@@ -344,4 +344,72 @@ export class PaymentConfigService {
     if (!key || key.length < 8) return '****';
     return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
   }
+
+  /**
+   * Récupère la liste de TOUTES les méthodes de paiement disponibles avec leur statut
+   * Utilisé par le frontend pour afficher les options de paiement
+   */
+  async getAllPaymentMethods(): Promise<Array<{
+    provider: string;
+    isActive: boolean;
+    mode?: string;
+    label: string;
+  }>> {
+    const configs = await this.prisma.paymentConfig.findMany({
+      select: {
+        provider: true,
+        isActive: true,
+        activeMode: true,
+      },
+    });
+
+    // Mapper les providers vers des labels lisibles
+    const providerLabels: { [key: string]: string } = {
+      'PAYDUNYA': 'PayDunya',
+      'ORANGE_MONEY': 'Orange Money',
+      'CASH_ON_DELIVERY': 'Paiement à la livraison',
+    };
+
+    return configs.map((config) => ({
+      provider: config.provider,
+      isActive: config.isActive,
+      mode: config.activeMode,
+      label: providerLabels[config.provider] || config.provider,
+    }));
+  }
+
+  /**
+   * Active ou désactive une méthode de paiement
+   * Toggle simple pour l'admin
+   */
+  async togglePaymentMethod(provider: string, isActive: boolean): Promise<{
+    provider: string;
+    isActive: boolean;
+    message: string;
+  }> {
+    this.logger.log(`${isActive ? 'Activation' : 'Désactivation'} de ${provider}`);
+
+    const existing = await this.prisma.paymentConfig.findUnique({
+      where: { provider },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(
+        `Configuration non trouvée pour ${provider}`,
+      );
+    }
+
+    const updated = await this.prisma.paymentConfig.update({
+      where: { provider },
+      data: { isActive },
+    });
+
+    this.logger.log(`✅ ${provider} ${isActive ? 'activé' : 'désactivé'} avec succès`);
+
+    return {
+      provider: updated.provider,
+      isActive: updated.isActive,
+      message: `${provider} ${isActive ? 'activé' : 'désactivé'} avec succès`,
+    };
+  }
 }

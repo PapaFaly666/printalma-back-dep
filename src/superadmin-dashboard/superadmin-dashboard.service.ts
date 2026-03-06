@@ -109,18 +109,20 @@ export class SuperadminDashboardService {
     const startOfYear = new Date(now.getFullYear(), 0, 1);
 
     for (const order of allOrders) {
-      // Calculer la base de commission pour cette commande
-      let commissionBase = 0;
+      // Calculer les gains admin pour cette commande
+      let orderAdminGains = 0;
 
       for (const item of order.orderItems) {
-        // 🏪 PARTIE 1 : Commission sur le bénéfice du produit
-        const productCost = item.product?.price || 0;
         const sellingPrice = item.unitPrice || 0;
         const quantity = item.quantity || 1;
-        const itemProfit = (sellingPrice - productCost) * quantity;
-        commissionBase += itemProfit;
+        const commissionRate = (order.commissionRate || 40) / 100;
 
-        // 🎨 PARTIE 2 : Commission sur les designs vendeurs utilisés
+        // 🏪 PARTIE 1 : Prix de vente COMPLET du mockup avec commission admin
+        const mockupRevenue = sellingPrice * quantity;
+        const adminMockupGain = mockupRevenue * commissionRate;
+        orderAdminGains += adminMockupGain;
+
+        // 🎨 PARTIE 2 : Prix designs avec commission admin
         let itemDesignsTotal = 0;
 
         // Extraire les designs depuis designElementsByView
@@ -150,16 +152,13 @@ export class SuperadminDashboardService {
           }
         }
 
-        // Ajouter les revenus des designs à la base de commission
-        commissionBase += itemDesignsTotal;
+        // Appliquer la commission admin sur les designs
+        const adminDesignsGain = itemDesignsTotal * commissionRate;
+        orderAdminGains += adminDesignsGain;
       }
 
-      // Calculer la commission sur la base appropriée
-      const commissionRate = (order.commissionRate || 40) / 100;
-      const commissionAmount = commissionBase * commissionRate;
-
       // Ajouter au total des gains admin
-      totalAdminGains += commissionAmount;
+      totalAdminGains += orderAdminGains;
 
       // 💰 Ajouter au chiffre d'affaires total
       totalRevenue += order.totalAmount;
@@ -167,7 +166,7 @@ export class SuperadminDashboardService {
       // Vérifier si la commande est du mois en cours
       const orderDate = new Date(order.createdAt);
       if (orderDate >= startOfMonth) {
-        thisMonthAdminGains += commissionAmount;
+        thisMonthAdminGains += orderAdminGains;
         thisMonthRevenue += order.totalAmount;
       }
 

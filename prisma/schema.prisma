@@ -89,6 +89,8 @@ model User {
   vendorSecurityLogs      SecurityLog[]           @relation("VendorSecurityLogs")
   vendorStickers          StickerProduct[]        @relation("VendorStickers")
   stickerFavorites        StickerFavorite[]       @relation("UserStickerFavorites")
+  loginOTPs               LoginOTP[]              @relation("UserLoginOTPs")
+  appSettingsUpdates      AppSettings[]           @relation("AppSettingsUpdater")
 
   @@index([country])
   @@index([shop_name])
@@ -830,6 +832,7 @@ model VendorFundsRequest {
   bankIban         String?                   @map("bank_iban") @db.VarChar(64)
   requestedAt      DateTime                  @default(now()) @map("requested_at")
   validatedAt      DateTime?                 @map("validated_at")
+  transactionId    String?                   @map("transaction_id") @db.VarChar(50)
   orderLinks       VendorFundsRequestOrder[]
   processedByUser  User?                     @relation("ProcessedFundsRequests", fields: [processedBy], references: [id])
   vendor           User                      @relation("VendorFundsRequests", fields: [vendorId], references: [id], onDelete: Cascade)
@@ -837,6 +840,7 @@ model VendorFundsRequest {
   @@index([vendorId, status], map: "idx_vendor_status")
   @@index([status, createdAt], map: "idx_status_date")
   @@index([processedAt], map: "idx_processed_date")
+  @@index([transactionId], map: "idx_transaction_id")
   @@map("vendor_funds_requests")
 }
 
@@ -987,29 +991,32 @@ model AuditLog {
 /// Personnalisations de produits (design customization)
 /// Stocke les personnalisations faites par les clients sur les produits
 model ProductCustomization {
-  id               Int            @id @default(autoincrement())
-  userId           Int?           @map("user_id")
-  sessionId        String?        @map("session_id")
-  productId        Int            @map("product_id")
-  colorVariationId Int            @map("color_variation_id")
-  viewId           Int            @map("view_id")
-  designElements   Json           @map("design_elements")
-  sizeSelections   Json?          @map("size_selections")
-  previewImageUrl  String?        @map("preview_image_url")
-  totalPrice       Decimal        @default(0) @map("total_price") @db.Decimal(10, 2)
-  status           String         @default("draft")
-  orderId          Int?           @map("order_id")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
-  delimitations    Json?          @map("delimitations")
-  elementsByView   Json?          @map("elements_by_view")
-  timestamp        BigInt?        @map("timestamp")
-  vendorProductId  Int?           @map("vendor_product_id")
-  orderItems       OrderItem[]
-  order            Order?         @relation(fields: [orderId], references: [id])
-  product          Product        @relation(fields: [productId], references: [id])
-  user             User?          @relation(fields: [userId], references: [id])
-  vendorProduct    VendorProduct? @relation(fields: [vendorProductId], references: [id])
+  id                  Int            @id @default(autoincrement())
+  userId              Int?           @map("user_id")
+  sessionId           String?        @map("session_id")
+  productId           Int            @map("product_id")
+  colorVariationId    Int            @map("color_variation_id")
+  viewId              Int            @map("view_id")
+  designElements      Json           @map("design_elements")
+  sizeSelections      Json?          @map("size_selections")
+  previewImageUrl     String?        @map("preview_image_url")
+  finalImageUrlCustom String?        @map("final_image_url_custom")
+  totalPrice          Decimal        @default(0) @map("total_price") @db.Decimal(10, 2)
+  status              String         @default("draft")
+  orderId             Int?           @map("order_id")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  delimitations       Json?          @map("delimitations")
+  elementsByView      Json?          @map("elements_by_view")
+  timestamp           BigInt?        @map("timestamp")
+  vendorProductId     Int?           @map("vendor_product_id")
+  clientEmail         String?        @map("client_email")
+  clientName          String?        @map("client_name")
+  orderItems          OrderItem[]
+  order               Order?         @relation(fields: [orderId], references: [id])
+  product             Product        @relation(fields: [productId], references: [id])
+  user                User?          @relation(fields: [userId], references: [id])
+  vendorProduct       VendorProduct? @relation(fields: [vendorProductId], references: [id])
 
   @@index([userId])
   @@index([sessionId])
@@ -1460,6 +1467,9 @@ enum ViewType {
 enum Role {
   SUPERADMIN
   ADMIN
+  MODERATEUR
+  SUPPORT
+  COMPTABLE
   VENDEUR
 }
 
@@ -1750,24 +1760,24 @@ enum PhoneNumberStatus {
 /// Permet aux admins de gérer les clés API sans toucher au code
 /// Chaque provider a UN enregistrement avec les clés TEST et LIVE
 model PaymentConfig {
-  id        Int      @id @default(autoincrement())
-  provider  String   @unique @db.VarChar(50) // 'paydunya', 'paytech', etc.
+  id       Int    @id @default(autoincrement())
+  provider String @unique @db.VarChar(50) // 'paydunya', 'paytech', etc.
 
   // Configuration active
-  isActive   Boolean  @default(true) @map("is_active")
-  activeMode String   @default("test") @db.VarChar(10) @map("active_mode") // 'test' ou 'live'
+  isActive   Boolean @default(true) @map("is_active")
+  activeMode String  @default("test") @map("active_mode") @db.VarChar(10) // 'test' ou 'live'
 
   // Clés API TEST
-  testMasterKey   String? @map("test_master_key") @db.VarChar(255)
-  testPrivateKey  String? @map("test_private_key") @db.VarChar(255)
-  testToken       String? @map("test_token") @db.VarChar(255)
-  testPublicKey   String? @map("test_public_key") @db.VarChar(255)
+  testMasterKey  String? @map("test_master_key") @db.VarChar(255)
+  testPrivateKey String? @map("test_private_key") @db.VarChar(255)
+  testToken      String? @map("test_token") @db.VarChar(255)
+  testPublicKey  String? @map("test_public_key") @db.VarChar(255)
 
   // Clés API LIVE
-  liveMasterKey   String? @map("live_master_key") @db.VarChar(255)
-  livePrivateKey  String? @map("live_private_key") @db.VarChar(255)
-  liveToken       String? @map("live_token") @db.VarChar(255)
-  livePublicKey   String? @map("live_public_key") @db.VarChar(255)
+  liveMasterKey  String? @map("live_master_key") @db.VarChar(255)
+  livePrivateKey String? @map("live_private_key") @db.VarChar(255)
+  liveToken      String? @map("live_token") @db.VarChar(255)
+  livePublicKey  String? @map("live_public_key") @db.VarChar(255)
 
   // Configuration additionnelle
   webhookSecret String? @map("webhook_secret") @db.VarChar(255)
@@ -1781,4 +1791,46 @@ model PaymentConfig {
   @@index([isActive])
   @@index([activeMode])
   @@map("payment_configs")
+}
+
+/// 🔐 OTP pour authentification à deux facteurs (2FA)
+/// Code envoyé par email lors du login pour les admins et vendeurs
+model LoginOTP {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  code      String    @db.VarChar(6) // Code à 6 chiffres
+  expiresAt DateTime  @map("expires_at")
+  verified  Boolean   @default(false)
+  attempts  Int       @default(0) // Nombre de tentatives
+  ipAddress String?   @map("ip_address") @db.VarChar(50)
+  userAgent String?   @map("user_agent") @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  usedAt    DateTime? @map("used_at")
+
+  user User @relation("UserLoginOTPs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([code])
+  @@index([expiresAt])
+  @@index([verified])
+  @@map("login_otps")
+}
+
+/// 🔧 Paramètres globaux de l'application
+/// Stocke toutes les configurations modifiables par les administrateurs
+model AppSettings {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(100) // Clé unique du paramètre
+  value     String?  @db.Text // Valeur du paramètre (stockée en texte, peut être JSON)
+  dataType  String   @default("string") @db.VarChar(20) // string, number, boolean, json
+  category  String?  @db.VarChar(50) // Pour grouper les paramètres (company, vendors, email, etc.)
+  updatedBy Int?     @map("updated_by") // ID de l'admin qui a fait la mise à jour
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  admin User? @relation("AppSettingsUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([key])
+  @@index([category])
+  @@map("app_settings")
 }

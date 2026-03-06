@@ -1,0 +1,161 @@
+═══════════════════════════════════════════════════════════════
+  🔐 CODES PIN CRYPTÉS COMPLETS - Orange Money
+═══════════════════════════════════════════════════════════════
+
+Numéro MSISDN : 221777438767
+Type de compte : RETAILER
+Clé publique utilisée : SN202007057620C1EADF (Orange Money Sénégal)
+Date de génération : 25/02/2026
+Algorithme : RSA 2048 bits avec PKCS1 Padding
+
+═══════════════════════════════════════════════════════════════
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ PIN 1 : 0000 (ancien PIN par défaut)                        │
+└─────────────────────────────────────────────────────────────┘
+
+PIN EN CLAIR : 0000
+
+PIN CRYPTÉ (Base64 - 344 caractères) :
+BY5ko+Yc8DwCggGqstmKqH7sFUvOZU7uZ4cseC/odxiiew7ZBOsOEjRqePY5b336Osz+Ee2EKJDBh6DhKkJk3k68cvi/hqbheWZFcMceAISKFuIbQm0Qv8LGV36t4ZvW0sIGexmjffJpNqBvUJdkCSqwDZGDQul/GfvPlAAr7tQOVLHil7Wf96b5kWKXnq8Jw58FbR62gvRxqvlqIqBkuckvPdUkMFV8vCvWhCRU3wPIXs+tNDWpxqMH6eL+lm70MZpbHWbMFxAjtB1Kjd8PRYa27naefTN1DXwyMp7hjw/42oKsvI2X+NUEJpmwh3kxRnmwibMiVfNkRlL2FLBYeg==
+
+Résultat du test :
+❌ "Vous n'avez pas changé votre code secret après la souscription.
+    Veuillez changer votre code secret"
+
+═══════════════════════════════════════════════════════════════
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ PIN 2 : 9393 (nouveau PIN souhaité)                         │
+└─────────────────────────────────────────────────────────────┘
+
+PIN EN CLAIR : 9393
+
+PIN CRYPTÉ (Base64 - 344 caractères) :
+JU/k0+a056OsTUX+u/nKWF5SMW3eg61WI7y0gcjFa1LP9bALXofGiOsYkeBk3BArIhVJbspGptmMGzQV5Vzzom7fAPHBx+ntG1H6ypiwomhYt3XQwtqsHKqYuvmmLd0J20cnL36BcngJPtj+wT65KCucmKRwrFztxKB7ilPP4pNQPcFj66fHHFnAXKTWwR1O93dZcCns4n2RzLBEm56oLary55CL7BUtQU0mscLyiyBfWxFVFk5HbSRCe8+Syq5PMSDYawDrRX0BpalJps20HbYOdckHhaSaHL87o3jAqtbEFo1sGFXHDH4LO/jJ/yf7O13hWkYxd6Xtt9thX1eL7Q==
+
+Résultat du test :
+❌ "Le code secret saisi est incorrect. Merci de recommencer s'il vous plaît."
+
+═══════════════════════════════════════════════════════════════
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ PIN 3 : 9818 (PIN testé)                                    │
+└─────────────────────────────────────────────────────────────┘
+
+PIN EN CLAIR : 9818
+
+PIN CRYPTÉ (Base64 - 344 caractères) :
+NpI9k4FeeIfhs1HlXONAHIWTpu+yKmIVIepwjfxZ8E0oeZC+maJn9SYowacJuN4JfIqM3rxb6XGMcJ44rppPewrM89tPy4drAfMb0x/Qv0Q3GQXSuDGqi/Q+EmRpHl1YS3Q8G0WD6Di7Vv31GGxCqw4MVS562YJUojrRs/5G8YLeBM5tW9ZWJuAgoP1M2FWpCGw6bf8+IQaH/F4DzG93eEqQ+TI1yDP+BJeLxsbG5Kdzy62cjOPXbanRDCzcLETSt1s5n8+dDrExrqSHHPZNyPoYpTWoXcxUkwtMrdKWDOCZknLSdbhX599YD25t9gWKBbwgaC5p3z4Q+v0i1+oZWg==
+
+Résultat du test :
+❌ "Le code secret saisi est incorrect. Merci de recommencer s'il vous plaît."
+⚠️  2 tentatives restantes avant blocage du compte
+
+═══════════════════════════════════════════════════════════════
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ EXEMPLE : Payload pour changement de PIN (0000 → 9393)      │
+└─────────────────────────────────────────────────────────────┘
+
+Endpoint :
+PATCH https://api.orange-sonatel.com/api/eWallet/v1/account?msisdn=221777438767&type=customer
+
+Headers :
+{
+  "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "Content-Type": "application/json"
+}
+
+Body JSON :
+{
+  "encryptedPinCode": "BqBqxBEulX/Hqo1J3LkoFV/TRytpzvLjXPG+DShFrRnOTZXct38gWcSaCVswwKERj7s7jHJCkSrL5kBJU1PYA+1xqWgjQeWs1DnK2U+mquvc/+mw23Lj3tELiIvRuQcskZpP+W4rDwZ0idNtOc5sAh/IUgBGvhGUv2lrGGPaiBGDoDFH9e7jp5v6+3/s360NVJ5jpIfZU3f4ewGc/Lvi5fb9I6LZofXmaHwNOoDhGlrJYc5RtoMClf5vlUKVDBKDV33RUzL9735QXUDn8NhUNJmT+U+H64JYWrnJo8l+NJEh7MTs5b2Si6ww3A+LqXshbjOWQ8ePgu6Bnej/3vf2qA==",
+  "encryptedNewPinCode": "hbgwFtBrvtublUqXYlYC/muDzUPwhKhoVNr6XWZSokuNxRe383tlyRTGJhdxkQKBiSmGSWuy643xA8i9Hkw6vS7Hqr+uxAHgPS8Zk17YDYY/yz/4Zkf9W06c6aw7hEkwhE68FM0rCd7h1YmfjIgfUHW10/XKWreZ95RgcrPDzNFZJfT1m/VNA8LH/jYJUaYfMrr6aAIDCJVioUtg2WQt7oY58heECwR6/HBFcFxMAvWvWkBO14WzFG1+d1WzUCfpp6sm1I2etRtDqJD5qJwsEW5zjbfGifo3wBnbbwlnEtUaMT6sfViwCuPTTMyA2ivE1utgezAcDepfeD51O87GeA=="
+}
+
+═══════════════════════════════════════════════════════════════
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ EXEMPLE : Payload pour vérifier le solde (avec PIN 9818)    │
+└─────────────────────────────────────────────────────────────┘
+
+Endpoint :
+POST https://api.orange-sonatel.com/api/eWallet/v1/account/retailer/balance
+
+Headers :
+{
+  "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "Content-Type": "application/json"
+}
+
+Body JSON :
+{
+  "encryptedPinCode": "q8GBK2ZX6eD4fRqJSgLnf3Lz3p6NFNVl9fOVZHJIyk6sEJ1ys05D/ZwmAZc3xwdQUfWp3opq04p/X2BeLDaBPAjDlwUIQYjzdDUU234XCwZquLM+1Y311A2Bq6T8kPkqGgK4qFiGu70sLV7+SAMa+QGynF5gaoL6x2Ik9yJXV36Pb/GxabXfbBDveUUv/t5dJykwmNC/jz2GdFPLoj/SsJj8ys9yqrO3s8VL/jZLpbl1/jLvKyuZzbOZUz+h7HbGKKLtxe5syPQ7Xf0s5CSqkdehO2JwVOq7FyxxfUu1LaQj0atKUMcp7hpVw+nn5jfVF3BfIIFEjrVdN6lyJGeMFw==",
+  "id": "777438767",
+  "idType": "MSISDN",
+  "wallet": "PRINCIPAL"
+}
+
+═══════════════════════════════════════════════════════════════
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ CLÉ PUBLIQUE RSA ORANGE MONEY (Format complet)              │
+└─────────────────────────────────────────────────────────────┘
+
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtm5tjjA25sV7G7hNn5Lu
+7qAN/fhUhoW8zVH4Lamux8ftQrQdwpJfXscymIrMyIoDBXOLzmMsZ5wEfmtgOPHJ
+LASYwEn2kmCj1U1jmtRB+w7uq4WHMzLtXbfU6q/Fdky6rtXCIfCEyHUmmWIlsm+K
+f8+4JnKFS2InjBlNoy4Ki8glTlotbZBy+t7CH6tQWZmGLD5ym7CZeumna8rCKXLF
+hbqx6lEtZ072DLjpPoIuUp16LHWOo5EeEQefXyhGWJ9aKEsH+DICFrbTNy5/Mrn3
+WC43Ti7ifgrm3fBUMlffThAtwnVcwE4kH7/8ULQcrxwER5vVvo/60W6JgPmDeTT0
+TwIDAQAB
+-----END PUBLIC KEY-----
+
+Key ID : SN202007057620C1EADF
+Key Type : RSA
+Key Size : 2048 bits
+Provider : Orange Money Sénégal
+
+
+═══════════════════════════════════════════════════════════════
+
+
+⚠️  NOTES IMPORTANTES :
+
+1. Les PINs cryptés changent à chaque génération
+   → Le padding RSA PKCS1 ajoute un caractère aléatoire
+   → C'est NORMAL et c'est une mesure de sécurité
+
+2. Ces valeurs sont VALIDES UNIQUEMENT pour cette session
+   → Chaque nouvelle exécution génère de nouvelles valeurs cryptées
+   → Orange Money accepte n'importe quelle version cryptée du même PIN
+
+3. Format du PIN crypté
+   → Longueur : 344 caractères en Base64
+   → Encodage : Base64 du résultat RSA
+   → Algorithme : RSA-2048 avec PKCS1 Padding
+
+4. ⚠️  SÉCURITÉ - Tentatives restantes
+   → PIN 0000 : Compte bloqué (changement obligatoire)
+   → PIN 9393 : ❌ Incorrect
+   → PIN 9818 : ❌ Incorrect (2 tentatives restantes)
+
+   ⚠️  NE PAS essayer d'autres PINs pour éviter le blocage !
+   ✅  Utilisez #144# pour récupérer/réinitialiser le PIN
+
+5. Pour générer un nouveau cryptage
+   → Exécutez : node show-encrypted-pins.js
+   → Les valeurs seront différentes mais toujours valides
+
+
+═══════════════════════════════════════════════════════════════
+
+Fichier généré le : 25/02/2026
+Pour toute question : Voir ORANGE_MONEY_CASH_IN_GUIDE.md

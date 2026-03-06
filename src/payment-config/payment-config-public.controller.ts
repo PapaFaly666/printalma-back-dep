@@ -59,3 +59,27 @@ export class PaymentConfigPublicController {
     return this.getPublicConfig(PaymentProvider.PAYDUNYA);
   }
 }
+
+/**
+ * Controller public pour récupérer la liste des méthodes de paiement disponibles
+ */
+@Controller('payment-methods')
+export class PaymentMethodsPublicController {
+  constructor(private readonly paymentConfigService: PaymentConfigService) {}
+
+  /**
+   * Récupère la liste de toutes les méthodes de paiement disponibles
+   * GET /payment-methods
+   *
+   * Retourne uniquement les méthodes actives pour le checkout frontend
+   */
+  @Get()
+  async getAvailablePaymentMethods() {
+    const allMethods = await this.paymentConfigService.getAllPaymentMethods();
+
+    // Retourner uniquement les méthodes actives
+    return {
+      paymentMethods: allMethods.filter(method => method.isActive),
+    };
+  }
+}

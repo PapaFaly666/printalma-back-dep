@@ -289,6 +289,18 @@ export class CreateCustomizationDto {
   @IsOptional()
   @Type(() => Number)
   timestamp?: number;
+
+  // 📧 Email du client pour l'envoi du mockup (optionnel)
+  @ApiPropertyOptional({ description: 'Email du client pour recevoir le mockup de personnalisation' })
+  @IsString()
+  @IsOptional()
+  clientEmail?: string;
+
+  // 👤 Nom du client (optionnel)
+  @ApiPropertyOptional({ description: 'Nom du client pour personnaliser l\'email' })
+  @IsString()
+  @IsOptional()
+  clientName?: string;
 }
 
 export class UpdateCustomizationDto {

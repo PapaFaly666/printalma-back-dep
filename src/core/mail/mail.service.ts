@@ -38,6 +38,104 @@ export class MailService {
   }
 
   /**
+   * Convertit une URL relative en URL absolue pour l'affichage dans les emails
+   * Les emails ne peuvent pas afficher des images avec des chemins relatifs
+   */
+  private toAbsoluteUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+
+    // Si l'URL est déjà absolue (commence par http:// ou https://), la retourner telle quelle
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+
+    // Si c'est un chemin relatif, construire l'URL absolue
+    // Vous devez configurer votre domaine frontend ici
+    const frontendUrl = process.env.FRONTEND_URL || 'https://printalma.com';
+
+    // Supprimer le slash initial si présent pour éviter les doubles slashes
+    const cleanPath = url.startsWith('/') ? url : `/${url}`;
+
+    return `${frontendUrl}${cleanPath}`;
+  }
+
+  /**
+   * Envoie un code OTP de connexion par email
+   */
+  async sendLoginOTP(to: string, firstName: string, code: string): Promise<void> {
+    const subject = 'Code de vérification PrintAlma';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Code de vérification PrintAlma</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; }
+          .container { max-width: 600px; margin: 20px auto; padding: 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #14689a 0%, #0d4a6f 100%); color: white; padding: 30px 20px; text-align: center; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { padding: 30px 20px; }
+          .otp-box { background: #f8f9fa; border: 3px solid #14689a; border-radius: 8px; padding: 25px; margin: 25px 0; text-align: center; }
+          .otp-code { font-family: 'Courier New', monospace; font-size: 36px; font-weight: bold; color: #14689a; letter-spacing: 8px; margin: 10px 0; }
+          .info-box { background: #e7f3ff; border-left: 4px solid #14689a; padding: 15px; margin: 20px 0; border-radius: 4px; }
+          .warning-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }
+          .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 13px; color: #666; border-top: 1px solid #ddd; }
+          .footer a { color: #14689a; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔐 Code de Vérification</h1>
+          </div>
+          <div class="content">
+            <h2>Bonjour ${firstName},</h2>
+            <p>Une tentative de connexion à votre compte PrintAlma a été détectée.</p>
+
+            <p>Pour compléter votre connexion, veuillez saisir le code de vérification ci-dessous :</p>
+
+            <div class="otp-box">
+              <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Votre code de vérification :</p>
+              <div class="otp-code">${code}</div>
+              <p style="margin: 10px 0 0 0; color: #666; font-size: 13px;">Ce code expire dans 10 minutes</p>
+            </div>
+
+            <div class="info-box">
+              <strong>📍 Pourquoi ce code ?</strong><br>
+              Pour votre sécurité, nous vérifions toutes les connexions aux comptes administrateurs et vendeurs avec un code de vérification à usage unique.
+            </div>
+
+            <div class="warning-box">
+              <strong>⚠️ Attention :</strong><br>
+              Si vous n'avez pas tenté de vous connecter, veuillez ignorer cet email et <strong>changer votre mot de passe immédiatement</strong>.
+              <br>Ne partagez jamais ce code avec qui que ce soit, même avec le support PrintAlma.
+            </div>
+
+            <p style="margin-top: 25px; font-size: 14px; color: #666;">
+              Si vous avez des questions, n'hésitez pas à contacter notre support.
+            </p>
+          </div>
+          <div class="footer">
+            <p>© ${new Date().getFullYear()} PrintAlma - Plateforme de vente en ligne</p>
+            <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await this.mailerService.sendMail({
+      to,
+      subject,
+      html,
+    });
+
+    console.log(`✅ Email OTP envoyé à ${to}`);
+  }
+
+  /**
    * Formate le type de vendeur pour l'affichage
    */
   private formatVendeurType(vendeurType: VendeurType): string {
@@ -1594,6 +1692,353 @@ export class MailService {
       console.log(`📧 Email de notification de suppression envoyé à ${to}`);
     } catch (error) {
       console.error('Erreur envoi email notification suppression:', error);
+    }
+  }
+
+  /**
+   * Envoie la facture de commande par email avec l'image du produit
+   * @param order - Commande complète avec items et utilisateur
+   */
+  async sendOrderInvoice(order: any): Promise<void> {
+    console.log(`\n📧 [MailService] sendOrderInvoice appelée pour commande ${order.orderNumber}`);
+    console.log(`📧 [MailService] Email destination: ${order.email || 'AUCUN'}`);
+    console.log(`📧 [MailService] Nombre d'items: ${order.orderItems?.length || 0}`);
+
+    if (!order.email) {
+      console.warn(`⚠️  [MailService] IMPOSSIBLE d'envoyer la facture pour la commande ${order.orderNumber} : email manquant`);
+      console.warn(`💡 [MailService] Vérifiez que le champ "email" est bien fourni lors de la création de commande`);
+      return;
+    }
+
+    const subject = `Facture PrintAlma - Commande #${order.orderNumber}`;
+    const customerName = order.shippingName || 'Client';
+    const orderDate = new Date(order.createdAt).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    // Calculer le total
+    const subtotal = order.subtotal || order.totalAmount - (order.shippingAmount || 0);
+    const shippingFee = order.deliveryFee || order.shippingAmount || 0;
+    const total = order.totalAmount;
+
+    // Générer le HTML des items de commande
+    const itemsHtml = order.orderItems?.map((item: any) => {
+      const productName = item.productName || item.product?.name || item.vendorProduct?.name || 'Produit';
+
+      // 🔧 FIX: Différencier les produits vendeurs des produits normaux
+      // Pour les PRODUITS VENDEURS : utiliser finalImageUrl du vendorProduct
+      // Pour les PRODUITS NORMAUX : utiliser mockupUrl de l'orderItem
+      let rawImage: string | null = null;
+
+      if (item.vendorProductId && item.vendorProduct?.finalImageUrl) {
+        // Cas 1: Produit vendeur - utiliser finalImageUrl
+        rawImage = item.vendorProduct.finalImageUrl;
+        console.log(`📸 [MailService] Produit vendeur "${productName}" - Image: ${rawImage}`);
+      } else if (item.mockupUrl) {
+        // Cas 2: Produit normal avec mockup personnalisé (image déjà générée lors de la commande)
+        rawImage = item.mockupUrl;
+        console.log(`📸 [MailService] Produit normal "${productName}" - Image: ${rawImage}`);
+      } else {
+        console.warn(`⚠️  [MailService] Aucune image pour "${productName}" (vendorProductId: ${item.vendorProductId}, mockupUrl: ${item.mockupUrl})`);
+      }
+
+      // Convertir les URLs relatives en URLs absolues pour l'affichage dans l'email
+      const productImage = this.toAbsoluteUrl(rawImage) || 'https://via.placeholder.com/80?text=Image';
+      console.log(`🔗 [MailService] Image finale pour "${productName}": ${productImage}`);
+
+      const quantity = item.quantity || 1;
+      const unitPrice = item.unitPrice || item.price || 0;
+      const itemTotal = unitPrice * quantity;
+      const size = item.size || 'Standard';
+      const color = item.color || item.colorVariation?.name || '-';
+
+      return `
+        <tr style="border-bottom: 1px solid #e5e7eb;">
+          <td style="padding: 15px 10px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <img
+                src="${productImage}"
+                alt="${productName}"
+                style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb;"
+                onerror="this.src='https://via.placeholder.com/80?text=Image'"
+              />
+              <div>
+                <div style="font-weight: 600; color: #111827; margin-bottom: 4px;">${productName}</div>
+                <div style="font-size: 13px; color: #6b7280;">
+                  Taille: ${size} • Couleur: ${color}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td style="padding: 15px 10px; text-align: center; color: #6b7280;">${quantity}</td>
+          <td style="padding: 15px 10px; text-align: right; color: #6b7280;">${unitPrice.toFixed(0)} FCFA</td>
+          <td style="padding: 15px 10px; text-align: right; font-weight: 600; color: #111827;">${itemTotal.toFixed(0)} FCFA</td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #6b7280;">Aucun article</td></tr>';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Facture PrintAlma</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+        <div style="max-width: 650px; margin: 0 auto; background-color: #ffffff;">
+
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #14689a 0%, #0d4a6f 100%); padding: 40px 30px; text-align: center;">
+            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">PrintAlma</h1>
+            <p style="margin: 10px 0 0 0; color: #e0f2fe; font-size: 14px;">Votre plateforme de vente en ligne</p>
+          </div>
+
+          <!-- Facture Info -->
+          <div style="padding: 30px; background-color: #f9fafb; border-bottom: 1px solid #e5e7eb;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h2 style="margin: 0 0 10px 0; color: #111827; font-size: 24px;">Facture de commande</h2>
+              <div style="display: inline-block; background-color: #14689a; color: #ffffff; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 16px;">
+                #${order.orderNumber}
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 25px; flex-wrap: wrap; gap: 20px;">
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; font-weight: 600;">Facturé à</div>
+                <div style="color: #111827; font-weight: 600; margin-bottom: 4px;">${customerName}</div>
+                <div style="color: #6b7280; font-size: 14px; line-height: 1.5;">
+                  ${order.shippingAddressFull || order.shippingStreet || ''}<br>
+                  ${order.shippingCity || ''} ${order.shippingPostalCode || ''}<br>
+                  ${order.shippingCountry || ''}
+                </div>
+              </div>
+              <div style="text-align: right; min-width: 200px;">
+                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; font-weight: 600;">Date de commande</div>
+                <div style="color: #111827; font-weight: 600;">${orderDate}</div>
+                <div style="margin-top: 12px; font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px; font-weight: 600;">Statut de paiement</div>
+                <div style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-size: 13px; font-weight: 600;">
+                  Payé
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Items Table -->
+          <div style="padding: 30px;">
+            <h3 style="margin: 0 0 20px 0; color: #111827; font-size: 18px; font-weight: 700;">Détails de la commande</h3>
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+              <thead>
+                <tr style="background-color: #f9fafb; border-bottom: 2px solid #e5e7eb;">
+                  <th style="padding: 12px 10px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase; font-weight: 600;">Produit</th>
+                  <th style="padding: 12px 10px; text-align: center; font-size: 12px; color: #6b7280; text-transform: uppercase; font-weight: 600; width: 80px;">Qté</th>
+                  <th style="padding: 12px 10px; text-align: right; font-size: 12px; color: #6b7280; text-transform: uppercase; font-weight: 600; width: 120px;">Prix unit.</th>
+                  <th style="padding: 12px 10px; text-align: right; font-size: 12px; color: #6b7280; text-transform: uppercase; font-weight: 600; width: 120px;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Totals -->
+          <div style="padding: 0 30px 30px 30px;">
+            <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                <span style="color: #6b7280; font-size: 15px;">Sous-total</span>
+                <span style="color: #111827; font-weight: 600; font-size: 15px;">${subtotal.toFixed(0)} FCFA</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+                <span style="color: #6b7280; font-size: 15px;">Frais de livraison</span>
+                <span style="color: #111827; font-weight: 600; font-size: 15px;">${shippingFee.toFixed(0)} FCFA</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px;">
+                <span style="color: #111827; font-size: 18px; font-weight: 700;">Total</span>
+                <span style="color: #14689a; font-size: 24px; font-weight: 700;">${total.toFixed(0)} FCFA</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shipping Info -->
+          ${order.deliveryCityName ? `
+          <div style="padding: 0 30px 30px 30px;">
+            <div style="background-color: #eff6ff; border-left: 4px solid #14689a; padding: 16px; border-radius: 6px;">
+              <div style="font-weight: 600; color: #14689a; margin-bottom: 8px; font-size: 15px;">📦 Informations de livraison</div>
+              <div style="color: #1e40af; font-size: 14px; line-height: 1.6;">
+                <strong>Destination:</strong> ${order.deliveryCityName}, ${order.deliveryRegionName || ''}<br>
+                ${order.transporteurName ? `<strong>Transporteur:</strong> ${order.transporteurName}<br>` : ''}
+                ${order.deliveryTime ? `<strong>Délai estimé:</strong> ${order.deliveryTime}` : ''}
+              </div>
+            </div>
+          </div>
+          ` : ''}
+
+          <!-- Footer -->
+          <div style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center;">
+            <h3 style="margin: 0 0 10px 0; color: #111827; font-size: 18px; font-weight: 700;">Merci pour votre commande !</h3>
+            <p style="margin: 0 0 20px 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+              Nous apprécions votre confiance en PrintAlma.<br>
+              Si vous avez des questions, n'hésitez pas à nous contacter.
+            </p>
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                © ${new Date().getFullYear()} PrintAlma - Plateforme de vente en ligne<br>
+                Cet email a été envoyé automatiquement, merci de ne pas y répondre.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </body>
+      </html>
+    `;
+
+    try {
+      console.log(`📧 [MailService] Envoi de l'email à ${order.email}...`);
+      console.log(`📧 [MailService] Sujet: ${subject}`);
+
+      await this.mailerService.sendMail({
+        to: order.email,
+        subject,
+        html,
+      });
+
+      console.log(`✅ [MailService] Facture envoyée avec succès à ${order.email} pour la commande ${order.orderNumber}`);
+    } catch (error) {
+      console.error(`❌ [MailService] Erreur lors de l'envoi de la facture pour la commande ${order.orderNumber}:`, error.message);
+      console.error(`   Détails:`, error);
+      // Ne pas faire échouer la mise à jour de la commande si l'email échoue
+      throw error; // 🔧 Re-throw pour que order.service puisse logger l'erreur
+    }
+  }
+
+  /**
+   * Envoie un email de confirmation de personnalisation au client
+   * @param customizationData - Données de personnalisation avec mockup et infos produit
+   */
+  async sendCustomizationEmail(customizationData: {
+    email: string;
+    productName: string;
+    mockupUrl: string;
+    clientName?: string;
+  }): Promise<void> {
+    console.log(`\n📧 [MailService] sendCustomizationEmail appelée pour le produit "${customizationData.productName}"`);
+    console.log(`📧 [MailService] Email destination: ${customizationData.email}`);
+    console.log(`📧 [MailService] Mockup URL: ${customizationData.mockupUrl}`);
+
+    if (!customizationData.email) {
+      console.warn(`⚠️  [MailService] IMPOSSIBLE d'envoyer l'email de personnalisation : email manquant`);
+      return;
+    }
+
+    if (!customizationData.mockupUrl) {
+      console.warn(`⚠️  [MailService] IMPOSSIBLE d'envoyer l'email de personnalisation : mockup manquant`);
+      return;
+    }
+
+    const subject = `Votre personnalisation PrintAlma - ${customizationData.productName}`;
+    const customerName = customizationData.clientName || 'Cher client';
+    const mockupImage = this.toAbsoluteUrl(customizationData.mockupUrl) || customizationData.mockupUrl;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Votre personnalisation PrintAlma</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+        <div style="max-width: 650px; margin: 0 auto; background-color: #ffffff;">
+
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #14689a 0%, #0d4a6f 100%); padding: 40px 30px; text-align: center;">
+            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">PrintAlma</h1>
+            <p style="margin: 10px 0 0 0; color: #e0f2fe; font-size: 14px;">Votre plateforme de personnalisation en ligne</p>
+          </div>
+
+          <!-- Main Content -->
+          <div style="padding: 40px 30px;">
+            <h2 style="margin: 0 0 20px 0; color: #111827; font-size: 24px; text-align: center;">Votre personnalisation est prête ! 🎨</h2>
+
+            <p style="margin: 0 0 25px 0; color: #6b7280; font-size: 16px; line-height: 1.6; text-align: center;">
+              Bonjour ${customerName},<br><br>
+              Nous avons bien enregistré votre personnalisation pour <strong style="color: #111827;">${customizationData.productName}</strong>.
+            </p>
+
+            <!-- Mockup Image -->
+            <div style="text-align: center; margin: 30px 0;">
+              <div style="display: inline-block; border: 2px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                <img
+                  src="${mockupImage}"
+                  alt="${customizationData.productName}"
+                  style="width: 100%; max-width: 500px; height: auto; display: block;"
+                  onerror="this.style.display='none'; this.parentElement.innerHTML='<p style=padding:40px;color:#6b7280;>Image non disponible</p>'"
+                />
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div style="background-color: #eff6ff; border-left: 4px solid #14689a; padding: 20px; border-radius: 6px; margin: 30px 0;">
+              <p style="margin: 0; color: #1e40af; font-size: 15px; line-height: 1.6;">
+                <strong>✨ Votre création est unique !</strong><br><br>
+                Votre personnalisation a été sauvegardée avec succès. Vous pouvez maintenant passer commande pour recevoir ce produit personnalisé.
+              </p>
+            </div>
+
+            <!-- Call to Action -->
+            <div style="text-align: center; margin: 35px 0;">
+              <a href="${process.env.FRONTEND_URL || 'https://printalma.com'}"
+                 style="display: inline-block; background-color: #14689a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 2px 4px rgba(20, 104, 154, 0.2);">
+                Commander maintenant
+              </a>
+            </div>
+
+            <p style="margin: 25px 0 0 0; color: #9ca3af; font-size: 13px; text-align: center; line-height: 1.5;">
+              Vous pouvez également revenir à tout moment pour modifier votre personnalisation<br>
+              ou créer de nouvelles personnalisations.
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center;">
+            <h3 style="margin: 0 0 10px 0; color: #111827; font-size: 18px; font-weight: 700;">Merci de faire confiance à PrintAlma !</h3>
+            <p style="margin: 0 0 20px 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+              Notre équipe est là pour vous accompagner dans la création de vos produits personnalisés.<br>
+              Si vous avez des questions, n'hésitez pas à nous contacter.
+            </p>
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                © ${new Date().getFullYear()} PrintAlma - Plateforme de personnalisation en ligne<br>
+                Cet email a été envoyé automatiquement, merci de ne pas y répondre.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </body>
+      </html>
+    `;
+
+    try {
+      console.log(`📧 [MailService] Envoi de l'email de personnalisation à ${customizationData.email}...`);
+      console.log(`📧 [MailService] Sujet: ${subject}`);
+
+      await this.mailerService.sendMail({
+        to: customizationData.email,
+        subject,
+        html,
+      });
+
+      console.log(`✅ [MailService] Email de personnalisation envoyé avec succès à ${customizationData.email}`);
+    } catch (error) {
+      console.error(`❌ [MailService] Erreur lors de l'envoi de l'email de personnalisation:`, error.message);
+      console.error(`   Détails:`, error);
+      // Ne pas faire échouer la sauvegarde de personnalisation si l'email échoue
+      throw error;
     }
   }
 }

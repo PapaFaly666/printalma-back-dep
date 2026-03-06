@@ -8,9 +8,10 @@ import { JwtStrategy } from './jwt.strategy';
 import { PassportModule } from '@nestjs/passport';
 import { MailModule } from '../core/mail/mail.module';
 import { CloudinaryModule } from '../core/cloudinary/cloudinary.module';
+import { OtpService } from './otp/otp.service';
 
 @Module({
-  providers: [AuthService, PrismaService,JwtAuthGuard,JwtStrategy],
+  providers: [AuthService, PrismaService, JwtAuthGuard, JwtStrategy, OtpService],
   controllers: [AuthController],
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),

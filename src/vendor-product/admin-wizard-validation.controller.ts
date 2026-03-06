@@ -80,6 +80,115 @@ export class AdminWizardValidationController {
   ) {}
 
   /**
+   * 📊 GET /api/admin/products
+   * Récupère les compteurs et statistiques de produits pour l'admin
+   */
+  @Get('products')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '📊 Récupérer les compteurs de produits pour l\'admin',
+    description: `
+    **ENDPOINT COMPTEURS ADMIN:**
+
+    - ✅ **Statistiques globales**: Total, validés, en attente, rejetés
+    - ✅ **Par type**: WIZARD vs TRADITIONNEL
+    - ✅ **Par statut**: PENDING, PUBLISHED, REJECTED, DRAFT
+    `
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Compteurs récupérés avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Compteurs récupérés avec succès' },
+        data: {
+          type: 'object',
+          properties: {
+            total: { type: 'number', example: 183 },
+            published: { type: 'number', example: 150 },
+            pending: { type: 'number', example: 25 },
+            rejected: { type: 'number', example: 8 },
+            draft: { type: 'number', example: 0 },
+            wizardProducts: { type: 'number', example: 95 },
+            traditionalProducts: { type: 'number', example: 88 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 403, description: 'Accès refusé - Admin requis' })
+  async getProductsCounters(@Request() req: any) {
+    try {
+      const adminId = req.user.id || req.user.sub;
+
+      this.logger.log(`📊 Admin ${adminId} récupère les compteurs de produits`);
+
+      // Compter tous les produits non supprimés
+      const total = await this.prisma.vendorProduct.count({
+        where: { isDelete: false }
+      });
+
+      // Compter par statut
+      const published = await this.prisma.vendorProduct.count({
+        where: { isDelete: false, status: 'PUBLISHED' }
+      });
+
+      const pending = await this.prisma.vendorProduct.count({
+        where: { isDelete: false, status: 'PENDING' }
+      });
+
+      const rejected = await this.prisma.vendorProduct.count({
+        where: { isDelete: false, status: 'REJECTED' }
+      });
+
+      const draft = await this.prisma.vendorProduct.count({
+        where: { isDelete: false, status: 'DRAFT' }
+      });
+
+      // Compter les produits WIZARD (sans designId) et TRADITIONNELS (avec designId)
+      const wizardProducts = await this.prisma.vendorProduct.count({
+        where: {
+          isDelete: false,
+          designId: null
+        }
+      });
+
+      const traditionalProducts = await this.prisma.vendorProduct.count({
+        where: {
+          isDelete: false,
+          designId: { not: null }
+        }
+      });
+
+      this.logger.log(`✅ Compteurs: Total=${total}, Published=${published}, Pending=${pending}, Rejected=${rejected}`);
+
+      return {
+        success: true,
+        message: 'Compteurs récupérés avec succès',
+        data: {
+          total,
+          published,
+          pending,
+          rejected,
+          draft,
+          wizardProducts,
+          traditionalProducts
+        }
+      };
+
+    } catch (error) {
+      this.logger.error('❌ Erreur récupération compteurs:', error);
+      return {
+        success: false,
+        message: error.message || 'Erreur lors de la récupération des compteurs',
+        data: null
+      };
+    }
+  }
+
+  /**
    * ⭐ PRIORITÉ HAUTE - GET /api/admin/products/validation
    * Récupère les produits en attente avec distinction WIZARD/TRADITIONNEL
    */

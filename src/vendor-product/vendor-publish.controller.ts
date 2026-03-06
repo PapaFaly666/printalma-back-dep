@@ -772,13 +772,22 @@ export class VendorPublishController {
     });
   }
 
-  @Post('products/:id/regenerate-failed-mockups')
-  async regenerateFailedMockups() {
-    throw new BadRequestException({
-      error: 'Endpoint désactivé',
-      message: 'Régénération mockups non applicable en Architecture v2',
-      architecture: 'v2_admin_preserved'
-    });
+  /**
+   * 🔄 RÉGÉNÉRER LES IMAGES FINALES D'UN PRODUIT
+   * Endpoint actif pour forcer la régénération des finalImageUrl
+   */
+  @Post('products/:id/regenerate-final-images')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: '🔄 Régénérer les images finales',
+    description: 'Force la régénération de toutes les finalImageUrl pour un produit vendeur'
+  })
+  async regenerateFinalImages(
+    @Param('id', ParseIntPipe) productId: number,
+    @Request() req: any
+  ) {
+    const vendorId = req.user.id;
+    return this.vendorPublishService.regenerateFinalImages(productId, vendorId);
   }
 
   @Get('products/migration-status')

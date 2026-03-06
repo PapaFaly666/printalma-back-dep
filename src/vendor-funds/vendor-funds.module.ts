@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { VendorFundsController } from './vendor-funds.controller';
 import { AdminFundsController } from './admin-funds.controller';
@@ -6,6 +6,7 @@ import { VendorFundsService } from './vendor-funds.service';
 import { PrismaService } from '../prisma.service';
 import { CommissionModule } from '../commission/commission.module';
 import { VendorPhoneModule } from '../vendor-phone/vendor-phone.module';
+import { OrangeMoneyModule } from '../orange-money/orange-money.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { VendorPhoneModule } from '../vendor-phone/vendor-phone.module';
     }),
     CommissionModule,
     VendorPhoneModule,
+    forwardRef(() => OrangeMoneyModule),
   ],
   controllers: [VendorFundsController, AdminFundsController],
   providers: [VendorFundsService, PrismaService],

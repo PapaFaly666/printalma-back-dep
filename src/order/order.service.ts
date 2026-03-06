@@ -13,6 +13,8 @@ import { CustomizationEnricherHelper } from './helpers/customization-enricher.he
 import { DeliveryValidator } from './validators/delivery.validator';
 import { DeliveryEnricherHelper } from './helpers/delivery-enricher.helper';
 import { DesignUsageTracker } from '../utils/designUsageTracker';
+import { MailService } from '../core/mail/mail.service';
+import { OrderMockupGeneratorService } from './services/order-mockup-generator.service';
 
 @Injectable()
 export class OrderService {
@@ -24,7 +26,9 @@ export class OrderService {
     private paytechService: PaytechService,
     private paydunyaService: PaydunyaService,
     private configService: ConfigService,
-    private customizationService: CustomizationService
+    private customizationService: CustomizationService,
+    private mailService: MailService,
+    private mockupGenerator: OrderMockupGeneratorService
   ) {}
 
   async createGuestOrder(createOrderDto: CreateOrderDto) {
@@ -235,6 +239,9 @@ export class OrderService {
 
       // ✅ VALIDATION DES STICKERS (quantités min/max, statut, prix)
       const validatedOrderItems = await this.validateStickerOrderItems(createOrderDto.orderItems);
+
+      // 🎨 GÉNÉRATION AUTOMATIQUE DES MOCKUPS POUR LES PRODUITS PERSONNALISÉS
+      await this.generateMockupsForOrderItems(validatedOrderItems);
 
       const order = await this.prisma.order.create({
         data: {
@@ -845,7 +852,14 @@ export class OrderService {
         include: {
           orderItems: {
             include: {
-              product: true,
+              product: true, // 🔧 Produit de base (l'image est déjà dans mockupUrl de l'orderItem)
+              vendorProduct: {
+                select: {
+                  id: true,
+                  name: true,
+                  finalImageUrl: true, // 🔧 Image finale du produit vendeur
+                }
+              },
               colorVariation: true,
             }
           },
@@ -854,6 +868,20 @@ export class OrderService {
       });
 
       this.logger.log(`✅ Payment status updated for order ${orderNumber}`);
+      this.logger.log(`📧 [Invoice] Email présent dans la commande: ${updatedOrder.email ? 'OUI ✅' : 'NON ❌'} - Email: ${updatedOrder.email || 'AUCUN'}`);
+
+      // ✅ METTRE À JOUR LES STATISTIQUES DE VENTE SI PAIEMENT RÉUSSI
+      if (paymentStatus === 'PAID' && order.status !== OrderStatus.CONFIRMED) {
+        this.logger.log(`✅ Commande ${orderNumber} confirmée suite au paiement, mise à jour des statistiques de vente`);
+
+        try {
+          await this.salesStatsUpdaterService.updateSalesStatsOnConfirmation(order.id);
+          this.logger.log(`📊 Statistiques de vente mises à jour pour commande confirmée ${orderNumber}`);
+        } catch (error) {
+          this.logger.error(`❌ Erreur mise à jour statistiques confirmation commande ${orderNumber}:`, error);
+          // Ne pas faire échouer la mise à jour du statut pour cette erreur
+        }
+      }
 
       // 🎯 METTRE À JOUR LE STATUT DES DESIGN USAGES SI PAIEMENT RÉUSSI
       if (paymentStatus === 'PAID') {
@@ -867,6 +895,23 @@ export class OrderService {
         } catch (error) {
           this.logger.error(`❌ [Design Revenue] Erreur mise à jour design usages:`, error);
           // Ne pas faire échouer la mise à jour de commande
+        }
+
+        // 📧 ENVOYER LA FACTURE PAR EMAIL
+        if (!updatedOrder.email) {
+          this.logger.warn(`⚠️  [Invoice] IMPOSSIBLE d'envoyer la facture pour ${orderNumber} : EMAIL MANQUANT`);
+          this.logger.warn(`   💡 L'email doit être fourni lors de la création de commande (champ "email" dans le payload)`);
+        } else {
+          try {
+            this.logger.log(`📧 [Invoice] ✅ Email présent: ${updatedOrder.email}`);
+            this.logger.log(`📧 [Invoice] Envoi de la facture pour commande ${orderNumber}...`);
+            await this.mailService.sendOrderInvoice(updatedOrder);
+            this.logger.log(`✅ [Invoice] Facture envoyée avec succès à ${updatedOrder.email} pour commande ${orderNumber}`);
+          } catch (error) {
+            this.logger.error(`❌ [Invoice] Erreur lors de l'envoi de la facture pour ${orderNumber}:`, error.message);
+            this.logger.error(`   Stack:`, error.stack);
+            // Ne pas faire échouer la mise à jour de commande si l'email échoue
+          }
         }
       }
 
@@ -1882,10 +1927,23 @@ export class OrderService {
         },
       });
 
+      // ✅ MISE À JOUR AUTOMATIQUE DES STATISTIQUES - Commande confirmée
+      if (updateData.status === OrderStatus.CONFIRMED && previousOrder?.status !== OrderStatus.CONFIRMED) {
+        this.logger.log(`✅ Commande ${id} marquée comme confirmée, mise à jour des statistiques de vente`);
+
+        try {
+          await this.salesStatsUpdaterService.updateSalesStatsOnConfirmation(id);
+          this.logger.log(`📊 Statistiques de vente mises à jour pour commande confirmée ${id}`);
+        } catch (error) {
+          this.logger.error(`❌ Erreur mise à jour statistiques confirmation commande ${id}:`, error);
+          // Ne pas faire échouer la mise à jour du statut pour cette erreur
+        }
+      }
+
       // 🆕 MISE À JOUR AUTOMATIQUE DES STATISTIQUES - Commande livrée
       if (updateData.status === OrderStatus.DELIVERED && previousOrder?.status !== OrderStatus.DELIVERED) {
         this.logger.log(`🚚 Commande ${id} marquée comme livrée, mise à jour des statistiques de vente`);
-        
+
         try {
           await this.salesStatsUpdaterService.updateSalesStatsOnDelivery(id);
           this.logger.log(`📊 Statistiques de vente mises à jour pour commande livrée ${id}`);
@@ -2881,6 +2939,142 @@ export class OrderService {
     }
 
     return validatedItems;
+  }
+
+  /**
+   * 🎨 Générer automatiquement les mockups pour les items de commande personnalisés
+   * Cette méthode parcourt tous les items et génère une image finale
+   * pour ceux qui ont des éléments de personnalisation (designElementsByView)
+   *
+   * @param orderItems - Items de commande à traiter
+   */
+  private async generateMockupsForOrderItems(orderItems: any[]): Promise<void> {
+    this.logger.log(`\n🎨 ====== GÉNÉRATION AUTOMATIQUE DES MOCKUPS ======`);
+    this.logger.log(`📦 Traitement de ${orderItems.length} item(s) de commande`);
+
+    for (let i = 0; i < orderItems.length; i++) {
+      const item = orderItems[i];
+
+      // Ignorer les items sans personnalisation ou qui ont déjà un mockup
+      if (!item.designElementsByView || item.mockupUrl) {
+        this.logger.log(`⏭️  Item ${i + 1}: Pas de personnalisation ou mockup déjà présent`);
+        continue;
+      }
+
+      this.logger.log(`\n🎨 [Item ${i + 1}/${orderItems.length}] Génération du mockup pour productId ${item.productId || 'N/A'}, vendorProductId ${item.vendorProductId || 'N/A'}`);
+
+      try {
+        // 1. Déterminer l'URL de l'image du produit
+        let productImageUrl: string | null = null;
+
+        // Cas 1: Produit vendeur - utiliser finalImageUrl
+        if (item.vendorProductId) {
+          this.logger.log(`  🔍 Recherche de l'image du produit vendeur ${item.vendorProductId}...`);
+
+          const vendorProduct = await this.prisma.vendorProduct.findUnique({
+            where: { id: item.vendorProductId },
+            select: { finalImageUrl: true }
+          });
+
+          if (vendorProduct?.finalImageUrl) {
+            productImageUrl = vendorProduct.finalImageUrl;
+            this.logger.log(`  ✅ Image produit vendeur trouvée: ${productImageUrl}`);
+          }
+        }
+
+        // Cas 2: Produit normal - utiliser l'image de la variation de couleur
+        if (!productImageUrl && item.productId && item.colorId) {
+          this.logger.log(`  🔍 Recherche de l'image du produit ${item.productId}, couleur ${item.colorId}...`);
+
+          const colorVariation = await this.prisma.colorVariation.findFirst({
+            where: {
+              id: item.colorId,
+              productId: item.productId
+            },
+            include: {
+              images: {
+                orderBy: { id: 'asc' },
+                take: 1
+              }
+            }
+          });
+
+          if (colorVariation?.images?.[0]?.url) {
+            productImageUrl = colorVariation.images[0].url;
+            this.logger.log(`  ✅ Image produit normal trouvée: ${productImageUrl}`);
+          }
+        }
+
+        // Cas 3: Utiliser colorVariationData si disponible
+        if (!productImageUrl && item.colorVariationData?.images?.[0]?.url) {
+          productImageUrl = item.colorVariationData.images[0].url;
+          this.logger.log(`  ✅ Image trouvée dans colorVariationData: ${productImageUrl}`);
+        }
+
+        if (!productImageUrl) {
+          this.logger.warn(`  ⚠️  Impossible de trouver l'image du produit pour cet item - mockup non généré`);
+          continue;
+        }
+
+        // 2. Extraire les éléments de design de la première vue
+        const viewKeys = Object.keys(item.designElementsByView);
+        if (viewKeys.length === 0) {
+          this.logger.warn(`  ⚠️  Aucune vue trouvée dans designElementsByView - mockup non généré`);
+          continue;
+        }
+
+        const firstViewKey = viewKeys[0];
+        const elements = item.designElementsByView[firstViewKey];
+
+        if (!Array.isArray(elements) || elements.length === 0) {
+          this.logger.warn(`  ⚠️  Aucun élément de design dans la vue ${firstViewKey} - mockup non généré`);
+          continue;
+        }
+
+        this.logger.log(`  🎨 ${elements.length} élément(s) de design trouvé(s) dans la vue ${firstViewKey}`);
+
+        // 3. Récupérer la délimitation (zone imprimable)
+        let delimitation = null;
+
+        if (item.delimitations && Array.isArray(item.delimitations) && item.delimitations.length > 0) {
+          delimitation = item.delimitations[0];
+        } else if (item.delimitation) {
+          delimitation = item.delimitation;
+        }
+
+        if (delimitation) {
+          this.logger.log(`  📐 Délimitation trouvée: ${delimitation.width}x${delimitation.height}px à (${delimitation.x}, ${delimitation.y})`);
+        } else {
+          this.logger.warn(`  ⚠️  Aucune délimitation trouvée - génération sans zone imprimable définie`);
+        }
+
+        // 4. Générer le mockup
+        this.logger.log(`  🎨 Appel du générateur de mockup...`);
+
+        const mockupUrl = await this.mockupGenerator.generateOrderMockup({
+          productImageUrl,
+          elements,
+          delimitation: delimitation ? {
+            x: delimitation.x,
+            y: delimitation.y,
+            width: delimitation.width,
+            height: delimitation.height
+          } : undefined
+        });
+
+        // 5. Stocker l'URL du mockup dans l'item
+        item.mockupUrl = mockupUrl;
+
+        this.logger.log(`  ✅ Mockup généré et stocké: ${mockupUrl}`);
+
+      } catch (error) {
+        this.logger.error(`  ❌ Erreur lors de la génération du mockup pour l'item ${i + 1}:`, error.message);
+        this.logger.error(`     Stack:`, error.stack);
+        // Continuer même si la génération échoue pour cet item
+      }
+    }
+
+    this.logger.log(`\n✅ ====== FIN DE LA GÉNÉRATION DES MOCKUPS ======\n`);
   }
 
 } 

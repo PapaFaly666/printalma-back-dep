@@ -292,4 +292,32 @@ export class CustomizationController {
       sessionId
     );
   }
+
+  /**
+   * 🔄 RÉGÉNÉRER LE MOCKUP D'UNE PERSONNALISATION
+   * Force la génération de finalImageUrlCustom même sans email
+   */
+  @Post(':id/regenerate-mockup')
+  @ApiOperation({
+    summary: '🔄 Régénérer le mockup final',
+    description: 'Force la génération de finalImageUrlCustom pour une personnalisation existante'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Mockup régénéré avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        customizationId: { type: 'number' },
+        finalImageUrlCustom: { type: 'string' },
+        message: { type: 'string' }
+      }
+    }
+  })
+  async regenerateMockup(
+    @Param('id', ParseIntPipe) customizationId: number
+  ) {
+    return this.customizationService.regenerateCustomizationMockup(customizationId);
+  }
 }

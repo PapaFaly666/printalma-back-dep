@@ -28,6 +28,7 @@ import { VendorFundsService } from '../vendor-funds/vendor-funds.service';
 import { OrderStatus } from '@prisma/client';
 import { CreateFundsRequestDto } from '../vendor-funds/dto/vendor-funds.dto';
 import { PrismaService } from '../prisma.service';
+import { MailService } from '../core/mail/mail.service';
 
 @Controller('orders')
 export class OrderController {
@@ -37,7 +38,8 @@ export class OrderController {
     private readonly orderService: OrderService,
     private readonly orderGateway: OrderGateway,
     private readonly vendorFundsService: VendorFundsService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly mailService: MailService
   ) {}
 
   // Créer une commande pour un invité (sans authentification)
@@ -1043,6 +1045,253 @@ export class OrderController {
         },
         message: 'Erreur lors du calcul des fonds disponibles'
       };
+    }
+  }
+
+  // 🔍 ENDPOINT DE DEBUG: Vérifier le statut de paiement d'une commande
+  @Get(':orderNumber/debug-status')
+  @HttpCode(HttpStatus.OK)
+  async debugOrderStatus(@Param('orderNumber') orderNumber: string) {
+    try {
+      const order = await this.prisma.order.findFirst({
+        where: { orderNumber },
+        select: {
+          orderNumber: true,
+          email: true,
+          paymentStatus: true,
+          paymentMethod: true,
+          transactionId: true,
+          totalAmount: true,
+          createdAt: true,
+          updatedAt: true,
+        }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderNumber} not found`);
+      }
+
+      return {
+        success: true,
+        data: order,
+        diagnostic: {
+          hasEmail: !!order.email,
+          isPaid: order.paymentStatus === 'PAID',
+          canSendEmail: !!order.email && order.paymentStatus === 'PAID',
+          message: !order.email
+            ? '❌ Email manquant - Email ne peut pas être envoyé'
+            : order.paymentStatus !== 'PAID'
+            ? `⚠️ Statut = ${order.paymentStatus} - Email ne sera pas envoyé (attente de PAID)`
+            : '✅ Email devrait avoir été envoyé automatiquement'
+        }
+      };
+    } catch (error) {
+      this.logger.error(`❌ [DEBUG] Erreur: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // 🎨 ENDPOINT DE TEST: Générer les mockups pour une commande existante
+  @Post(':orderNumber/generate-mockups')
+  @HttpCode(HttpStatus.OK)
+  async generateMockupsForOrder(@Param('orderNumber') orderNumber: string) {
+    try {
+      this.logger.log(`🎨 [TEST] Génération des mockups pour ${orderNumber}`);
+
+      const order = await this.prisma.order.findFirst({
+        where: { orderNumber },
+        include: {
+          orderItems: {
+            include: {
+              product: true,
+              vendorProduct: {
+                select: {
+                  id: true,
+                  name: true,
+                  finalImageUrl: true,
+                }
+              },
+              colorVariation: {
+                include: {
+                  images: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderNumber} not found`);
+      }
+
+      this.logger.log(`📦 [TEST] Commande trouvée avec ${order.orderItems.length} item(s)`);
+
+      const results = [];
+
+      for (let i = 0; i < order.orderItems.length; i++) {
+        const item = order.orderItems[i];
+
+        this.logger.log(`\n🎨 [Item ${i + 1}/${order.orderItems.length}] ID: ${item.id}`);
+        this.logger.log(`   - productId: ${item.productId}`);
+        this.logger.log(`   - vendorProductId: ${item.vendorProductId}`);
+        this.logger.log(`   - mockupUrl actuel: ${item.mockupUrl || 'AUCUN'}`);
+        this.logger.log(`   - designElementsByView: ${item.designElementsByView ? 'OUI' : 'NON'}`);
+
+        if (!item.designElementsByView) {
+          this.logger.log(`   ⏭️  Pas de personnalisation - ignoré`);
+          results.push({
+            itemId: item.id,
+            status: 'skipped',
+            reason: 'Pas de designElementsByView'
+          });
+          continue;
+        }
+
+        try {
+          // Déterminer l'URL de l'image du produit
+          let productImageUrl: string | null = null;
+
+          if (item.vendorProductId && item.vendorProduct?.finalImageUrl) {
+            productImageUrl = item.vendorProduct.finalImageUrl;
+            this.logger.log(`   ✅ Image produit vendeur: ${productImageUrl}`);
+          } else if (item.colorVariation?.images?.[0]?.url) {
+            productImageUrl = item.colorVariation.images[0].url;
+            this.logger.log(`   ✅ Image produit normal: ${productImageUrl}`);
+          }
+
+          if (!productImageUrl) {
+            this.logger.warn(`   ⚠️  Aucune image de produit trouvée`);
+            results.push({
+              itemId: item.id,
+              status: 'error',
+              reason: 'Image de produit introuvable'
+            });
+            continue;
+          }
+
+          // Extraire les éléments de design
+          const viewKeys = Object.keys(item.designElementsByView);
+          if (viewKeys.length === 0) {
+            this.logger.warn(`   ⚠️  designElementsByView vide`);
+            results.push({
+              itemId: item.id,
+              status: 'error',
+              reason: 'Aucune vue dans designElementsByView'
+            });
+            continue;
+          }
+
+          const firstViewKey = viewKeys[0];
+          const elements = item.designElementsByView[firstViewKey];
+
+          this.logger.log(`   🎨 Vue: ${firstViewKey}, ${elements.length} élément(s)`);
+
+          // Récupérer la délimitation
+          const delimitation = item.delimitations?.[0] || item.delimitation;
+
+          // Générer le mockup
+          const mockupUrl = await this.orderService['mockupGenerator'].generateOrderMockup({
+            productImageUrl,
+            elements,
+            delimitation: delimitation ? {
+              x: delimitation.x,
+              y: delimitation.y,
+              width: delimitation.width,
+              height: delimitation.height
+            } : undefined
+          });
+
+          // Mettre à jour en base de données
+          await this.prisma.orderItem.update({
+            where: { id: item.id },
+            data: { mockupUrl }
+          });
+
+          this.logger.log(`   ✅ Mockup généré et sauvegardé: ${mockupUrl}`);
+
+          results.push({
+            itemId: item.id,
+            status: 'success',
+            mockupUrl
+          });
+
+        } catch (error) {
+          this.logger.error(`   ❌ Erreur: ${error.message}`);
+          results.push({
+            itemId: item.id,
+            status: 'error',
+            reason: error.message
+          });
+        }
+      }
+
+      return {
+        success: true,
+        message: `Traitement terminé pour ${results.length} item(s)`,
+        results
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ [TEST] Erreur: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // 📧 ENDPOINT DE TEST: Envoyer manuellement une facture par email
+  @Post(':orderNumber/send-invoice')
+  @HttpCode(HttpStatus.OK)
+  async sendInvoiceManually(@Param('orderNumber') orderNumber: string) {
+    try {
+      this.logger.log(`📧 [TEST] Tentative d'envoi de facture pour ${orderNumber}`);
+
+      const order = await this.prisma.order.findFirst({
+        where: { orderNumber },
+        include: {
+          orderItems: {
+            include: {
+              product: true, // 🔧 Produit de base (l'image est déjà dans mockupUrl de l'orderItem)
+              vendorProduct: {
+                select: {
+                  id: true,
+                  name: true,
+                  finalImageUrl: true, // 🔧 Image finale du produit vendeur
+                }
+              },
+              colorVariation: true,
+            }
+          },
+          user: true
+        }
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderNumber} not found`);
+      }
+
+      this.logger.log(`📧 [TEST] Commande trouvée:`);
+      this.logger.log(`   - Email: ${order.email || 'AUCUN'}`);
+      this.logger.log(`   - Statut: ${order.paymentStatus}`);
+      this.logger.log(`   - Montant: ${order.totalAmount} FCFA`);
+
+      if (!order.email) {
+        throw new BadRequestException('No email in this order');
+      }
+
+      await this.mailService.sendOrderInvoice(order);
+
+      return {
+        success: true,
+        message: `Invoice sent to ${order.email}`,
+        data: {
+          orderNumber: order.orderNumber,
+          email: order.email,
+          totalAmount: order.totalAmount
+        }
+      };
+    } catch (error) {
+      this.logger.error(`❌ [TEST] Erreur envoi facture: ${error.message}`, error.stack);
+      throw error;
     }
   }
 }

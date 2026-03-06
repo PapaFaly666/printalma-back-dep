@@ -133,6 +133,89 @@ export class SalesStatsUpdaterService {
   }
 
   /**
+   * 🔄 Mettre à jour les statistiques de vente après confirmation de commande
+   * ✅ NOUVELLE MÉTHODE: Incrémente salesCount dès que la commande est CONFIRMED
+   */
+  async updateSalesStatsOnConfirmation(orderId: number): Promise<void> {
+    try {
+      this.logger.log(`✅ Mise à jour statistiques vente pour commande confirmée: ${orderId}`);
+
+      // 1. Récupérer les détails de la commande
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          orderItems: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!order) {
+        this.logger.warn(`⚠️ Commande ${orderId} introuvable`);
+        return;
+      }
+
+      // ✅ MODIFIÉ: Accepter CONFIRMED au lieu de seulement DELIVERED
+      if (order.status !== 'CONFIRMED' && order.status !== 'DELIVERED') {
+        this.logger.warn(`⚠️ Commande ${orderId} n'est pas confirmée (statut: ${order.status})`);
+        return;
+      }
+
+      // 2. Mettre à jour les statistiques pour chaque produit de la commande
+      const updatePromises = order.orderItems.map(async (item) => {
+        // Utiliser vendorProductId s'il existe, sinon essayer productId
+        const vendorProductId = item.vendorProductId || item.productId;
+
+        // Vérifier si c'est un VendorProduct
+        const vendorProduct = await this.prisma.vendorProduct.findUnique({
+          where: { id: vendorProductId }
+        });
+
+        if (!vendorProduct) {
+          this.logger.debug(`🔍 Produit ${vendorProductId} n'est pas un VendorProduct, ignoré`);
+          return;
+        }
+
+        // Mettre à jour les statistiques du VendorProduct
+        const revenue = item.quantity * item.unitPrice;
+        await this.realBestSellersService.updateProductSalesStats(
+          vendorProduct.vendorId,
+          vendorProduct.id,
+          item.quantity,
+          revenue
+        );
+
+        this.logger.debug(`📊 Stats mises à jour pour VendorProduct ${vendorProduct.id}: +${item.quantity} ventes, revenue: +${revenue}`);
+      });
+
+      await Promise.all(updatePromises);
+
+      // 3. Recalculer les best-sellers si nécessaire
+      const shouldRecalculate = await this.shouldRecalculateBestSellers();
+      if (shouldRecalculate) {
+        this.logger.log('🏆 Recalcul des best-sellers déclenché');
+        // Faire le recalcul en arrière-plan sans attendre
+        this.realBestSellersService.markTopSellers('month').catch(error => {
+          this.logger.error('❌ Erreur recalcul best-sellers en arrière-plan:', error);
+        });
+      }
+
+      this.logger.log(`✅ Statistiques mises à jour pour commande confirmée ${orderId} (${order.orderItems.length} produits)`);
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur mise à jour statistiques commande ${orderId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 📊 Recalculer toutes les statistiques de vente (tâche de maintenance)
    */
   async recalculateAllSalesStats(): Promise<void> {
@@ -152,7 +235,7 @@ export class SalesStatsUpdaterService {
 
       // 2. Recalculer depuis les vraies données de commande
       const salesData = await this.prisma.$queryRaw`
-        SELECT 
+        SELECT
           vp.id as vendor_product_id,
           SUM(oi.quantity) as total_sales,
           SUM(oi.quantity * oi."unitPrice") as total_revenue,
@@ -160,7 +243,7 @@ export class SalesStatsUpdaterService {
         FROM "OrderItem" oi
         JOIN "Order" o ON o.id = oi."orderId"
         JOIN "VendorProduct" vp ON vp.id = oi."productId"
-        WHERE o.status = 'DELIVERED'
+        WHERE o.status IN ('CONFIRMED', 'DELIVERED')
         GROUP BY vp.id
       `;
 

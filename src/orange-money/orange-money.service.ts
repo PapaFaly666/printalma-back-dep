@@ -1,15 +1,19 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma.service';
 import { PaymentConfigService } from '../payment-config/payment-config.service';
+import { OrderService } from '../order/order.service';
 import { CreateOrangePaymentDto } from './dto/orange-payment.dto';
+import { ExecuteCashInDto, CashInResponseDto } from './dto/orange-cashin.dto';
 import {
   OrangeTransaction,
   OrangeTransactionFilters,
   OrangeTransactionStatus,
   OrangeTransactionStatusResponse,
   OrangeErrorResponse,
+  OrangeCashInPayload,
+  OrangeCashInResponse,
 } from './interfaces/orange-transaction.interface';
 import {
   OrangeCallbackPayload,
@@ -45,6 +49,8 @@ export class OrangeMoneyService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly paymentConfigService: PaymentConfigService,
+    @Inject(forwardRef(() => OrderService))
+    private readonly orderService: OrderService,
   ) {}
 
   /**
@@ -668,45 +674,47 @@ export class OrangeMoneyService {
     if (status === 'SUCCESS') {
       this.logger.log(`💰 PAIEMENT RÉUSSI - Mise à jour de la commande en PAYÉE...`);
 
-      const updatedOrder = await this.prisma.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: 'PAID',
-          transactionId: transactionId || reference,
-          paymentMethod: 'ORANGE_MONEY',
-        },
-      });
+      // 🎯 Utiliser updateOrderPaymentStatus pour déclencher l'envoi de facture
+      await this.orderService.updateOrderPaymentStatus(
+        order.orderNumber,
+        'PAID',
+        transactionId || reference,
+        null,
+        1
+      );
 
       this.logger.log(`✅✅✅ SUCCÈS: Commande ${order.orderNumber} marquée comme PAYÉE`);
-      this.logger.log(`   - Nouveau statut: ${updatedOrder.paymentStatus}`);
-      this.logger.log(`   - Transaction ID enregistrée: ${updatedOrder.transactionId}`);
+      this.logger.log(`   - Nouveau statut: PAID`);
+      this.logger.log(`   - Transaction ID enregistrée: ${transactionId || reference}`);
       this.logger.log(`   - Montant payé: ${amount?.value} ${amount?.unit}`);
       if (isFullFormat) {
         this.logger.log(`   - Code marchand: ${payload.partner?.id}`);
         this.logger.log(`   - Client: ${payload.customer?.id}`);
       }
       this.logger.log(`   - Timestamp: ${new Date().toISOString()}`);
-
-      // TODO: Envoyer email de confirmation au client
-      // await this.sendConfirmationEmail(order.email, order);
+      this.logger.log(`   - 📧 Facture envoyée automatiquement par email`);
 
     } else if (status === 'CANCELLED' || status === 'FAILED') {
       this.logger.log(`❌ PAIEMENT ÉCHOUÉ - Mise à jour de la commande...`);
       this.logger.log(`   - Raison: ${status}`);
 
-      const updatedOrder = await this.prisma.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: 'FAILED',
-          transactionId: transactionId || reference,
-          paymentMethod: 'ORANGE_MONEY',
+      // 🎯 Utiliser updateOrderPaymentStatus avec détails d'erreur
+      await this.orderService.updateOrderPaymentStatus(
+        order.orderNumber,
+        'FAILED',
+        transactionId || reference,
+        {
+          reason: status === 'CANCELLED' ? 'user_cancelled' : 'payment_failed',
+          category: status === 'CANCELLED' ? 'user_action' : 'technical_error',
+          message: `Orange Money payment ${status}`,
         },
-      });
+        1
+      );
 
       this.logger.log(`❌ Commande ${order.orderNumber} marquée comme ÉCHOUÉE`);
       this.logger.log(`   - Statut Orange Money: ${status}`);
-      this.logger.log(`   - Nouveau statut BDD: ${updatedOrder.paymentStatus}`);
-      this.logger.log(`   - Transaction ID enregistrée: ${updatedOrder.transactionId}`);
+      this.logger.log(`   - Nouveau statut BDD: FAILED`);
+      this.logger.log(`   - Transaction ID enregistrée: ${transactionId || reference}`);
       if (isFullFormat) {
         this.logger.log(`   - Code marchand: ${payload.partner?.id}`);
       }
@@ -812,15 +820,20 @@ export class OrangeMoneyService {
       throw new BadRequestException(`Order is not pending (status: ${order.paymentStatus})`);
     }
 
-    // Marquer comme CANCELLED
-    await this.prisma.order.update({
-      where: { id: order.id },
-      data: {
-        paymentStatus: 'CANCELLED',
+    // Marquer comme CANCELLED (FAILED avec raison user_cancelled)
+    await this.orderService.updateOrderPaymentStatus(
+      orderNumber,
+      'FAILED',
+      null,
+      {
+        reason: 'user_cancelled',
+        category: 'user_action',
+        message: 'Order cancelled by user',
       },
-    });
+      1
+    );
 
-    this.logger.log(`✅ Commande ${orderNumber} annulée (${order.paymentStatus} → CANCELLED)`);
+    this.logger.log(`✅ Commande ${orderNumber} annulée (PENDING → FAILED/CANCELLED)`);
   }
 
   /**
@@ -1062,12 +1075,13 @@ export class OrangeMoneyService {
         this.logger.warn(`⚠️ RÉCONCILIATION: Orange Money = SUCCESS, BDD = PENDING`);
         this.logger.log(`🔄 Mise à jour de la commande ${orderNumber} → PAID`);
 
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: {
-            paymentStatus: 'PAID',
-          },
-        });
+        await this.orderService.updateOrderPaymentStatus(
+          orderNumber,
+          'PAID',
+          order.transactionId || null,
+          null,
+          1
+        );
 
         this.logger.log(`✅ Commande ${orderNumber} réconciliée: PENDING → PAID`);
 
@@ -1087,12 +1101,17 @@ export class OrangeMoneyService {
         this.logger.warn(`⚠️ RÉCONCILIATION: Orange Money = FAILED, BDD = PENDING`);
         this.logger.log(`🔄 Mise à jour de la commande ${orderNumber} → FAILED`);
 
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: {
-            paymentStatus: 'FAILED',
+        await this.orderService.updateOrderPaymentStatus(
+          orderNumber,
+          'FAILED',
+          order.transactionId || null,
+          {
+            reason: 'payment_failed',
+            category: 'technical_error',
+            message: 'Orange Money payment failed - detected during reconciliation',
           },
-        });
+          1
+        );
 
         this.logger.log(`✅ Commande ${orderNumber} réconciliée: PENDING → FAILED`);
 
@@ -1133,6 +1152,277 @@ export class OrangeMoneyService {
         paymentStatus: 'UNKNOWN',
         message: error.message,
       };
+    }
+  }
+
+  /**
+   * Exécute un Cash In Orange Money - Envoie de l'argent vers un wallet client
+   * Doc: https://developer.orange-sonatel.com/documentation#operation/Cash%20In
+   * Endpoint: POST /api/eWallet/v1/cashins
+   *
+   * Cas d'usage : Paiement de vendeurs (appels de fonds), remboursements, cashback, etc.
+   *
+   * @param dto - Données du Cash In (montant, numéro client, référence, etc.)
+   * @returns Réponse Orange Money avec transactionId et statut
+   */
+  async executeCashIn(dto: ExecuteCashInDto): Promise<CashInResponseDto> {
+    this.logger.log(`💰 Exécution Cash In Orange Money vers ${dto.customerPhone} - Montant: ${dto.amount} FCFA`);
+
+    const token = await this.getAccessToken();
+
+    // Récupérer la config depuis la DB
+    const dbConfig = await this.paymentConfigService.getActiveConfig('ORANGE_MONEY' as any);
+
+    let retailerMsisdn: string;
+    let retailerPinCode: string;
+    let mode: string;
+    let cashinUrl: string;
+
+    if (!dbConfig || !dbConfig.isActive) {
+      // Fallback sur les variables d'environnement
+      this.logger.warn('⚠️ Pas de config Orange Money dans la DB, utilisation des variables d\'environnement');
+
+      retailerMsisdn = this.configService.get<string>('ORANGE_RETAILER_MSISDN');
+      retailerPinCode = this.configService.get<string>('ORANGE_RETAILER_PIN');
+      mode = this.configService.get<string>('ORANGE_MODE') || 'sandbox';
+
+      if (!retailerMsisdn || !retailerPinCode) {
+        throw new BadRequestException(
+          'Orange Money retailer credentials (MSISDN and PIN) not configured in environment variables'
+        );
+      }
+
+      cashinUrl = mode === 'production'
+        ? 'https://api.orange-sonatel.com/api/eWallet/v1/cashins'
+        : 'https://api.sandbox.orange-sonatel.com/api/eWallet/v1/cashins';
+    } else {
+      // Utiliser la config depuis la DB
+      mode = dbConfig.activeMode; // 'test' ou 'live'
+
+      // On stocke le MSISDN du retailer dans un champ metadata
+      const metadata = dbConfig.metadata as any;
+      retailerMsisdn = metadata?.retailerMsisdn;
+      retailerPinCode = mode === 'test'
+        ? metadata?.testRetailerPin
+        : metadata?.liveRetailerPin;
+
+      if (!retailerMsisdn || !retailerPinCode) {
+        throw new BadRequestException(
+          `Orange Money retailer credentials not configured for ${mode.toUpperCase()} mode in database`
+        );
+      }
+
+      cashinUrl = mode === 'live'
+        ? 'https://api.orange-sonatel.com/api/eWallet/v1/cashins'
+        : 'https://api.sandbox.orange-sonatel.com/api/eWallet/v1/cashins';
+
+      this.logger.log(`📊 Utilisation de la configuration ${mode.toUpperCase()} depuis la base de données`);
+    }
+
+    // ⚠️ IMPORTANT: Le PIN code doit être crypté avec la clé publique Orange Money
+    // Pour l'instant, on utilise le PIN en clair (fonctionnera en sandbox)
+    // En production, il faudra récupérer la clé publique et crypter le PIN
+    // TODO: Implémenter la récupération de la clé publique et le cryptage RSA
+    const encryptedPinCode = retailerPinCode; // À remplacer par le PIN crypté
+
+    // 📝 Référence unique pour traçabilité
+    const reference = dto.reference || `CASHIN-${Date.now()}`;
+
+    // 🔥 Payload EXACTEMENT conforme à la doc Orange Money Cash In
+    // Doc: https://developer.orange-sonatel.com/documentation (Cash In > POST /api/eWallet/v1/cashins)
+    const payload: OrangeCashInPayload = {
+      amount: {
+        unit: 'XOF',
+        value: dto.amount,
+      },
+      customer: {
+        id: dto.customerPhone,
+        idType: 'MSISDN',
+        walletType: 'PRINCIPAL',
+      },
+      partner: {
+        id: retailerMsisdn,
+        idType: 'MSISDN',
+        encryptedPinCode: encryptedPinCode,
+        walletType: 'PRINCIPAL',
+      },
+      reference: reference,
+      receiveNotification: dto.receiveNotification ?? false,
+      metadata: {
+        customerName: dto.customerName,
+        description: dto.description,
+        ...(dto.fundsRequestId && { fundsRequestId: dto.fundsRequestId.toString() }),
+      },
+      requestDate: new Date().toISOString(),
+    };
+
+    this.logger.log(`📦 Mode: ${mode.toUpperCase()}`);
+    this.logger.log(`📦 Cash In URL: ${cashinUrl}`);
+    this.logger.log(`📦 Retailer MSISDN: ${retailerMsisdn}`);
+    this.logger.log(`📦 Customer: ${dto.customerPhone}`);
+    this.logger.log(`📦 Payload: ${JSON.stringify({ ...payload, partner: { ...payload.partner, encryptedPinCode: '***' } }, null, 2)}`);
+
+    try {
+      const response = await axios.post<OrangeCashInResponse>(
+        cashinUrl,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      this.logger.log(`✅ Cash In Orange Money réussi - Transaction ID: ${response.data.transactionId}`);
+      this.logger.log(`📊 Statut: ${response.data.status}`);
+
+      // Si un fundsRequestId est fourni, mettre à jour la demande de fonds
+      if (dto.fundsRequestId) {
+        await this.prisma.vendorFundsRequest.update({
+          where: { id: dto.fundsRequestId },
+          data: {
+            transactionId: response.data.transactionId,
+            status: response.data.status === 'SUCCESS' ? 'PAID' : 'APPROVED',
+          },
+        });
+
+        this.logger.log(`💾 VendorFundsRequest #${dto.fundsRequestId} mise à jour avec transactionId ${response.data.transactionId}`);
+      }
+
+      return {
+        transactionId: response.data.transactionId,
+        status: response.data.status,
+        description: response.data.description,
+        reference: response.data.reference || reference,
+        requestId: response.data.requestId,
+      };
+    } catch (error: any) {
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+
+      this.logger.error('❌ Erreur Cash In Orange Money:');
+      this.logger.error(`   Mode: ${mode}`);
+      this.logger.error(`   URL: ${cashinUrl}`);
+      this.logger.error(`   Status: ${status}`);
+      this.logger.error(`   Data: ${JSON.stringify(errorData)}`);
+      this.logger.error(`   Message: ${error.message}`);
+
+      // Gestion des erreurs selon la doc Orange Money
+      if (status === 401) {
+        this.logger.warn('⚠️ Token expiré, tentative de renouvellement...');
+        this.accessToken = null;
+        this.tokenExpiry = 0;
+        throw new BadRequestException(
+          'Orange Money authentication expired. Please retry - a new token will be obtained automatically.'
+        );
+      } else if (status === 400) {
+        // Erreur métier (solde insuffisant, compte invalide, etc.)
+        const errorCode = errorData?.code;
+        const errorMessage = errorData?.detail || errorData?.message || 'Invalid parameters';
+
+        // Codes d'erreur métier Orange Money (voir doc Error Codes)
+        const businessErrorMessages: { [key: string]: string } = {
+          '2000': 'Le compte client n\'existe pas',
+          '2001': 'Le numéro MSISDN du client est invalide',
+          '2011': 'Code PIN invalide, 2 tentatives restantes',
+          '2012': 'Code PIN invalide, 1 tentative restante',
+          '2013': 'Code PIN invalide, compte bloqué',
+          '2020': 'Solde insuffisant',
+          '2021': 'Solde insuffisant pour le payeur',
+          '2041': 'Transaction non autorisée',
+          '2042': 'Transaction non autorisée pour le payeur',
+        };
+
+        const errorMsg = errorCode && businessErrorMessages[errorCode]
+          ? businessErrorMessages[errorCode]
+          : errorMessage;
+
+        throw new BadRequestException(`Cash In échoué: ${errorMsg}`);
+      } else if (status === 422) {
+        // Erreur de validation
+        throw new BadRequestException(
+          `Paramètres invalides: ${errorData?.detail || 'Vérifiez le montant, le numéro et les autres paramètres'}`
+        );
+      } else if (status === 500 || status === 502 || status === 503) {
+        throw new BadRequestException(
+          'L\'API Orange Money est temporairement indisponible. Veuillez réessayer dans quelques instants.'
+        );
+      } else {
+        throw new BadRequestException(
+          errorData?.detail || errorData?.message || error.message || 'Échec du Cash In Orange Money'
+        );
+      }
+    }
+  }
+
+  /**
+   * Gère le callback webhook pour les Cash In Orange Money
+   * Le callback peut arriver de manière asynchrone après l'exécution du Cash In
+   *
+   * @param callbackData - Données du callback Orange Money
+   */
+  async handleCashInCallback(callbackData: any): Promise<void> {
+    this.logger.log('📨 Réception callback Cash In Orange Money');
+    this.logger.log(`📦 Callback data: ${JSON.stringify(callbackData, null, 2)}`);
+
+    try {
+      const transactionId = callbackData.transactionId;
+      const status = callbackData.status;
+      const metadata = callbackData.metadata || {};
+      const fundsRequestId = metadata.fundsRequestId ? parseInt(metadata.fundsRequestId, 10) : null;
+
+      if (!transactionId) {
+        this.logger.warn('⚠️ Callback Cash In reçu sans transactionId');
+        return;
+      }
+
+      // Si un fundsRequestId est présent dans les metadata
+      if (fundsRequestId) {
+        const fundsRequest = await this.prisma.vendorFundsRequest.findUnique({
+          where: { id: fundsRequestId },
+        });
+
+        if (!fundsRequest) {
+          this.logger.warn(`⚠️ VendorFundsRequest #${fundsRequestId} introuvable`);
+          return;
+        }
+
+        // Vérifier l'idempotence - ne pas traiter 2 fois le même callback
+        if (fundsRequest.status === 'PAID' && fundsRequest.transactionId === transactionId) {
+          this.logger.log(`✓ Callback déjà traité pour VendorFundsRequest #${fundsRequestId}`);
+          return;
+        }
+
+        // Mettre à jour le statut selon le callback
+        let newStatus: 'PAID' | 'REJECTED' | 'APPROVED' = 'APPROVED';
+
+        if (status === 'SUCCESS') {
+          newStatus = 'PAID';
+          this.logger.log(`✅ Cash In réussi - VendorFundsRequest #${fundsRequestId} marqué comme PAID`);
+        } else if (status === 'FAILED' || status === 'REJECTED' || status === 'CANCELLED') {
+          newStatus = 'REJECTED';
+          this.logger.log(`❌ Cash In échoué - VendorFundsRequest #${fundsRequestId} marqué comme REJECTED`);
+        }
+
+        await this.prisma.vendorFundsRequest.update({
+          where: { id: fundsRequestId },
+          data: {
+            transactionId: transactionId,
+            status: newStatus,
+            processedAt: new Date(),
+            adminNote: `Callback Orange Money reçu - Statut: ${status}`,
+          },
+        });
+
+        this.logger.log(`💾 VendorFundsRequest #${fundsRequestId} mis à jour: ${newStatus}`);
+      } else {
+        // Pas de fundsRequestId, juste logger le callback
+        this.logger.log(`📊 Cash In callback reçu - Transaction ID: ${transactionId}, Statut: ${status}`);
+      }
+    } catch (error) {
+      this.logger.error('❌ Erreur traitement callback Cash In:', error);
+      throw error;
     }
   }
 }

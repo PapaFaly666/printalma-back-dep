@@ -19,10 +19,11 @@ export interface BestSellerProduct {
   price: number;
   salesCount: number;
   totalRevenue: number;
+  rank: number; // 🏆 Rang calculé selon le tri par salesCount
   bestSellerRank: number;
   averageRating?: number;
   viewsCount: number;
-  
+
   // Informations du design
   designCloudinaryUrl?: string;
   designWidth?: number;
@@ -32,7 +33,7 @@ export interface BestSellerProduct {
   designPositioning?: string;
   // Positions du design standardisées
   designPositions: DesignPositionData[];
-  
+
   // Informations du produit de base
   baseProduct: {
     id: number;
@@ -53,7 +54,7 @@ export interface BestSellerProduct {
       }>;
     }>;
   };
-  
+
   // Informations du vendeur
   vendor: {
     id: number;
@@ -63,6 +64,16 @@ export interface BestSellerProduct {
     profilePhotoUrl?: string;
     businessName?: string;
   };
+
+  // 🖼️ Images finales générées avec design positionné
+  finalImages?: Array<{
+    id: number;
+    colorId: number;
+    colorName: string;
+    colorCode: string;
+    finalImageUrl: string;
+    mockupUrl: string;
+  }>;
 
   // 🆕 Couleur par défaut
   defaultColorId?: number;
@@ -114,11 +125,10 @@ export class BestSellersService {
   }> {
     const { limit = 20, offset = 0, category, vendorId, minSales = 1 } = options;
 
-    console.log('🔍 [BEST-SELLERS] Récupération des meilleurs vendeurs:', options);
+    console.log('🔍 [BEST-SELLERS] Récupération des produits les plus vendus (basé sur salesCount):', options);
 
-    // Construire les conditions de filtrage
+    // ✅ MODIFIÉ: Ne plus filtrer par isBestSeller, mais par salesCount pour avoir les vraies meilleures ventes
     const where: any = {
-      isBestSeller: true,
       isValidated: true,
       status: 'PUBLISHED',
       isDelete: false,
@@ -186,12 +196,25 @@ export class BestSellersService {
                 design: true
               }
             },
+            // 🖼️ INCLURE LES IMAGES FINALES GÉNÉRÉES
+            images: {
+              where: { imageType: 'final' },
+              select: {
+                id: true,
+                colorId: true,
+                colorName: true,
+                colorCode: true,
+                finalImageUrl: true,
+                finalImagePublicId: true,
+                cloudinaryUrl: true
+              }
+            },
             sizePrices: true // 🆕 Inclure les prix par taille du vendeur
           },
           orderBy: [
-            { bestSellerRank: 'asc' },
             { salesCount: 'desc' },
-            { totalRevenue: 'desc' }
+            { totalRevenue: 'desc' },
+            { createdAt: 'desc' }
           ],
           take: limit,
           skip: offset
@@ -225,11 +248,15 @@ export class BestSellersService {
       const stats = await this.getBestSellersStats();
 
       // Formatter les résultats avec les utilitaires unifiés
-      const formattedProducts: BestSellerProduct[] = products.map(product => {
+      const formattedProducts: BestSellerProduct[] = products.map((product, index) => {
         // ✅ UTILISER LES UTILITAIRES UNIFIÉS pour les positions de design
         const standardizedDesignPositions = formatDesignPositions(product.designPositions || []);
-        
+
+        // 🏆 CALCULER LE RANG BASÉ SUR LA POSITION DANS LES RÉSULTATS
+        const rank = offset + index + 1;
+
         console.log(`✅ [UNIFIED] Produit ${product.id}: Positions standardisées`, standardizedDesignPositions.length);
+        console.log(`🏆 [RANK] Produit ${product.id} - Rang: ${rank}, Sales: ${product.salesCount}`);
 
         return {
           id: product.id,
@@ -238,7 +265,8 @@ export class BestSellersService {
           price: product.price,
           salesCount: product.salesCount,
           totalRevenue: product.totalRevenue,
-          bestSellerRank: product.bestSellerRank || 999,
+          rank: rank, // 🏆 Rang calculé selon le tri par salesCount
+          bestSellerRank: product.bestSellerRank || rank, // Fallback sur le rang calculé
           averageRating: product.averageRating,
           viewsCount: product.viewsCount,
           
@@ -277,6 +305,16 @@ export class BestSellersService {
             profilePhotoUrl: product.vendor.profile_photo_url,
             businessName: product.vendor.shop_name
           },
+
+          // 🖼️ Images finales avec design positionné pour chaque couleur
+          finalImages: (product as any).images?.map((img: any) => ({
+            id: img.id,
+            colorId: img.colorId,
+            colorName: img.colorName,
+            colorCode: img.colorCode,
+            finalImageUrl: img.finalImageUrl,
+            mockupUrl: img.cloudinaryUrl
+          })) || [],
 
           defaultColorId: product.defaultColorId, // 🆕 Couleur par défaut
 
@@ -440,10 +478,13 @@ export class BestSellersService {
 
       const stats = await this.getBestSellersStats();
 
-      const formattedProducts: BestSellerProduct[] = products.map(product => {
+      const formattedProducts: BestSellerProduct[] = products.map((product, index) => {
         // ✅ UTILISER LES UTILITAIRES UNIFIÉS pour les positions de design
         const standardizedDesignPositions = formatDesignPositions(product.designPositions || []);
-        
+
+        // 🏆 CALCULER LE RANG BASÉ SUR LA POSITION DANS LES RÉSULTATS
+        const rank = offset + index + 1;
+
         console.log(`✅ [UNIFIED-NEW-ARRIVALS] Produit ${product.id}: Positions standardisées`, standardizedDesignPositions.length);
 
         return {
@@ -453,7 +494,8 @@ export class BestSellersService {
           price: product.price,
           salesCount: product.salesCount,
           totalRevenue: product.totalRevenue,
-          bestSellerRank: product.bestSellerRank || 999,
+          rank: rank, // 🏆 Rang calculé pour l'affichage
+          bestSellerRank: product.bestSellerRank || rank,
           averageRating: product.averageRating,
           viewsCount: product.viewsCount,
 

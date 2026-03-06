@@ -10,6 +10,8 @@ import { SocialMediaValidator } from '../vendor/validators/social-media.validato
 import { PrismaService } from '../prisma.service';
 import { MailService } from '../core/mail/mail.service';
 import { CloudinaryService } from '../core/cloudinary/cloudinary.service';
+import { OtpService } from './otp/otp.service';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { Role, VendeurType } from '@prisma/client';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
 
@@ -20,6 +22,7 @@ export class AuthService {
         private jwtService: JwtService,
         private mailService: MailService,
         private cloudinaryService: CloudinaryService,
+        private otpService: OtpService,
     ) { }
 
     async login(loginDto: LoginDto) {
@@ -120,13 +123,12 @@ export class AuthService {
             }
         }
 
-        // Réinitialiser le compteur de tentatives et mettre à jour la date de dernière connexion
+        // Réinitialiser le compteur de tentatives
         await this.prisma.user.update({
             where: { id: user.id },
             data: {
                 login_attempts: 0,
                 locked_until: null,
-                last_login_at: new Date()
             },
         });
 
@@ -136,6 +138,27 @@ export class AuthService {
                 mustChangePassword: true,
                 userId: user.id,
                 message: 'Vous devez changer votre mot de passe avant de continuer'
+            };
+        }
+
+        // 🔐 VÉRIFICATION OTP pour Admin, SuperAdmin et Vendeurs
+        const roleToCheck = user.customRole?.slug?.toUpperCase() || user.role;
+        if (this.otpService.shouldUseOTP(roleToCheck)) {
+            // Générer et envoyer l'OTP
+            const code = await this.otpService.createOTP(
+                user.id,
+                loginDto.ipAddress,
+                loginDto.userAgent
+            );
+
+            // Envoyer l'OTP par email
+            await this.mailService.sendLoginOTP(user.email, user.firstName, code);
+
+            return {
+                otpRequired: true,
+                userId: user.id,
+                email: user.email,
+                message: 'Un code de vérification a été envoyé à votre adresse email'
             };
         }
 
@@ -208,6 +231,118 @@ export class AuthService {
                 role: roleString, // ✅ Role pour la logique backend (SUPERADMIN, ADMIN, VENDEUR)
                 roleDisplay: roleDisplay, // ✅ Nom du rôle pour l'affichage (peut être "Super Administrateur", "Finances", etc.)
                 customRole: customRoleData, // ✅ Objet customRole avec permissions ou null
+                vendeur_type: user.vendeur_type,
+                status: user.status,
+                profile_photo_url: user.profile_photo_url,
+                phone: user.phone,
+                shop_name: user.shop_name,
+                country: user.country,
+                address: user.address,
+            }
+        };
+    }
+
+    /**
+     * Vérifie le code OTP et finalise la connexion
+     */
+    async verifyOtpAndLogin(verifyOtpDto: VerifyOtpDto) {
+        const { email, code } = verifyOtpDto;
+
+        // Récupérer l'utilisateur
+        const user = await this.prisma.user.findUnique({
+            where: { email },
+            include: {
+                customRole: {
+                    include: {
+                        permissions: {
+                            include: {
+                                permission: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!user) {
+            throw new UnauthorizedException('Utilisateur non trouvé');
+        }
+
+        // Vérifier l'OTP
+        await this.otpService.verifyOTP(user.id, code);
+
+        // Mettre à jour la date de dernière connexion
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+                last_login_at: new Date()
+            },
+        });
+
+        // Déterminer le rôle pour l'affichage et la logique
+        let roleString: Role = user.role;
+        let roleDisplay: string = user.role;
+
+        // Préparer customRole avec permissions si disponible
+        let customRoleData = null;
+        if (user.customRole) {
+            const permissions = user.customRole.permissions.map(rp => ({
+                id: rp.permission.id,
+                slug: rp.permission.key,
+                name: rp.permission.name,
+                module: rp.permission.module,
+                description: rp.permission.description
+            }));
+
+            customRoleData = {
+                id: user.customRole.id,
+                name: user.customRole.name,
+                slug: user.customRole.slug,
+                description: user.customRole.description,
+                permissions
+            };
+
+            roleDisplay = user.customRole.name;
+
+            const slugUpper = user.customRole.slug.toUpperCase();
+            if (slugUpper === 'SUPERADMIN') {
+                roleString = Role.SUPERADMIN;
+            } else if (slugUpper === 'ADMIN') {
+                roleString = Role.ADMIN;
+            } else if (slugUpper === 'VENDOR') {
+                roleString = Role.VENDEUR;
+            } else {
+                roleString = Role.ADMIN;
+            }
+        }
+
+        // Générer le token JWT
+        const payload = {
+            sub: user.id,
+            email: user.email,
+            role: roleString,
+            vendeur_type: user.vendeur_type,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            profile_photo_url: user.profile_photo_url || null,
+            phone: user.phone || null,
+            shop_name: user.shop_name || null,
+            country: user.country || null,
+            address: user.address || null,
+        };
+
+        const access_token = this.jwtService.sign(payload);
+
+        return {
+            access_token,
+            user: {
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: roleString,
+                roleDisplay: roleDisplay,
+                customRole: customRoleData,
                 vendeur_type: user.vendeur_type,
                 status: user.status,
                 profile_photo_url: user.profile_photo_url,
