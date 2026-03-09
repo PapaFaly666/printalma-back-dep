@@ -6,6 +6,7 @@ import {
   PendingProductDto,
   PendingDesignDto,
   PendingFundRequestDto,
+  MonthlyRevenueDto,
 } from './dto/dashboard-stats.dto';
 
 @Injectable()
@@ -786,5 +787,55 @@ export class SuperadminDashboardService {
       totalAmount,
       requests: requestsDto,
     };
+  }
+
+  /**
+   * Récupère l'évolution du chiffre d'affaires par mois sur les 12 derniers mois
+   */
+  async getMonthlyRevenueEvolution(): Promise<MonthlyRevenueDto[]> {
+    const now = new Date();
+    const monthlyData: MonthlyRevenueDto[] = [];
+
+    const monthNames = [
+      'Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin',
+      'Juil', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+
+    // Récupérer les données des 12 derniers mois
+    for (let i = 11; i >= 0; i--) {
+      const targetDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const startOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+      const endOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      // Récupérer les commandes du mois
+      const orders = await this.prisma.order.findMany({
+        where: {
+          createdAt: {
+            gte: startOfMonth,
+            lte: endOfMonth,
+          },
+          status: {
+            in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'],
+          },
+          paymentStatus: 'PAID',
+        },
+        select: {
+          totalAmount: true,
+        },
+      });
+
+      // Calculer le CA du mois
+      const monthRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+      monthlyData.push({
+        month: `${monthNames[targetDate.getMonth()]} ${targetDate.getFullYear()}`,
+        year: targetDate.getFullYear(),
+        monthNumber: targetDate.getMonth() + 1,
+        revenue: monthRevenue,
+        orderCount: orders.length,
+      });
+    }
+
+    return monthlyData;
   }
 }

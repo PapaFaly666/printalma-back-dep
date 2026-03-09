@@ -10,6 +10,8 @@ import {
   UseGuards,
   Req,
   ParseIntPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -26,6 +28,7 @@ import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { AssignPermissionsDto } from './dto/assign-permissions.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../guards/permissions.guard';
 import { RequirePermissions } from '../guards/permissions.decorator';
@@ -248,5 +251,63 @@ export class AdminUsersController {
     @Body() body: { roleId: number }
   ) {
     return this.adminUsersService.resetUserPermissions(userId, body.roleId);
+  }
+
+  @Post(':id/change-password')
+  @RequirePermissions('users.admins.edit')
+  @ApiOperation({
+    summary: 'Changer le mot de passe d\'un utilisateur',
+    description: 'Permet à un admin de changer le mot de passe d\'un utilisateur. Un mot de passe aléatoire peut être généré.'
+  })
+  @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
+  @ApiResponse({
+    status: 200,
+    description: 'Mot de passe changé avec succès',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Utilisateur non trouvé',
+  })
+  async changeUserPassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() changePasswordDto: ChangePasswordDto
+  ) {
+    let newPassword = changePasswordDto.newPassword;
+
+    // Générer un mot de passe aléatoire si demandé
+    if (changePasswordDto.generateRandom) {
+      newPassword = this.adminUsersService['generateRandomPassword']();
+    }
+
+    // Envoyer par email si demandé
+    if (changePasswordDto.sendEmail) {
+      const result = await this.adminUsersService.sendUserCredentials(id);
+      return result;
+    }
+
+    return this.adminUsersService.changeUserPassword(
+      id,
+      newPassword,
+      changePasswordDto.forceChange ?? true
+    );
+  }
+
+  @Post(':id/send-credentials')
+  @RequirePermissions('users.admins.edit')
+  @ApiOperation({
+    summary: 'Envoyer les identifiants par email',
+    description: 'Génère un nouveau mot de passe temporaire et l\'envoie par email à l\'utilisateur'
+  })
+  @ApiParam({ name: 'id', description: 'ID de l\'utilisateur' })
+  @ApiResponse({
+    status: 200,
+    description: 'Identifiants envoyés avec succès',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Utilisateur non trouvé',
+  })
+  sendUserCredentials(@Param('id', ParseIntPipe) id: number) {
+    return this.adminUsersService.sendUserCredentials(id);
   }
 }

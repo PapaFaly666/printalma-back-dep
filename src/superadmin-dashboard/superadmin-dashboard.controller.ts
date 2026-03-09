@@ -3,7 +3,7 @@ import { SuperadminDashboardService } from './superadmin-dashboard.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import { SuperadminDashboardDto } from './dto/dashboard-stats.dto';
+import { SuperadminDashboardDto, MonthlyRevenueDto } from './dto/dashboard-stats.dto';
 
 @Controller('superadmin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -45,5 +45,40 @@ export class SuperadminDashboardController {
   @Get('dashboard')
   async getDashboard(): Promise<SuperadminDashboardDto> {
     return this.dashboardService.getDashboardStats();
+  }
+
+  /**
+   * Récupère l'évolution du chiffre d'affaires par mois (12 derniers mois)
+   *
+   * @returns {Promise<MonthlyRevenueDto[]>} Données mensuelles de CA
+   *
+   * @example
+   * GET /superadmin/dashboard/monthly-revenue
+   *
+   * Headers:
+   * Authorization: Bearer <jwt-token>
+   *
+   * Response:
+   * [
+   *   {
+   *     "month": "Mar 2025",
+   *     "year": 2025,
+   *     "monthNumber": 3,
+   *     "revenue": 125000,
+   *     "orderCount": 45
+   *   },
+   *   {
+   *     "month": "Apr 2025",
+   *     "year": 2025,
+   *     "monthNumber": 4,
+   *     "revenue": 150000,
+   *     "orderCount": 52
+   *   },
+   *   ...
+   * ]
+   */
+  @Get('dashboard/monthly-revenue')
+  async getMonthlyRevenue(): Promise<MonthlyRevenueDto[]> {
+    return this.dashboardService.getMonthlyRevenueEvolution();
   }
 }

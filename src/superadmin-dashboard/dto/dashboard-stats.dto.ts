@@ -135,3 +135,11 @@ export class PendingFundRequestDto {
   requestedAt: Date;
   vendorEmail: string;
 }
+
+export class MonthlyRevenueDto {
+  month: string; // Format: "Jan 2026", "Feb 2026", etc.
+  year: number;
+  monthNumber: number; // 1-12
+  revenue: number; // Chiffre d'affaires total
+  orderCount: number; // Nombre de commandes
+}

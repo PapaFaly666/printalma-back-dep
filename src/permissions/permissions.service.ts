@@ -222,6 +222,24 @@ export class PermissionsService {
   }
 
   /**
+   * Générer un slug unique à partir d'un slug de base
+   * @param baseSlug Slug de base
+   * @returns Slug unique
+   */
+  private async generateUniqueSlug(baseSlug: string): Promise<string> {
+    let slug = baseSlug;
+    let counter = 1;
+
+    // Vérifier si le slug existe déjà
+    while (await this.prisma.customRole.findUnique({ where: { slug } })) {
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
+    return slug;
+  }
+
+  /**
    * Créer un nouveau rôle personnalisé
    * @param data Données du rôle
    * @returns Rôle créé
@@ -233,10 +251,13 @@ export class PermissionsService {
     permissionIds?: number[];
   }) {
     try {
+      // Générer un slug unique si celui fourni existe déjà
+      const uniqueSlug = await this.generateUniqueSlug(data.slug);
+
       const role = await this.prisma.customRole.create({
         data: {
           name: data.name,
-          slug: data.slug,
+          slug: uniqueSlug,
           description: data.description,
           isSystem: false,
         },

@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MinLength, IsIn } from 'class-validator';
+import { IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MinLength, IsIn, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
@@ -26,13 +26,34 @@ export class CreateUserDto {
   email: string;
 
   @ApiProperty({
-    description: 'Mot de passe (minimum 8 caractères)',
+    description: 'Mot de passe (minimum 8 caractères). Si non fourni, un mot de passe aléatoire sera généré.',
     example: 'SecurePass123!',
+    required: false,
   })
   @IsString()
   @MinLength(8)
-  @IsNotEmpty()
-  password: string;
+  @IsOptional()
+  password?: string;
+
+  @ApiProperty({
+    description: 'Générer automatiquement un mot de passe aléatoire',
+    example: false,
+    required: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  generatePassword?: boolean;
+
+  @ApiProperty({
+    description: 'Envoyer les identifiants par email à l\'utilisateur',
+    example: true,
+    required: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  sendCredentialsByEmail?: boolean;
 
   @ApiProperty({
     description: 'Numéro de téléphone',

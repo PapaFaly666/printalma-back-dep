@@ -14,10 +14,14 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { AssignPermissionsDto } from './dto/assign-permissions.dto';
 import * as bcrypt from 'bcrypt';
 import { UserStatus } from '@prisma/client';
+import { MailService } from '../core/mail/mail.service';
 
 @Injectable()
 export class AdminUsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mailService: MailService,
+  ) {}
 
   /**
    * Récupérer tous les utilisateurs avec filtres et pagination
@@ -197,6 +201,57 @@ export class AdminUsersService {
   }
 
   /**
+   * Générer un mot de passe aléatoire sécurisé
+   */
+  private generateRandomPassword(): string {
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+    let password = '';
+
+    // Au moins un caractère de chaque type
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += special[Math.floor(Math.random() * special.length)];
+
+    // Remplir le reste (minimum 12 caractères)
+    const allChars = lowercase + uppercase + numbers + special;
+    const minLength = 12;
+    for (let i = password.length; i < minLength; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+
+    // Mélanger le mot de passe
+    return password
+      .split('')
+      .sort(() => Math.random() - 0.5)
+      .join('');
+  }
+
+  /**
+   * Envoyer les identifiants par email à un utilisateur
+   */
+  private async sendCredentialsEmail(
+    email: string,
+    name: string,
+    password: string,
+    roleName: string
+  ): Promise<void> {
+    // Séparer le nom en prénom et nom
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Utiliser le service mail existant pour envoyer les identifiants
+    await this.mailService.sendPasswordEmail(email, firstName, lastName, password);
+
+    console.log('✅ Email envoyé avec succès à:', email);
+  }
+
+  /**
    * Créer un nouvel utilisateur
    */
   async create(dto: CreateUserDto, createdBy?: number) {
@@ -241,8 +296,14 @@ export class AdminUsersService {
       }
     }
 
+    // Générer ou utiliser le mot de passe fourni
+    let plainPassword = dto.password;
+    if (dto.generatePassword || !dto.password) {
+      plainPassword = this.generateRandomPassword();
+    }
+
     // Hasher le mot de passe
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
     // Séparer le nom en prénom et nom
     const nameParts = dto.name.trim().split(' ');
@@ -260,6 +321,7 @@ export class AdminUsersService {
         roleId: dto.roleId,
         userStatus: (dto.status as UserStatus) || UserStatus.ACTIVE,
         created_by: createdBy,
+        must_change_password: true, // Forcer le changement du mot de passe
       },
       include: {
         customRole: {
@@ -274,7 +336,22 @@ export class AdminUsersService {
       },
     });
 
-    return {
+    // Envoyer les identifiants par email si demandé
+    if (dto.sendCredentialsByEmail && plainPassword) {
+      try {
+        await this.sendCredentialsEmail(
+          user.email,
+          `${user.firstName} ${user.lastName}`,
+          plainPassword,
+          role.name
+        );
+      } catch (emailError) {
+        // L'erreur d'email ne doit pas empêcher la création de l'utilisateur
+        console.error('Erreur lors de l\'envoi de l\'email:', emailError);
+      }
+    }
+
+    const response: any = {
       success: true,
       message: 'Utilisateur créé avec succès',
       data: {
@@ -287,6 +364,14 @@ export class AdminUsersService {
         createdAt: user.created_at,
       },
     };
+
+    // Inclure le mot de passe généré dans la réponse pour l'afficher à l'admin
+    if (dto.generatePassword || !dto.password) {
+      response.data.generatedPassword = plainPassword;
+      response.message = `Utilisateur créé avec succès. Mot de passe généré: ${plainPassword}`;
+    }
+
+    return response;
   }
 
   /**
@@ -822,6 +907,89 @@ export class AdminUsersService {
           slug: result.customRole!.slug,
         },
         permissions: result.customRole!.permissions.map((rp) => rp.permission),
+      },
+    };
+  }
+
+  /**
+   * Changer le mot de passe d'un utilisateur (par un admin)
+   */
+  async changeUserPassword(id: number, newPassword: string, forceChange: boolean = true) {
+    // Vérifier que l'utilisateur existe
+    const user = await this.prisma.user.findFirst({
+      where: { id, is_deleted: false },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    // Hasher le nouveau mot de passe
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Mettre à jour le mot de passe
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        password: hashedPassword,
+        must_change_password: forceChange,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Mot de passe changé avec succès',
+      data: {
+        userId: id,
+        forceChange,
+      },
+    };
+  }
+
+  /**
+   * Envoyer les identifiants d'un utilisateur par email
+   */
+  async sendUserCredentials(id: number) {
+    // Vérifier que l'utilisateur existe
+    const user = await this.prisma.user.findFirst({
+      where: { id, is_deleted: false },
+      include: {
+        customRole: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    // Générer un nouveau mot de passe temporaire
+    const tempPassword = this.generateRandomPassword();
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+    // Mettre à jour le mot de passe et forcer le changement
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        password: hashedPassword,
+        must_change_password: true,
+      },
+    });
+
+    // Envoyer l'email
+    await this.sendCredentialsEmail(
+      user.email,
+      `${user.firstName} ${user.lastName}`,
+      tempPassword,
+      user.customRole?.name || 'Utilisateur'
+    );
+
+    return {
+      success: true,
+      message: `Nouveau mot de passe généré et envoyé à ${user.email}`,
+      data: {
+        userId: id,
+        email: user.email,
+        tempPassword, // Retourné pour démo uniquement, à retirer en production
       },
     };
   }
